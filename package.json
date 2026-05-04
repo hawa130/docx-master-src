@@ -1,0 +1,20 @@
+{
+  "name": "docx-restyle",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "build:skill": "tsdown && bun run build-skill.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tsdown": "^0.21.10",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.5",
+    "jszip": "^3.10.1"
+  }
+}
