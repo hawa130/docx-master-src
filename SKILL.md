@@ -43,6 +43,10 @@ Then use `inspect_*` tools **only as needed** to resolve uncertainties. You don'
 
 **When to reach for `inspect_runs`:** if a paragraph's role is unclear, *before* assuming the dominant-run fingerprint covers everything, dump its runs. The "Run-level diversity" section at the bottom tells you which character properties are uniform vs. mixed — this is what `apply_styles` will preserve vs. strip when you restyle. If you see e.g. `b: on / —` mixed across runs, that's a bold lead phrase that will survive the smart-strip; if you see `b=on` uniform, the bold is style-controllable. Skipping this and assuming uniform formatting is the most common source of post-apply surprises.
 
+**When to reach for `inspect_neighbors`:** classifying figure captions, table captions, abstracts, the first paragraph after a heading — anything that's defined by *what's adjacent* rather than by the paragraph's own format. Pass the candidate's index; check whether image/table appears at distance 1 (or 2 if there's an empty paragraph between). Default radius 4 covers most real layouts; bump with `--radius` if you suspect longer separations.
+
+**When to reach for `find_paragraphs`:** before writing `pattern_rules`, validate the regex matches what you think it matches by running it through this tool first. Also useful for "are there any paragraphs starting with `[N]`?" type discovery questions — much faster than scrolling overview.
+
 **Tool Reference:**
 
 All tools are invoked via `node <script> <args>` and write structured output to stdout.
@@ -50,12 +54,14 @@ All tools are invoked via `node <script> <args>` and write structured output to 
 | Tool | Invocation | When to Use |
 |------|------------|-------------|
 | `overview` | `node scripts/overview.js <file>` | Always. Call this first. Returns metadata, page setup (mm), theme, style definitions, numbering schemes (clustered by pattern), visual style statistics, and document skeleton. |
-| `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | When you need full text, computed styles, and nearest-image/table context for a specific paragraph range. |
+| `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | When you need full text and computed styles for a specific paragraph range. |
 | `inspect_runs` | `node scripts/inspect_runs.js <file> <para>` | When a paragraph has run-level mixed formatting (bold lead phrase, colored numbering prefix, inline emphasis) and you need to see each run's rPr separately. Output also tells you which properties are uniform vs. mixed across runs — critical for predicting what `apply_styles` will preserve vs. strip. |
+| `inspect_neighbors` | `node scripts/inspect_neighbors.js <file> <para> [--radius N]` | When you need to know what surrounds a paragraph: nearby images, tables, equations, page breaks, sibling paragraphs. Returns ordered before/after windows with type-specific structured fields. Default radius 4. **First choice for figure-caption / table-caption / first-after-heading classification.** |
 | `inspect_style` | `node scripts/inspect_style.js <file> <fingerprint>` | When you see a fingerprint in the overview and need to understand what role it plays across the document. |
 | `inspect_style_def` | `node scripts/inspect_style_def.js <file> <styleId>` | When the document has pre-defined styles in `styles.xml` and you want to understand or preserve them. |
 | `inspect_section` | `node scripts/inspect_section.js <file> <index>` | When you need to understand page setup differences between sections (headers, footers, page numbering). |
-| `apply_styles --dry-run` | `node scripts/apply_styles.js --dry-run <config.json>` | Iterate on a config without writing the output file. Returns the full change report including sample affected paragraphs and a requirements-vs-output diff. Use this between config edits — it's seconds-per-cycle instead of full write+validate. |
+| `find_paragraphs` | `node scripts/find_paragraphs.js <file> --regex <pat> [--flags <flags>] [--limit N] [--fingerprint X]` | Cross-document text search. Returns matching paragraphs with index, fingerprint, and text preview. Use to discover content-defined roles (figure/table captions, references, keywords) and to validate `pattern_rules` regex coverage before applying. |
+| `apply_styles --dry-run` | `node scripts/apply_styles.js --dry-run <config.json>` | Iterate on a config without writing the output file. Returns the full change report including sample affected paragraphs and the Style Resolution annotation block. Use this between config edits — it's seconds-per-cycle instead of full write+validate. |
 | `apply_styles` | `node scripts/apply_styles.js <config.json>` | Final step. Reads a JSON config file containing your complete decision. Outputs the reformatted document and a change report. |
 
 ### Step 3: Classify by Visual Fingerprint
@@ -417,7 +423,7 @@ apply_styles({
 
 **Empty paragraphs as spacing:** Many documents use blank paragraphs for vertical spacing. Always preserve them — removing empty paragraphs is a structural change, not a formatting change, and risks breaking intentional layout (especially on cover pages).
 
-**Table caption position:** Table captions go ABOVE the table. Figure captions go BELOW the figure. Use successor/predecessor element types to distinguish them, even if they share identical formatting.
+**Table caption position:** Table captions go ABOVE the table. Figure captions go BELOW the figure. Run `inspect_neighbors <para>` and check which side the image/table is on — distance 1 with image before = figure caption, distance 1 with table after = table caption.
 
 **Table footnotes:** Text immediately after a table with smaller font or starting with "注：", "来源：", "Note:" is a table footnote, not body text.
 
@@ -527,11 +533,13 @@ docx-normalize/
 ├── SKILL.md
 ├── scripts/
 │   ├── overview.js                   ← Document overview and skeleton
-│   ├── inspect_range.js              ← Detailed paragraph range view (with image/table neighbor context)
+│   ├── inspect_range.js              ← Detailed paragraph range view
 │   ├── inspect_runs.js               ← Per-run rPr dump + run-level diversity summary
+│   ├── inspect_neighbors.js          ← Adjacent elements (image/table/para/break) ±radius
 │   ├── inspect_style.js              ← Visual fingerprint occurrences
 │   ├── inspect_style_def.js          ← Named style definition details
 │   ├── inspect_section.js            ← Section page setup details
+│   ├── find_paragraphs.js            ← Regex search across paragraph text
 │   └── apply_styles.js               ← Execute formatting changes; supports --dry-run
 └── references/
     └── numbering-formats.md          ← Numbering format reference (read when handling numbered headings)

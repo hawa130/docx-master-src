@@ -32,18 +32,6 @@ export interface ComputedParaStyle {
 
 export type TableClassification = "layout" | "data" | "form"
 
-export interface ElementInfo {
-  type:
-    | "paragraph"
-    | "table"
-    | "image"
-    | "equation"
-    | "sectionBreak"
-    | "pageBreak"
-    | "empty"
-  detail?: string
-}
-
 export interface ParsedParagraph {
   index: number
   text: string
@@ -53,23 +41,26 @@ export interface ParsedParagraph {
   styleName: string
   fingerprint: string
   context: {
-    predecessor: ElementInfo | null
-    successor: ElementInfo | null
     insideTable: TableClassification | null
     sectionIndex: number
-    /**
-     * Nearest image / table within ~3 non-paragraph elements before this
-     * paragraph (or N intervening paragraphs as configured). Used by the
-     * agent to distinguish "table caption above table" (nearestTableAfter
-     * is set) from "figure caption below image" (nearestImageBefore is
-     * set) without inspecting raw XML.
-     */
-    nearestImageBefore: { distance: number; widthCm: number; heightCm: number } | null
-    nearestImageAfter: { distance: number; widthCm: number; heightCm: number } | null
-    nearestTableBefore: { distance: number; rows: number; cols: number } | null
-    nearestTableAfter: { distance: number; rows: number; cols: number } | null
   }
 }
+
+/**
+ * Flat ordered list of every element in the document body — paragraphs
+ * (compressed empty runs are NOT collapsed here; each empty paragraph is
+ * its own entry), images, tables, equations, breaks. Exposed to
+ * inspect_neighbors so neighbor lookup is on-demand instead of an
+ * always-on annotation on every paragraph. Layout-table inner paragraphs
+ * are inlined; data/form table inner paragraphs are NOT.
+ */
+export type NeighborItem =
+  | { kind: "paragraph"; paraIndex: number; isEmpty: boolean; sectionIndex: number }
+  | { kind: "image"; widthCm: number; heightCm: number; sectionIndex: number }
+  | { kind: "table"; classification: TableClassification; rows: number; cols: number; sectionIndex: number }
+  | { kind: "equation"; sectionIndex: number }
+  | { kind: "pageBreak"; sectionIndex: number }
+  | { kind: "sectionBreak"; sectionIndex: number }
 
 export interface StyleDefinition {
   id: string
