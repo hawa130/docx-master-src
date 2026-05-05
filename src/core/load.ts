@@ -7,6 +7,7 @@ import { Fingerprinter, type FingerprintSummary } from "./fingerprint.ts"
 import {
   NS,
   type DocumentElement,
+  type NeighborItem,
   type ParsedParagraph,
   type SectionInfo,
 } from "./types.ts"
@@ -25,6 +26,7 @@ export interface LoadedDoc {
   resolver: StyleResolver
   paragraphs: ParsedParagraph[]
   elements: DocumentElement[]
+  neighborItems: NeighborItem[]
   sections: SectionInfo[]
   summary: FingerprintSummary[]
   metadata: {
@@ -109,6 +111,7 @@ export async function loadDocx(filePath: string): Promise<LoadedDoc> {
     resolver,
     paragraphs: parsed.paragraphs,
     elements: parsed.elements,
+    neighborItems: parsed.neighborItems,
     sections: parsed.sections,
     summary: fpResult.summary,
     metadata: {

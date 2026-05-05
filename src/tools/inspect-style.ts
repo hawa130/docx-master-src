@@ -31,9 +31,8 @@ async function main() {
     const limit = Math.min(20, matches.length)
     for (let i = 0; i < limit; i++) {
       const p = matches[i]!
-      const pred = p.context.predecessor ? p.context.predecessor.type : "none"
       out.push(
-        `  #${pad(p.index)} [${p.fingerprint}] pred:${pred.padEnd(10)} "${truncate(p.text, 40)}"`,
+        `  #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`,
       )
     }
     if (matches.length > limit)

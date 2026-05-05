@@ -42,26 +42,6 @@ function renderPara(p: ParsedParagraph): string[] {
   )
   lines.push(`  computed rPr: ${formatRPr(p.rPr)}`)
   lines.push(`  computed pPr: ${formatPPr(p.pPr)}`)
-  const pred = p.context.predecessor
-  const succ = p.context.successor
-  lines.push(
-    `  predecessor: ${pred ? `${pred.type}${pred.detail ? ` (${pred.detail})` : ""}` : "(none)"}`,
-  )
-  lines.push(
-    `  successor:   ${succ ? `${succ.type}${succ.detail ? ` (${succ.detail})` : ""}` : "(none)"}`,
-  )
-  const ctx = p.context
-  const ctxParts: string[] = []
-  const cm1 = (n: number) => n.toFixed(1)
-  if (ctx.nearestImageBefore)
-    ctxParts.push(`imgBefore@${ctx.nearestImageBefore.distance} (${cm1(ctx.nearestImageBefore.widthCm)}×${cm1(ctx.nearestImageBefore.heightCm)}cm)`)
-  if (ctx.nearestImageAfter)
-    ctxParts.push(`imgAfter@${ctx.nearestImageAfter.distance} (${cm1(ctx.nearestImageAfter.widthCm)}×${cm1(ctx.nearestImageAfter.heightCm)}cm)`)
-  if (ctx.nearestTableBefore)
-    ctxParts.push(`tblBefore@${ctx.nearestTableBefore.distance} (${ctx.nearestTableBefore.rows}×${ctx.nearestTableBefore.cols})`)
-  if (ctx.nearestTableAfter)
-    ctxParts.push(`tblAfter@${ctx.nearestTableAfter.distance} (${ctx.nearestTableAfter.rows}×${ctx.nearestTableAfter.cols})`)
-  if (ctxParts.length > 0) lines.push(`  near: ${ctxParts.join(", ")}`)
   lines.push(`  section: ${p.context.sectionIndex}`)
   return lines
 }

@@ -3,7 +3,7 @@ import {
   type ComputedParaStyle,
   type ComputedRunStyle,
   type DocumentElement,
-  type ElementInfo,
+  type NeighborItem,
   type ParsedParagraph,
   type SectionInfo,
   type TableClassification,
@@ -24,6 +24,8 @@ interface ParseResult {
   paragraphs: ParsedParagraph[]
   elements: DocumentElement[]
   sections: SectionInfo[]
+  /** Flat ordered stream for inspect_neighbors. Empty paragraphs not collapsed. */
+  neighborItems: NeighborItem[]
 }
 
 /** Internal item produced while walking — fingerprint not yet assigned. */
@@ -159,8 +161,11 @@ export class DocumentParser {
       })
     }
 
-    // assign predecessor/successor on paragraphs
-    this.assignNeighbors(flatItems, allParagraphs)
+    // Build the flat NeighborItem stream for inspect_neighbors. Done in a
+    // single pass over flatItems; empty paragraphs are kept individually
+    // (unlike compressElements). Layout-table inner paragraphs are inlined
+    // into the stream alongside top-level paragraphs.
+    const neighborItems = this.buildNeighborItems(flatItems)
 
     // Convert flat items → DocumentElement[] with empty-paragraph compression
     const elements = this.compressElements(flatItems)
@@ -169,6 +174,7 @@ export class DocumentParser {
       paragraphs: allParagraphs,
       elements,
       sections,
+      neighborItems,
     }
   }
 
@@ -326,14 +332,8 @@ export class DocumentParser {
       styleName,
       fingerprint: "", // assigned later
       context: {
-        predecessor: null,
-        successor: null,
         insideTable,
         sectionIndex: this.currentSection,
-        nearestImageBefore: null,
-        nearestImageAfter: null,
-        nearestTableBefore: null,
-        nearestTableAfter: null,
       },
     }
     all.push(para)
@@ -437,89 +437,56 @@ export class DocumentParser {
     }
   }
 
-  private assignNeighbors(items: RawItem[], _all: ParsedParagraph[]): void {
-    // build a flat list of "neighbor candidates" — every item type
-    // For each para item, predecessor/successor is the nearest non-para item or the nearest preceding/following para.
-    // Simpler: predecessor is the previous flat item (mapped to ElementInfo); successor is the next flat item.
-    const infos: (ElementInfo | null)[] = items.map((it) => itemToInfo(it))
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i]!
-      if (it.kind !== "para") continue
-      let prev: ElementInfo | null = null
-      for (let j = i - 1; j >= 0; j--) {
-        const info = infos[j]
-        if (info) {
-          prev = info
+  /**
+   * Flatten the internal RawItem list into the public NeighborItem stream.
+   * Each empty paragraph stays as its own entry (unlike compressElements).
+   * inspect_neighbors uses this to compute on-demand neighbor windows.
+   */
+  private buildNeighborItems(items: RawItem[]): NeighborItem[] {
+    const out: NeighborItem[] = []
+    for (const it of items) {
+      switch (it.kind) {
+        case "para": {
+          const text = it.paragraph.text
+          const isEmpty =
+            text.trim().length === 0 && !it.isImageOnly && !it.isEquationOnly
+          out.push({
+            kind: "paragraph",
+            paraIndex: it.paragraph.index,
+            isEmpty,
+            sectionIndex: it.paragraph.context.sectionIndex,
+          })
           break
         }
-      }
-      let next: ElementInfo | null = null
-      for (let j = i + 1; j < items.length; j++) {
-        const info = infos[j]
-        if (info) {
-          next = info
+        case "image":
+          out.push({
+            kind: "image",
+            widthCm: it.widthCm,
+            heightCm: it.heightCm,
+            sectionIndex: it.sectionIndex,
+          })
           break
-        }
-      }
-      it.paragraph.context.predecessor = prev
-      it.paragraph.context.successor = next
-
-      // nearest image/table — searches beyond the immediate neighbor, skipping
-      // intervening paragraphs and pageBreaks. Distance counts items hopped.
-      // A figure caption typically has nearestImageBefore.distance == 1;
-      // a table caption typically has nearestTableAfter.distance == 1.
-      const findNearest = (dir: -1 | 1, kind: "image" | "table") => {
-        let dist = 0
-        for (
-          let j = i + dir;
-          dir === -1 ? j >= 0 : j < items.length;
-          j += dir
-        ) {
-          const cand = items[j]!
-          if (cand.kind === kind) {
-            return { item: cand, distance: dist + 1 }
-          }
-          // count only "real" intervening items so distance reflects hops
-          if (cand.kind === "para" || cand.kind === "image" || cand.kind === "table" || cand.kind === "equation") {
-            dist++
-          }
-          if (dist >= 4) break // give up beyond 4 elements — unlikely related
-        }
-        return null
-      }
-      const imgBefore = findNearest(-1, "image")
-      const imgAfter = findNearest(1, "image")
-      const tblBefore = findNearest(-1, "table")
-      const tblAfter = findNearest(1, "table")
-      if (imgBefore && imgBefore.item.kind === "image") {
-        it.paragraph.context.nearestImageBefore = {
-          distance: imgBefore.distance,
-          widthCm: imgBefore.item.widthCm,
-          heightCm: imgBefore.item.heightCm,
-        }
-      }
-      if (imgAfter && imgAfter.item.kind === "image") {
-        it.paragraph.context.nearestImageAfter = {
-          distance: imgAfter.distance,
-          widthCm: imgAfter.item.widthCm,
-          heightCm: imgAfter.item.heightCm,
-        }
-      }
-      if (tblBefore && tblBefore.item.kind === "table") {
-        it.paragraph.context.nearestTableBefore = {
-          distance: tblBefore.distance,
-          rows: tblBefore.item.rows,
-          cols: tblBefore.item.cols,
-        }
-      }
-      if (tblAfter && tblAfter.item.kind === "table") {
-        it.paragraph.context.nearestTableAfter = {
-          distance: tblAfter.distance,
-          rows: tblAfter.item.rows,
-          cols: tblAfter.item.cols,
-        }
+        case "table":
+          out.push({
+            kind: "table",
+            classification: it.classification,
+            rows: it.rows,
+            cols: it.cols,
+            sectionIndex: it.sectionIndex,
+          })
+          break
+        case "equation":
+          out.push({ kind: "equation", sectionIndex: it.sectionIndex })
+          break
+        case "pageBreak":
+          out.push({ kind: "pageBreak", sectionIndex: it.sectionIndex })
+          break
+        case "sectionBreak":
+          out.push({ kind: "sectionBreak", sectionIndex: it.sectionIndex })
+          break
       }
     }
+    return out
   }
 
   private compressElements(items: RawItem[]): DocumentElement[] {
@@ -589,25 +556,6 @@ export class DocumentParser {
     flushEmpty()
     return out
   }
-}
-
-function itemToInfo(item: RawItem): ElementInfo | null {
-  if (item.kind === "para") {
-    if (item.isImageOnly) return { type: "image" }
-    if (item.isEquationOnly) return { type: "equation" }
-    if (item.paragraph.text.trim().length === 0) return { type: "empty" }
-    return { type: "paragraph" }
-  }
-  if (item.kind === "table") {
-    if (item.classification === "layout") return null // transparent for neighbor calc
-    return { type: "table", detail: `${item.rows}×${item.cols} ${item.classification}` }
-  }
-  if (item.kind === "image")
-    return { type: "image", detail: `${item.widthCm.toFixed(1)}cm×${item.heightCm.toFixed(1)}cm` }
-  if (item.kind === "equation") return { type: "equation" }
-  if (item.kind === "pageBreak") return { type: "pageBreak" }
-  if (item.kind === "sectionBreak") return { type: "sectionBreak" }
-  return null
 }
 
 function extractDrawingDims(drawingEl: Element): { widthCm: number; heightCm: number } | null {
