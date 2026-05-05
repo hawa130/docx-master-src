@@ -1,6 +1,6 @@
 ---
 name: docx-normalize
-description: "Normalize Word document formatting: fix inconsistent styles, convert direct formatting to named styles, convert manual numbering to automatic numbering. Use whenever a user wants to standardize, clean up, or reformat a .docx file's layout and styles."
+description: "Normalize Word (.docx) formatting: classify paragraphs, inject named styles, automate numbering, import template styles. Use when reformatting or standardizing a docx, applying thesis/paper typography specs, or aligning to a template."
 ---
 
 # Document Formatting Normalizer
@@ -212,160 +212,47 @@ If any of these checks reveal an issue, go back and inspect further before proce
 
 ### Step 7: Execute
 
-Call `apply_styles` with your complete decision.
+Call `apply_styles` with your decision in a JSON config.
 
-**Input contract:**
+**Top-level fields:**
 
-```
-apply_styles({
+```jsonc
+{
+  source, output,                          // REQUIRED. Input/output paths (must differ).
+  dryRun,                                  // optional. Preview without writing the file.
 
-  source: "/path/to/original.docx",    // REQUIRED. Path to the uploaded file.
-                                         // This file is NEVER modified.
+  styles: [ ... ],                         // REQUIRED. Paragraph styles to inject —
+                                           //   either via fromParagraph extraction or
+                                           //   manual fields, with optional overrides.
 
-  output: "/path/to/output.docx",       // REQUIRED. Path for the new file.
-                                         // Must differ from source.
+  numbering: { levels: [ ... ] },          // optional. Multi-level auto-numbering bound
+                                           //   to heading styles, with stripPrefixPatterns
+                                           //   (handles mixed manual prefixes) and numRPr
+                                           //   (independent rPr for the marker).
 
-  styles: [                              // REQUIRED. At least one style.
-    // ---- Mode A: extract from a paragraph (preferred) ----
-    {
-      id:              "Heading1",       // REQUIRED. Style ID for styles.xml.
-      name:            "一级标题",        // REQUIRED. Display name.
-      basedOn:         "Normal",         // optional. Default: "Normal".
-      fromParagraph:   33,               // 1-based paragraph index. Tool extracts this
-                                         //   paragraph's full computed rPr + pPr and uses
-                                         //   them as the style definition.
-      overrides: {                       // optional. Any field below overrides extracted value.
-        outlineLevel: 0,                 // typical use: add structural fields the source lacks
-        alignment:    "left",            // or override a value explicitly per user request
-      },
-    },
+  template: { source, styles: [ ... ] },   // optional. Import named styles from another
+                                           //   docx; basedOn ancestors auto-pulled,
+                                           //   numId references migrated.
 
-    // ---- Mode B: define manually (when no representative paragraph) ----
-    {
-      id:              "Caption",        // REQUIRED.
-      name:            "图表注",          // REQUIRED.
-      basedOn:         "Normal",         // optional. Default: "Normal".
-      font:            "黑体",           // optional. Latin/ASCII font.
-      fontEastAsia:    "黑体",           // optional. CJK font. Default: same as font.
-      size:            10.5,             // optional. Font size in pt (not half-pt).
-      bold:            false,            // optional. Default: false.
-      italic:          false,            // optional. Default: false.
-      color:           "auto",           // optional. Hex ("2E75B6") or "auto". Default: "auto".
-      alignment:       "center",         // optional. "left"|"center"|"right"|"both". Default: "left".
-      lineSpacing:     1.5,              // optional. <10 = multiplier (auto rule); ≥10 = pt (exact rule).
-      lineRule:        "atLeast",        // optional. "auto"|"exact"|"atLeast". Overrides the
-                                         //   <10/≥10 heuristic. Use "atLeast" to preserve a source
-                                         //   document's atLeast rule via fromParagraph round-trip.
-      spaceBefore:     12,               // optional. Space before paragraph in pt.
-      spaceAfter:      6,                // optional. Space after paragraph in pt.
-      firstLineIndent: "2char",          // optional. "Nchar" / "Npt" / pt number.
-                                         //   "Nchar" → emitted as `w:firstLineChars`
-                                         //     (1/100 char), Word auto-scales with font
-                                         //     size — required for the standard "首行缩进
-                                         //     2 字符" academic convention.
-                                         //   "Npt" or number → emitted as `w:firstLine`
-                                         //     (fixed twips), does NOT scale with font.
-                                         //   Prefer "Nchar" for thesis/paper body text.
-      hangingIndent:   null,             // optional. Same units as firstLineIndent.
-                                         //   For bibliography/reference entries use
-                                         //   "2char" (or matching the leading "[N] ").
-      outlineLevel:    0,                // optional. 0-8. REQUIRED for heading styles (enables TOC).
-    },
-    ...
-  ],
+  requirements: { id: "原话..." },         // optional. ANNOTATION ONLY — script records
+                                           //   the user's natural-language spec next to
+                                           //   the agent-resolved fields in the report
+                                           //   for visual verification. Not parsed.
 
-  numbering: {                           // optional. Omit if document has no numbered headings/lists.
-    levels: [
-      {
-        level:   0,                      // REQUIRED. 0-8.
-        format:  "chineseCounting",      // REQUIRED. numFmt value.
-        text:    "第%1章",               // REQUIRED. lvlText pattern.
-        styleId: "Heading1",             // REQUIRED. Binds this level to a style.
-        start:   1,                      // optional. Starting number. Default: 1.
-        stripPrefixPatterns: ["%1.%2", "%1."], // optional. Alternative manual-prefix
-                                         //   patterns to strip (tried in order, longest
-                                         //   first). Use when the source mixes styles —
-                                         //   e.g. some H2 written as "1.1 …", others as
-                                         //   "1. …". Defaults to [text].
-        numRPr: {                        // optional. Formats the auto-generated number marker
-          color: "3370FF",               //   itself (independent of the title text). Use to
-          bold:  false,                  //   keep designs like "blue numbering + black title".
-        },
-      },
-      ...
-    ]
-  },
-
-  assignments: [                         // optional. Per-paragraph overrides (1-based para index).
-    { para: 1,  action: "keep" },
-    { para: 33, action: "restyle", style: "Heading1" },
-    { para: 47, action: "flag",    reason: "Ambiguous: looks like heading but no numbering" },
-    ...
-  ],
-
-  bulk_rules: [                          // optional. Apply style by visual fingerprint label.
-    { fingerprint: "D", style: "BodyText" },
-    { fingerprint: "E", style: "Code" },
-    ...
-  ],
-
-  pattern_rules: [                       // optional. Apply style when paragraph text matches regex.
-    { regex: "^图\\s*\\d+[-.]\\d+", style: "FigureCaption" },
-    { regex: "^表\\s*\\d+[-.]\\d+", style: "TableCaption" },
-    { regex: "^\\[\\d+\\]\\s+", style: "Reference" },
-    { regex: "^(关键词|Keywords?)\\s*[:：]", style: "Keywords", stripMatch: true },
-    // First match wins (rules tried in order). The match must be anchored
-    // at start of paragraph text. `stripMatch: true` removes the matched
-    // leading text — useful for label-only prefixes the new style replaces.
-  ],
-
-  requirements: {                        // optional. User's original natural-language spec, ANNOTATION ONLY.
-    BodyText: "正文请使用宋体小四号字，行距设为1.5倍，首行缩进两个字符",
-    Heading1: "标题用黑体三号加粗居中显示",
-    // The script does NOT parse this. It records the string and displays it
-    // side-by-side with the agent-resolved structured fields in the change
-    // report. Use this to give reviewers a way to verify your translation
-    // by reading. The agent (you) is responsible for translating the user's
-    // text into the structured fields above (font / size / bold / etc.) —
-    // see Step 4 for the keyword tables, and handle negation / hierarchical
-    // refs / synonyms with your own reasoning.
-  },
-
-  template: {                            // optional. Import named styles from another docx.
-    source: "/path/to/template.docx",    // path to the template
-    styles: ["BodyText", "Heading1", "Heading2", "Heading3", "Caption"],
-    importNumbering: true,               // default true. Migrates abstractNum + numId references.
-    // basedOn ancestors are auto-pulled if they don't exist in source.
-    // If a styleId already exists in source, the template's wins (template
-    // is the authoritative stylebook).
-  },
-
-  exclude: [1, 2, 3, 4, 5]              // optional. Para indices to never touch. Overrides everything.
-})
+  // Paragraph-to-style mapping, in resolution order:
+  exclude:       [ idx, ... ],
+  assignments:   [ { para, action, style?, reason? }, ... ],
+  pattern_rules: [ { regex, style, stripMatch? }, ... ],
+  bulk_rules:    [ { fingerprint, style }, ... ],
+}
 ```
 
-**Paragraph indexing:** 1-based, matching `#001`, `#002` labels in the overview skeleton. Paragraphs inside layout tables are included in the numbering. Paragraphs inside data tables and form tables are not indexed.
+**For the full schema** — every field, every option, every comment, plus the complete style-field merge priority and paragraph-mapping resolution order — read `references/apply-styles-config.md` once before composing your first config. The reference is structured by section (Style entries / Numbering / Template import / Paragraph mapping) so you can jump to what you need.
 
-**Resolution order** when multiple rules match the same paragraph:
-1. `exclude` — if listed here, paragraph is untouched. Full stop.
-2. `assignments` — if a per-paragraph rule exists, it wins.
-3. `pattern_rules` — text-based regex match (first match wins among the rules).
-4. `bulk_rules` — match by fingerprint label.
-5. No match — paragraph is left unchanged (implicit `keep`).
-
-**Style-field resolution priority** (for each style entry's final values):
-1. `styles[i].overrides` — deliberate per-style escape, always wins.
-2. `styles[i]` direct fields (font/size/bold/...) — agent-translated from user text.
-3. `styles[i].fromParagraph` extracted values — from a representative paragraph.
-4. `template` imported style (if same ID) — copied from template's styles.xml.
-5. Defaults.
-
-(`requirements` is annotation-only and does not participate in resolution.)
-
-**Assignment actions:**
-- `keep` — preserve original formatting exactly, do not apply any style.
-- `restyle` — apply the named style, remove conflicting direct formatting. `style` field is REQUIRED.
-- `flag` — do not modify the paragraph. Record in the change report with the `reason` string. `reason` field is REQUIRED.
+**Quick anchors:**
+- Paragraph indexing is 1-based, matching `#001`, `#002` labels in the overview skeleton. Paragraphs inside layout tables are indexed; data/form tables are not.
+- Resolution order: `exclude > assignments > pattern_rules > bulk_rules > implicit-keep`. First match wins.
+- Style-field priority (later wins): defaults → template-imported → fromParagraph → direct styles[i] fields → overrides. requirements doesn't participate (annotation only).
 
 ### Step 8: Validate and Report
 
