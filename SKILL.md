@@ -1,6 +1,6 @@
 ---
 name: docx-normalize
-description: "Normalize Word (.docx) formatting: classify paragraphs, inject named styles, automate numbering, import template styles. Use when reformatting or standardizing a docx, applying thesis/paper typography specs, or aligning to a template."
+description: "Normalize Word (.docx) formatting: classify paragraphs, inject named styles, convert typed heading numbers (1./1.1/第N章) to multi-level auto-numbering, import template styles. Use when reformatting or standardizing a docx, applying thesis/paper typography specs, or aligning to a template."
 ---
 
 # Document Formatting Normalizer
@@ -187,11 +187,26 @@ When the user provides text requirements, parse Chinese font size names using th
 
 ### Step 5: Define the Numbering Scheme
 
-If the document has numbered headings (manual or automatic), define a multi-level numbering scheme. Refer to `references/numbering-formats.md` for the full pattern table and `numFmt`/`lvlText` syntax.
+**Default expectation for thesis / paper / report / 设计方案 layouts: define `numbering.levels[]` covering every heading level that has numbered text.** This is the single most-skipped step and the most damaging to skip — without it, the numbers stay as plain typed text and the user gets:
 
-Each level binds to a heading style via `pStyle`. When a higher-level heading appears, lower levels reset automatically.
+- Insert a new chapter → all subsequent chapter numbers stay wrong, manual renumber required
+- TOC / 目录 → built from heading text, includes the stale text numbers
+- Cross-references (`STYLEREF`, `REF`) → may resolve to wrong section labels
+- The whole point of "automatic numbering" is undelivered
 
-If the document uses manual numbering (just typed text, no `numPr`), convert it to automatic numbering so users no longer need to renumber manually when inserting new sections.
+**Decision rule** — read this before deciding whether to write `numbering`:
+
+| Source state | Action |
+|---|---|
+| Headings have **typed prefix text** like `"1. 开发背景"` / `"1.1 数据集导入"` / `"第1章 绪论"` (you can SEE the digits in the paragraph text) | **Write numbering**. The script strips the typed prefix and lets Word render auto-numbers. This is the typical thesis/paper case. |
+| Headings have **no prefix text** at all (`"开发背景"`, `"系统方案设计"`) but should be numbered | **Write numbering**. Word generates `"1. "`, `"2. "`, etc. without any text prefix to strip. |
+| Headings already have `<w:numPr>` (auto-numbered via existing `numId` from a prior author setup) AND you don't want to change the scheme | **Skip numbering**. smart-strip preserves `<w:numPr>` so applying a style keeps existing auto-numbering. |
+| User explicitly says "keep manual numbering" / "不要自动编号" | **Skip numbering**. Honor the override. |
+| Document has no numbered headings at all (preface, foreword without chapter numbers) | **Skip numbering**. Nothing to bind. |
+
+Don't reason "the document already shows 1./1.1 in the text, so numbering must already be set up." Typed-text prefixes look identical to auto-numbers in the rendered doc but behave completely differently. Use `inspect_range` on a heading; if `numId` isn't in the computed pPr, the prefix is plain text and you need `numbering` to convert.
+
+Refer to `references/numbering-formats.md` for the full pattern table and `numFmt` / `lvlText` syntax. Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically.
 
 **Mixed manual prefix styles within one role:** authors often mix patterns within the same heading level — e.g. chapter 1's H2 paragraphs are written as "1.1 …", but chapter 2's H2 paragraphs are written as "1. …" (restart per chapter, no chapter prefix). One regex can't normalize both. Use `stripPrefixPatterns: ["%1.%2", "%1."]` on the level — patterns are tried in order, first match wins. Always list the longer pattern first or you'll strip a partial prefix (e.g. `"%1."` would strip just "1." from "1.1 …" leaving ".1 …").
 
@@ -203,7 +218,7 @@ Before calling `apply_styles`, present your plan to yourself as a self-check:
 
 1. **Style parameter source** — for each style, are the parameter values taken from `inspect_style` output (or user requirements)? If any value was made up without a source, call `inspect_style` for that fingerprint first.
 2. **Style definitions** — list each style with its parameters. Does any style have missing critical fields (e.g. a heading without `outlineLevel`)?
-3. **Numbering scheme** — does the `lvlText` pattern match what appears in the document? Are all levels bound to the correct styles?
+3. **Numbering scheme** — for any heading style whose paragraphs have typed numeric prefix in source text (`"1. ..."`, `"1.1 ..."`, `"第N章 ..."`), is there a corresponding `numbering.levels[]` entry binding to that style? If you're about to skip `numbering` entirely, double-check via `inspect_range` that the headings actually have `numId` already set — visual digits in text mean nothing if `numId` is absent. **Skipping `numbering` for a doc with manual-prefix headings is the single most common mistake**: the output looks fine but inserting a new chapter will break all subsequent numbers. If `numbering` is present, also check: does the `lvlText` pattern match what appears in the document? Are all levels bound to the correct styles? Do `stripPrefixPatterns` cover all observed prefix variants?
 4. **Fingerprint coverage** — does every fingerprint from the overview have a decision? Each should map to one of: a style (`restyle`), fixed content (`keep`/`exclude`), or uncertain (`flag`). No fingerprint should be left unaccounted for.
 5. **Exclude list** — are cover page paragraphs, TOC entries, and other fixed content excluded?
 6. **High-risk paragraphs** — are there paragraphs where the role is ambiguous? Flag them rather than guess.
@@ -225,10 +240,13 @@ Call `apply_styles` with your decision in a JSON config.
                                            //   either via fromParagraph extraction or
                                            //   manual fields, with optional overrides.
 
-  numbering: { levels: [ ... ] },          // optional. Multi-level auto-numbering bound
-                                           //   to heading styles, with stripPrefixPatterns
-                                           //   (handles mixed manual prefixes) and numRPr
-                                           //   (independent rPr for the marker).
+  numbering: { levels: [ ... ] },          // REQUIRED whenever heading text in source carries
+                                           //   typed digit prefix (1./1.1/第N章/...) — without
+                                           //   this, those numbers stay as plain text and
+                                           //   inserting a new chapter breaks all subsequent
+                                           //   numbering. Skip ONLY when source already has
+                                           //   numId references you want preserved, or no
+                                           //   headings are numbered. See Step 5 decision rule.
 
   template: { source, styles: [ ... ] },   // optional. Import named styles from another
                                            //   docx; basedOn ancestors auto-pulled,
