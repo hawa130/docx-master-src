@@ -244,11 +244,19 @@ export class StyleResolver {
       const firstLine = wAttr(ind, "firstLine")
       const hanging = wAttr(ind, "hanging")
       const firstLineChars = wAttr(ind, "firstLineChars")
+      const hangingChars = wAttr(ind, "hangingChars")
       if (left) out.indentLeft = parseInt(left, 10)
       if (right) out.indentRight = parseInt(right, 10)
+      // Preserve both representations independently. Word's `firstLineChars`
+      // (hundredths of a character) auto-scales with the run font size at
+      // render time; the legacy fixed-twip `firstLine` does not. Folding one
+      // into the other (as the previous code did with a hard-coded 240
+      // twips/char assumption) silently destroyed the character semantics for
+      // any font size other than 12pt.
       if (firstLine) out.firstLineIndent = parseInt(firstLine, 10)
-      else if (firstLineChars) out.firstLineIndent = Math.round(parseInt(firstLineChars, 10) / 100 * 240)
+      if (firstLineChars) out.firstLineIndentChars = parseInt(firstLineChars, 10)
       if (hanging) out.hangingIndent = parseInt(hanging, 10)
+      if (hangingChars) out.hangingIndentChars = parseInt(hangingChars, 10)
     }
     const outlineLvl = firstChildNS(pPrEl, NS.w, "outlineLvl")
     if (outlineLvl) {

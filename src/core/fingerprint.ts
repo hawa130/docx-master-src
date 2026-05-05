@@ -62,7 +62,8 @@ function makeHash(p: ParsedParagraph): string {
     (r.caps ? "C" : "")
   const color = r.color && r.color !== "auto" ? r.color : ""
   const alignment = pp.alignment || ""
-  const indent = pp.firstLineIndent ? "1stInd" : ""
+  const indent =
+    pp.firstLineIndent || pp.firstLineIndentChars ? "1stInd" : ""
   // Include numbering presence so list items split out from visually-identical
   // body paragraphs. Without this, two paragraphs that share the same rPr
   // (e.g. 11pt non-bold body text vs. 11pt non-bold list item) would collapse
@@ -84,7 +85,7 @@ function describe(p: ParsedParagraph): string {
   if (r.caps) parts.push("Caps")
   if (r.color && r.color !== "auto") parts.push(`#${r.color}`)
   if (pp.alignment) parts.push(capitalize(pp.alignment))
-  if (pp.firstLineIndent) parts.push("1stIndent")
+  if (pp.firstLineIndent || pp.firstLineIndentChars) parts.push("1stIndent")
   if (pp.numId) parts.push("List")
   return parts.join(" ") || "(no formatting)"
 }

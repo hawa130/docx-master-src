@@ -559,8 +559,19 @@ function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
       out.lineRule = rule
     }
   }
-  if (pp.firstLineIndent !== undefined) out.firstLineIndent = pp.firstLineIndent / 20
-  if (pp.hangingIndent !== undefined) out.hangingIndent = pp.hangingIndent / 20
+  // Preserve character-based indent semantics when the source paragraph used
+  // `firstLineChars` / `hangingChars` (Word writes these for "首行缩进 N 字符").
+  // Round-tripping through pt would drop the font-size auto-scale.
+  if (pp.firstLineIndentChars !== undefined) {
+    out.firstLineIndent = `${pp.firstLineIndentChars / 100}char`
+  } else if (pp.firstLineIndent !== undefined) {
+    out.firstLineIndent = `${pp.firstLineIndent / 20}pt`
+  }
+  if (pp.hangingIndentChars !== undefined) {
+    out.hangingIndent = `${pp.hangingIndentChars / 100}char`
+  } else if (pp.hangingIndent !== undefined) {
+    out.hangingIndent = `${pp.hangingIndent / 20}pt`
+  }
   if (pp.outlineLevel !== undefined) out.outlineLevel = pp.outlineLevel
   // intentionally omitted: pStyle (would self-reference), numId/numLevel (bound via numbering config)
   return out
@@ -637,10 +648,20 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
   if (def.firstLineIndent != null || def.hangingIndent != null) {
     const ind = stylesDoc.createElementNS(w, "w:ind")
     if (def.firstLineIndent != null && def.firstLineIndent !== 0) {
-      ind.setAttributeNS(w, "w:firstLine", String(parseIndent(def.firstLineIndent)))
+      const r = parseIndent(def.firstLineIndent)
+      if (r.kind === "char") {
+        ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
+      } else {
+        ind.setAttributeNS(w, "w:firstLine", String(r.value))
+      }
     }
     if (def.hangingIndent != null && def.hangingIndent !== 0) {
-      ind.setAttributeNS(w, "w:hanging", String(parseIndent(def.hangingIndent)))
+      const r = parseIndent(def.hangingIndent)
+      if (r.kind === "char") {
+        ind.setAttributeNS(w, "w:hangingChars", String(r.value))
+      } else {
+        ind.setAttributeNS(w, "w:hanging", String(r.value))
+      }
     }
     pPr.appendChild(ind)
   }
@@ -685,14 +706,26 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
   return created ? "created" : "updated"
 }
 
-function parseIndent(v: string | number): number {
-  if (typeof v === "number") return Math.round(v * 20) // pt → twips
+/**
+ * Parse an indent config value into a tagged twip-or-char unit.
+ *
+ *   number      → pt, written as fixed-twip indent
+ *   "Npt"       → pt, fixed-twip
+ *   "Nchar"     → 1/100 character, written as `firstLineChars`/`hangingChars`
+ *                 so Word auto-scales the indent with the run font size
+ *
+ * The previous implementation collapsed both to twips by hard-coding
+ * 240 twips/char (12pt assumption), which silently broke "首行缩进 2 字符"
+ * for any non-12pt body and disabled font-size tracking on round-trip.
+ */
+function parseIndent(v: string | number): { kind: "twip" | "char"; value: number } {
+  if (typeof v === "number") return { kind: "twip", value: Math.round(v * 20) }
   const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*(char|chars|pt)?$/i)
-  if (!m) return 0
+  if (!m) return { kind: "twip", value: 0 }
   const n = parseFloat(m[1]!)
   const unit = (m[2] || "").toLowerCase()
-  if (unit.startsWith("char")) return Math.round(n * 240)
-  return Math.round(n * 20)
+  if (unit.startsWith("char")) return { kind: "char", value: Math.round(n * 100) }
+  return { kind: "twip", value: Math.round(n * 20) }
 }
 
 /* ------------- numbering.xml manipulation ------------- */
