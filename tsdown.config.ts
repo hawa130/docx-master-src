@@ -6,6 +6,7 @@ export default defineConfig({
   entry: {
     overview: "src/tools/overview.ts",
     inspect_range: "src/tools/inspect-range.ts",
+    inspect_runs: "src/tools/inspect-runs.ts",
     inspect_style: "src/tools/inspect-style.ts",
     inspect_style_def: "src/tools/inspect-style-def.ts",
     inspect_section: "src/tools/inspect-section.ts",

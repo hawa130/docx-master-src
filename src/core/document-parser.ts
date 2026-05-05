@@ -330,6 +330,10 @@ export class DocumentParser {
         successor: null,
         insideTable,
         sectionIndex: this.currentSection,
+        nearestImageBefore: null,
+        nearestImageAfter: null,
+        nearestTableBefore: null,
+        nearestTableAfter: null,
       },
     }
     all.push(para)
@@ -459,6 +463,62 @@ export class DocumentParser {
       }
       it.paragraph.context.predecessor = prev
       it.paragraph.context.successor = next
+
+      // nearest image/table — searches beyond the immediate neighbor, skipping
+      // intervening paragraphs and pageBreaks. Distance counts items hopped.
+      // A figure caption typically has nearestImageBefore.distance == 1;
+      // a table caption typically has nearestTableAfter.distance == 1.
+      const findNearest = (dir: -1 | 1, kind: "image" | "table") => {
+        let dist = 0
+        for (
+          let j = i + dir;
+          dir === -1 ? j >= 0 : j < items.length;
+          j += dir
+        ) {
+          const cand = items[j]!
+          if (cand.kind === kind) {
+            return { item: cand, distance: dist + 1 }
+          }
+          // count only "real" intervening items so distance reflects hops
+          if (cand.kind === "para" || cand.kind === "image" || cand.kind === "table" || cand.kind === "equation") {
+            dist++
+          }
+          if (dist >= 4) break // give up beyond 4 elements — unlikely related
+        }
+        return null
+      }
+      const imgBefore = findNearest(-1, "image")
+      const imgAfter = findNearest(1, "image")
+      const tblBefore = findNearest(-1, "table")
+      const tblAfter = findNearest(1, "table")
+      if (imgBefore && imgBefore.item.kind === "image") {
+        it.paragraph.context.nearestImageBefore = {
+          distance: imgBefore.distance,
+          widthCm: imgBefore.item.widthCm,
+          heightCm: imgBefore.item.heightCm,
+        }
+      }
+      if (imgAfter && imgAfter.item.kind === "image") {
+        it.paragraph.context.nearestImageAfter = {
+          distance: imgAfter.distance,
+          widthCm: imgAfter.item.widthCm,
+          heightCm: imgAfter.item.heightCm,
+        }
+      }
+      if (tblBefore && tblBefore.item.kind === "table") {
+        it.paragraph.context.nearestTableBefore = {
+          distance: tblBefore.distance,
+          rows: tblBefore.item.rows,
+          cols: tblBefore.item.cols,
+        }
+      }
+      if (tblAfter && tblAfter.item.kind === "table") {
+        it.paragraph.context.nearestTableAfter = {
+          distance: tblAfter.distance,
+          rows: tblAfter.item.rows,
+          cols: tblAfter.item.cols,
+        }
+      }
     }
   }
 

@@ -73,24 +73,28 @@ function formatStyleProps(r: ComputedRunStyle, pp: ComputedParaStyle): string {
   const parts: string[] = []
   const font = r.fontEastAsia || r.fontAscii || r.fontHAnsi
   if (font) parts.push(`font: ${font}`)
-  if (r.size !== undefined) parts.push(`size: ${r.size} (${r.size / 2}pt)`)
+  if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
   if (r.bold !== undefined) parts.push(`bold: ${r.bold}`)
   if (r.italic !== undefined) parts.push(`italic: ${r.italic}`)
   if (r.color) parts.push(`color: ${r.color}`)
   if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
   if (pp.outlineLevel !== undefined) parts.push(`outlineLevel: ${pp.outlineLevel}`)
-  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore}`)
-  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter}`)
-  if (pp.lineSpacing !== undefined) parts.push(`lineSpacing: ${pp.lineSpacing}${pp.lineRule ? `(${pp.lineRule})` : ""}`)
+  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
+  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
+  if (pp.lineSpacing !== undefined) {
+    const rule = pp.lineRule || "auto"
+    if (rule === "auto") parts.push(`lineSpacing: ${parseFloat((pp.lineSpacing / 240).toFixed(2))}×`)
+    else parts.push(`lineSpacing: ${pp.lineSpacing / 20}pt ${rule}`)
+  }
   if (pp.firstLineIndentChars !== undefined)
     parts.push(`firstLineIndent: ${pp.firstLineIndentChars / 100}char`)
   else if (pp.firstLineIndent !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndent}`)
+    parts.push(`firstLineIndent: ${pp.firstLineIndent / 20}pt`)
   if (pp.hangingIndentChars !== undefined)
     parts.push(`hangingIndent: ${pp.hangingIndentChars / 100}char`)
   else if (pp.hangingIndent !== undefined)
-    parts.push(`hangingIndent: ${pp.hangingIndent}`)
-  if (pp.indentLeft !== undefined) parts.push(`indentLeft: ${pp.indentLeft}`)
+    parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
+  if (pp.indentLeft !== undefined) parts.push(`indentLeft: ${pp.indentLeft / 20}pt`)
   if (pp.numId) parts.push(`numId: ${pp.numId}`)
   if (parts.length === 0) return "{ }"
   return `{ ${parts.join(", ")} }`

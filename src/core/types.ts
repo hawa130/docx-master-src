@@ -57,6 +57,17 @@ export interface ParsedParagraph {
     successor: ElementInfo | null
     insideTable: TableClassification | null
     sectionIndex: number
+    /**
+     * Nearest image / table within ~3 non-paragraph elements before this
+     * paragraph (or N intervening paragraphs as configured). Used by the
+     * agent to distinguish "table caption above table" (nearestTableAfter
+     * is set) from "figure caption below image" (nearestImageBefore is
+     * set) without inspecting raw XML.
+     */
+    nearestImageBefore: { distance: number; widthCm: number; heightCm: number } | null
+    nearestImageAfter: { distance: number; widthCm: number; heightCm: number } | null
+    nearestTableBefore: { distance: number; rows: number; cols: number } | null
+    nearestTableAfter: { distance: number; rows: number; cols: number } | null
   }
 }
 
