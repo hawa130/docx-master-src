@@ -75,14 +75,14 @@ For most fingerprints, the mapping is obvious from format + context:
 - Small centered text near images/tables → `FigureCaption` / `TableCaption`
 - Monospace font → `Code`
 
-Only drill into individual paragraphs (via `inspect_range` or `inspect_style`) when a fingerprint is ambiguous — e.g. the same visual format is used for both table captions and figure captions, or a format appears in both headings and emphasis text. Common roles:
+Only drill into individual paragraphs (via `inspect_range` or `inspect_style`) when a fingerprint is ambiguous — e.g. the same visual format is used for both table captions and figure captions. Common roles:
 
 **Structural roles:**
 - `Title` — document title (usually appears once, cover page)
 - `Heading1` / `Heading2` / `Heading3` — section headings at different levels
 - `HeadingNoNum` — unnumbered section headings (摘要, Abstract, 参考文献, 致谢, 附录)
 - `BodyText` — main body paragraphs
-- `FirstParagraph` — first paragraph after a heading (if styled differently, e.g. no indent)
+- `FirstParagraph` — first paragraph after a heading (when styled differently from the rest of body)
 
 **Caption/label roles:**
 - `FigureCaption` — caption below an image (图 X-X ...)
@@ -108,7 +108,7 @@ Only drill into individual paragraphs (via `inspect_range` or `inspect_style`) w
 - Header/footer content
 - Table of contents (auto-generated)
 
-Only create roles that actually exist in the document. If you discover roles not listed here (e.g. `Theorem`, `Proof`, `Definition` in an academic paper), create them.
+Only create roles that actually exist in the document. If you discover roles not listed here (e.g. `Theorem` in math papers), create them.
 
 ### Step 4: Define the Style System
 
@@ -127,7 +127,7 @@ Priority order:
 
 The `apply_styles` `styles` array supports two modes:
 
-1. **`fromParagraph` mode (preferred when extracting from the document):** Pick one paragraph that exemplifies the role (typically the first occurrence of the dominant fingerprint), set `fromParagraph: <index>`, and the tool will extract the full computed rPr + pPr and use them as the style definition. Use `overrides` to add structural fields the source paragraph lacks (e.g. `outlineLevel` for headings) or to override a specific value the user requested.
+1. **`fromParagraph` mode (preferred when extracting from the document):** Pick one paragraph that exemplifies the role (typically the first occurrence of the dominant fingerprint), set `fromParagraph: <index>`, and the tool will extract the full computed rPr + pPr and use them as the style definition. Use `overrides` to add structural fields the source paragraph lacks or to override a specific value the user requested.
 
 2. **Manual mode (when there is no representative paragraph):** Specify each field directly — used when the user provides explicit formatting requirements, when extracting from a template document where you don't have it loaded as the source, or when synthesizing a style for a role with no existing instance.
 
@@ -145,16 +145,13 @@ You can mix modes within the same `styles` array. Example:
 }
 ```
 
-Examples:
-- Document uses 1.2× line spacing → `fromParagraph` extracts 1.2× faithfully; don't override to 1.5×.
-- Title is left-aligned → preserve it; don't force-center.
-- Heading1 appears 5 times with one outlier → use one of the majority as `fromParagraph`, not the outlier.
+When a fingerprint has an outlier (e.g. Heading1 appears 5 times, 4 in one pattern + 1 in another), use a paragraph from the majority as `fromParagraph` source — not the outlier.
 
-"Normalize" means routing inconsistent paragraphs to one consistent style — pick the majority pattern as your source, NOT values you think look better. The same rule applies when two different fingerprints play the same role (e.g. one is bold black, another is non-bold blue at the same size both serving as Heading1): take the majority's values, route both fingerprints' paragraphs to the same style.
+"Normalize" means routing inconsistent paragraphs to one consistent style — pick the majority pattern as your source, NOT values you think look better. The same rule applies when two different fingerprints play the same role (e.g. one bold black, another non-bold blue at the same size, both serving as Heading1): take the majority's values, route both fingerprints' paragraphs to the same style.
 
 **What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel.
 
-**Indent unit preservation:** when the source paragraph used Word's character-based indent (`w:firstLineChars` / `w:hangingChars` — what Word writes for "首行缩进 N 字符"), `fromParagraph` extracts it as `"Nchar"` (e.g. `"2char"`) so the round-trip preserves font-size auto-scaling. When the source used fixed twips (`w:firstLine` / `w:hanging`), it extracts as `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size and breaks downstream font changes.
+**Indent unit preservation:** when the source paragraph used Word's character-based indent (`w:firstLineChars` / `w:hangingChars` — what Word writes for "首行缩进 N 字符"), `fromParagraph` extracts it as `"Nchar"` so the round-trip preserves font-size auto-scaling. When the source used fixed twips (`w:firstLine` / `w:hanging`), it extracts as `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size and breaks downstream font changes.
 
 **Source-run selection within `fromParagraph`:** the tool picks the *dominant text run* — the run carrying the most non-numbering text. Numbering-prefix-only runs (pure digits/dots/parens/bullets/whitespace) are excluded. So `"1.1 研究方法"` (numbering-prefix run + bold title run) extracts the title run's formatting, not the prefix run's. You don't need to hand-pick a no-prefix paragraph as the source.
 
@@ -304,7 +301,7 @@ Call `apply_styles` with your decision in a JSON config.
 - Inject named style definitions into `styles.xml`
 - Replace direct formatting with style references on paragraphs
 - Convert manual numbering to automatic numbering
-- Normalize inconsistent formatting (e.g. 15pt → 16pt when majority is 16pt)
+- Normalize inconsistent formatting to the majority pattern
 
 ### What This Skill Does NOT Do
 - Rewrite or rephrase content
@@ -321,7 +318,7 @@ Call `apply_styles` with your decision in a JSON config.
 
 ### Edge Cases to Watch For
 
-**Mixed-format paragraphs:** a paragraph may have runs with different formatting — e.g. "关键词：" (bold) followed by keyword text (normal), a list item starting with a bold lead phrase, or a heading whose numbering prefix is a different color from the title. This is one paragraph with character-level differences, not two roles. Assign the paragraph its role (`Keywords` / `ListNumber` / `Heading1`); the tool preserves cross-run differences automatically — when restyling, only run-level formatting that is *uniform across all runs* (redundant overrides) is stripped, while properties that differ between runs are kept as intentional inline emphasis.
+**Mixed-format paragraphs:** a paragraph may have runs with different formatting — e.g. "关键词：" (bold) followed by keyword text (normal). This is one paragraph with character-level differences, not two roles. Assign the paragraph its role; the tool preserves cross-run differences automatically — when restyling, only run-level formatting that is *uniform across all runs* (redundant overrides) is stripped, while properties that differ between runs are kept as intentional inline emphasis.
 
 **Empty paragraphs as spacing:** Many documents use blank paragraphs for vertical spacing. Always preserve them — removing empty paragraphs is a structural change, not a formatting change, and risks breaking intentional layout (especially on cover pages).
 
@@ -337,7 +334,7 @@ Call `apply_styles` with your decision in a JSON config.
 - **Layout table** (typically 1 column, or a single merged cell): the paragraphs inside are regular content (headings, body text, lists). Treat them exactly like top-level paragraphs — classify, restyle, include in the skeleton.
 - **Data table** (multiple rows × multiple columns, has a header row): presents structured data. Do not restyle content inside. Show only a summary in the skeleton.
 - **Form table** (label-value grid, e.g. "姓名：___"): fixed layout for user input. Treat as fixed content (`keep`).
-- **Mixed tables:** A single large table may contain layout regions, form fields, and data grids (e.g. 开题报告表 with content sections + evaluation rubric). Classify by region, not by table — the tool may expand some rows and summarize others within the same table.
+- **Mixed tables:** A single large table may contain layout regions, form fields, and data grids. Classify by region, not by table — the tool may expand some rows and summarize others within the same table.
 - The overview tool detects layout tables and expands their content in the skeleton. The Agent does not need to handle this distinction manually — but should verify the tool's classification when inspecting.
 
 ## Document Skeleton Format
