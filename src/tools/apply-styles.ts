@@ -3,7 +3,6 @@ import { resolve } from "node:path"
 import JSZip from "jszip"
 import { DOMParser } from "@xmldom/xmldom"
 import { DocxReader, serializeXml } from "../core/reader.ts"
-import { parseRequirement, type ParsedRequirement } from "../core/requirements-parser.ts"
 import { importTemplateStyles } from "../core/template-import.ts"
 import { StyleResolver } from "../core/style-resolver.ts"
 import { DocumentParser } from "../core/document-parser.ts"
@@ -152,13 +151,20 @@ interface ApplyConfig {
    */
   pattern_rules?: PatternRule[]
   /**
-   * Per-style free-form Chinese typographic requirements
-   *   { Heading1: "二号黑体加粗居中", BodyText: "小四宋体首行缩进2字符1.5倍行距" }
-   * Parsed and merged into the corresponding styles[i] before injection.
-   * Resolution order for a style's final fields:
-   *   styles[i].overrides > requirements[id] > styles[i] direct fields
-   *   > styles[i] fromParagraph extracted > defaults
-   * Unparsed tokens are surfaced in the change report for review.
+   * Per-style record of the user's original natural-language spec, e.g.
+   *   { Heading1: "标题用黑体三号加粗居中", BodyText: "正文宋体小四…" }
+   *
+   * IMPORTANT: This field is annotation-only. The script does NOT parse it.
+   * The agent (LLM) is responsible for translating natural language into
+   * the structured `styles[i]` fields — an LLM handles negation, synonyms,
+   * hierarchical references, sentence structure, and unfamiliar fonts /
+   * colors that no fixed regex parser ever could.
+   *
+   * What the script does with this string: records it in the change report
+   * next to the agent-resolved structured fields so any reader (the user,
+   * a second-pass agent, or a reviewer) can verify the translation by eye.
+   * That side-by-side display is the verification mechanism — not a regex
+   * match, which would silently mistranslate "不要加粗" as "加粗".
    */
   requirements?: Record<string, string>
   exclude?: number[]
@@ -169,38 +175,45 @@ interface FlagRecord {
   reason: string
 }
 
-interface FieldCheck {
-  field: string
-  expected: unknown
-  actual: unknown
-  ok: boolean
-  note?: string
-}
-
-interface RequirementsCheckEntry {
+/**
+ * Side-by-side display of "what the user said" vs "what the agent (i.e. the
+ * caller of this tool) resolved to". The script does NOT parse the user's
+ * natural language — that's the agent's job. This entry is purely an
+ * annotation for the change report so a human reviewer or second-pass agent
+ * can spot mistranslations by reading.
+ */
+interface StyleResolutionEntry {
   styleId: string
-  sourceText: string
-  checks: FieldCheck[]
-  unparsed: string[]
+  userSpec: string
+  resolved: Record<string, unknown>
 }
 
-function fieldEquals(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  // numeric tolerance: 12 vs 12.0 vs 24twips
-  if (typeof a === "number" && typeof b === "number") {
-    return Math.abs(a - b) < 1e-6
+/**
+ * Pick the user-facing typographic fields from a resolved style for
+ * side-by-side display. Excludes mechanical fields (id, name, basedOn,
+ * fromParagraph, overrides) the user wouldn't recognize.
+ */
+function formatResolvedFields(fields: Record<string, unknown>): string {
+  const parts: string[] = []
+  for (const [k, v] of Object.entries(fields)) {
+    parts.push(`${k}=${JSON.stringify(v)}`)
   }
-  // string-with-unit comparison: "2char" === "2char", "12pt" === 12
-  if (typeof a === "string" && typeof b === "string") return a === b
-  if (typeof a === "string" && typeof b === "number") {
-    const m = a.match(/^(-?\d+(?:\.\d+)?)\s*pt$/i)
-    if (m) return Math.abs(parseFloat(m[1]!) - b) < 1e-6
-    return false
+  return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
+}
+
+function extractDisplayFields(
+  def: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const interesting = [
+    "font", "fontEastAsia", "size", "bold", "italic", "color",
+    "alignment", "lineSpacing", "lineRule", "spaceBefore", "spaceAfter",
+    "firstLineIndent", "hangingIndent", "outlineLevel",
+  ]
+  for (const k of interesting) {
+    if (def[k] !== undefined) out[k] = def[k]
   }
-  if (typeof b === "string" && typeof a === "number") {
-    return fieldEquals(b, a)
-  }
-  return false
+  return out
 }
 
 interface RestyleStat {
@@ -314,59 +327,37 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   }
 
   // 4. Resolve fromParagraph references, then merge in parsed requirements,
-  // then inject styles into styles.xml. Each layer can override the previous:
-  // requirements wins over fromParagraph (because users wrote it), overrides
-  // wins over requirements (deliberate per-style escape), id/name always win.
-  const requirementsParsed = new Map<string, ParsedRequirement>()
+  // then inject styles into styles.xml.
+  //
+  // Note: `requirements` is annotation-only. The script does NOT parse the
+  // user's natural-language spec — that's the agent's job (the agent is an
+  // LLM, ideal for handling negation, synonyms, hierarchical references,
+  // sentence structure, ambiguity). The script just records the user's raw
+  // text and the agent-resolved structured fields side-by-side in the
+  // change report so any reader can verify by eye that the resolution
+  // matches intent. A regex parser would give false confidence (it can't
+  // tell "不要加粗" from "加粗") and tempt the agent to be lazy.
   if (config.requirements) {
     const declared = new Set(config.styles.map((s) => s.id))
-    for (const [styleId, text] of Object.entries(config.requirements)) {
+    for (const styleId of Object.keys(config.requirements)) {
       if (!declared.has(styleId)) {
         throw new Error(
           `requirements: style "${styleId}" is not declared in styles[].\n` +
             `  Declared: [${[...declared].join(", ")}]`,
         )
       }
-      requirementsParsed.set(styleId, parseRequirement(text))
     }
   }
-  const requirementsCheck: RequirementsCheckEntry[] = []
+  const styleResolutions: StyleResolutionEntry[] = []
   const resolvedStyles = config.styles.map((def) => {
-    const base = resolveStyleDef(def, parsed.paragraphs)
-    const req = requirementsParsed.get(def.id)
-    if (!req) return base
-    const { unparsed, ...reqFields } = req
-    const final: StyleConfigEntry = {
-      ...base,
-      ...reqFields,
-      ...(def.overrides ?? {}),
-      id: def.id,
-      name: def.name,
-    }
-    // Build a check record: every parsed field is compared against the
-    // resolved final value. If overrides clobbered a parsed field, the
-    // diff will show "expected X, got Y (overridden)".
-    const checks: FieldCheck[] = []
-    for (const [k, expected] of Object.entries(reqFields)) {
-      if (expected === undefined) continue
-      const actual = (final as Record<string, unknown>)[k]
-      const overridden =
-        def.overrides && Object.prototype.hasOwnProperty.call(def.overrides, k)
-      const ok = fieldEquals(expected, actual)
-      checks.push({
-        field: k,
-        expected,
-        actual,
-        ok: ok || overridden === true, // overrides are intentional, treat as ok with note
-        note: overridden && !ok ? "overridden by styles[].overrides" : undefined,
+    const final = resolveStyleDef(def, parsed.paragraphs)
+    if (config.requirements?.[def.id]) {
+      styleResolutions.push({
+        styleId: def.id,
+        userSpec: config.requirements[def.id]!,
+        resolved: extractDisplayFields(final),
       })
     }
-    requirementsCheck.push({
-      styleId: def.id,
-      sourceText: config.requirements?.[def.id] ?? "",
-      checks,
-      unparsed,
-    })
     return final
   })
   const injected: string[] = []
@@ -568,7 +559,7 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
     manualNumberingRemoved,
     patternMatchStats,
     patternStripStats,
-    requirementsCheck,
+    styleResolutions,
     derivedFrom,
     output,
     dryRun: !!config.dryRun,
@@ -1357,7 +1348,7 @@ function printReport(args: {
   manualNumberingRemoved: Map<string, number>
   patternMatchStats: Map<string, number>
   patternStripStats: Map<string, number>
-  requirementsCheck: RequirementsCheckEntry[]
+  styleResolutions: StyleResolutionEntry[]
   derivedFrom: Map<string, number>
   output: string
   dryRun: boolean
@@ -1422,26 +1413,16 @@ function printReport(args: {
     }
     lines.push("")
   }
-  if (args.requirementsCheck.length > 0) {
-    lines.push("=== Requirements Check ===")
-    for (const r of args.requirementsCheck) {
-      const totalChecks = r.checks.length
-      const failures = r.checks.filter((c) => !c.ok)
-      const ok = failures.length === 0 && r.unparsed.length === 0
-      const status = ok ? "✓" : "✗"
-      lines.push(
-        `  ${status} ${r.styleId}  "${r.sourceText}"  (${totalChecks - failures.length}/${totalChecks} fields ok)`,
-      )
-      for (const c of r.checks) {
-        const mark = c.ok ? "  ✓" : "  ✗"
-        const note = c.note ? `  [${c.note}]` : ""
-        const exp = JSON.stringify(c.expected)
-        const got = JSON.stringify(c.actual)
-        lines.push(`    ${mark} ${c.field}: expected=${exp} actual=${got}${note}`)
-      }
-      if (r.unparsed.length > 0) {
-        lines.push(`    ⚠ unparsed tokens: ${r.unparsed.map((t) => `"${t}"`).join(", ")}`)
-      }
+  if (args.styleResolutions.length > 0) {
+    lines.push("=== Style Resolution (verify by reading) ===")
+    lines.push("  The script does not parse natural language. Compare the user's")
+    lines.push("  spec against the agent-resolved fields below — any mismatch")
+    lines.push("  means the agent's translation needs adjustment.")
+    lines.push("")
+    for (const r of args.styleResolutions) {
+      lines.push(`  ${r.styleId}`)
+      lines.push(`    User specified: "${r.userSpec}"`)
+      lines.push(`    Agent resolved: ${formatResolvedFields(r.resolved)}`)
     }
     lines.push("")
   }
