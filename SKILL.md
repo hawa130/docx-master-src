@@ -17,30 +17,12 @@ Tools only present facts — computed styles, element positions, document struct
 
 ### Step 1: Understand the Goal
 
-Check what the user has provided.
+Invoking the skill is itself a standardization request. Apply the full workflow by default; treat any user-supplied typography preferences ("正文宋体小四") or "附加要求 / 另外 / 顺便" phrasings as additions on top, not replacements. Genuine scope limits ("只改字体 / 保留手动编号") opt out specific steps — honor them. When the user's intent is genuinely ambiguous (narrow scope vs. preferences, role assignments, spec-vs-doc conflicts), ask one focused question rather than guess.
 
-- **Explicit text guidelines** (e.g. "一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): you translate the natural language into structured `styles[i]` fields — the script does NOT parse it (a regex can't tell "不要加粗" from "加粗"). Pass the user's original wording *verbatim* into `requirements: { styleId: "..." }`; the script prints it side-by-side with your resolved fields in the change report for human verification. See Step 4 for 字号 / 字体 / 颜色 mappings.
-- **Template / reference document**: pass via `template: { source, styles: [...] }`. The script clones the named styles' full pPr/rPr (with basedOn ancestors) into the source's styles.xml and migrates any referenced numId. Run `overview` / `inspect_style_def` on the template first to choose which styleIds to import — no separate analysis pass needed.
-- **No guidelines**: infer the intended style system from the document, normalize to the majority pattern.
-- **Default scope**: full standardization — paragraph roles classified, named styles injected, manual heading numbering migrated to auto, content preserved. **Invoking the skill IS the standardization request**; typography preferences the user mentions are applied on top, not in place of it.
+The user may also provide:
 
-**Reading scope cues**:
-
-| Phrasing | Meaning |
-|---|---|
-| Action verbs ("执行skill", "标准化", "整理排版") | Full default. |
-| "附加要求是 X" / "另外 X" / "顺便 X" / typography preferences ("正文用宋体") | Default PLUS X — augmentation, NOT replacement. |
-| "只 X" / "仅 X" / "保留 Y" / "不要动 Y" | Genuine scope limit / opt-out. Honor it. |
-
-The most common misread is parsing "附加要求是 X" as "X only" — it means the opposite.
-
-**When uncertain, ask before guessing.** Genuine ambiguity comes up in three places: (a) scope — is the user's narrow-sounding request actually narrow or just preferences-on-top of standardization? (b) role assignment — is this paragraph a heading or emphasized body? (c) conflict between user spec and document reality — user said one font but doc majority is another. For these, ask one focused clarifying question. For everything else, proceed with defaults and surface assumptions in the change report.
-
-**When the user provides a template/reference document + a target document:**
-
-Don't blindly copy the template's document structure onto the target. A template may have 3 chapters as examples, but the target has 8 — the style system transfers via `template.styles`, the structure does not. Also note: page setup (margins, paper size, headers/footers) is not transferred by `template` — report differences to the user but don't auto-apply.
-
-**Combine layers freely.** A common pattern is: import a school's template for the heading hierarchy + body text, supply user requirements that override one or two specific fields ("摘要部分用楷体"), and use `pattern_rules` for figure/table/reference classification. All three coexist; resolution priority is documented under Step 7.
+- **Explicit text guidelines** ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): translate the natural language into structured `styles[i]` fields yourself — the script does NOT parse it. Pass the user's original wording *verbatim* into `requirements: { styleId: "..." }`; the change report prints it side-by-side with your resolved fields for human verification. See Step 4 for 字号/字体/颜色 mappings.
+- **Template / reference document**: pass via `template: { source, styles: [...] }`. The script clones the named styles' full definitions (with basedOn ancestors) into source's styles.xml and migrates referenced numIds. Run `overview` / `inspect_style_def` on the template first to know which styleIds to import. The template's *style system* transfers; its *document structure* (chapter count, content, page setup) does not.
 
 ### Step 2: Inspect the Document
 
@@ -51,17 +33,9 @@ Read the overview carefully. Form hypotheses about:
 - Where does the structural information live — in `styles.xml` definitions, in the content itself, or both?
 - How many distinct visual styles exist? Do they map cleanly to semantic roles?
 
-Then use `inspect_*` tools **only as needed** to resolve uncertainties. You don't need to inspect everything. For a simple document, the overview alone may be sufficient. For a complex one, you might drill into 3-5 areas.
+Then drill in with `inspect_*` tools only as needed. For a simple document the overview alone may be sufficient; for a complex one you might inspect 3-5 areas.
 
-**When to reach for `inspect_runs`:** if a paragraph's role is unclear, *before* assuming the dominant-run fingerprint covers everything, dump its runs. The "Run-level diversity" section at the bottom tells you which character properties are uniform vs. mixed — this is what `apply_styles` will preserve vs. strip when you restyle. If you see e.g. `b: on / —` mixed across runs, that's a bold lead phrase that will survive the smart-strip; if you see `b=on` uniform, the bold is style-controllable. Skipping this and assuming uniform formatting is the most common source of post-apply surprises.
-
-**When to reach for `inspect_neighbors`:** classifying figure captions, table captions, abstracts, the first paragraph after a heading — anything that's defined by *what's adjacent* rather than by the paragraph's own format. Pass the candidate's index; check whether image/table appears at distance 1 (or 2 if there's an empty paragraph between). Default radius 4 covers most real layouts; bump with `--radius` if you suspect longer separations.
-
-**When to reach for `find_paragraphs`:** before writing `pattern_rules`, validate the regex matches what you think it matches by running it through this tool first. Also useful for "are there any paragraphs starting with `[N]`?" type discovery questions — much faster than scrolling overview.
-
-**Tool Reference:**
-
-All tools are invoked via `node <script> <args>` and write structured output to stdout.
+**Tool reference** (all invoked via `node <script> <args>`, output to stdout):
 
 | Tool | Invocation | When to Use |
 |------|------------|-------------|
@@ -124,60 +98,37 @@ Only create roles that actually exist in the document. If you discover roles not
 
 ### Step 4: Define the Style System
 
-For each role, determine formatting parameters. See the `styles` field in the `apply_styles` contract (Step 7) for the full list of available fields.
+Per role, determine formatting parameters. Sources, in priority order: (1) user requirements, (2) template document, (3) values extracted from a representative paragraph in the document, (4) sensible defaults (last resort). Don't invent values when a representative paragraph exists.
 
-**Where do parameter values come from?**
+The `styles` array supports two modes per entry:
 
-Priority order:
-1. User's explicit formatting requirements (highest authority)
-2. A reference/template document provided by the user
-3. The document's existing `styles.xml` definitions (if well-defined)
-4. The actual computed values from the document content (extract, don't invent)
-5. Reasonable defaults for the document type (last resort only)
+1. **`fromParagraph`** (preferred when extracting from the doc): pick the first occurrence of the dominant fingerprint for the role and set `fromParagraph: <index>`. The tool extracts the full computed rPr + pPr from that paragraph's *dominant text run* (longest non-numbering-prefix run, so `"1.1 研究方法"` extracts the title formatting, not the prefix's). Use `overrides` to add fields the source lacks (e.g. `outlineLevel`) or to apply user-requested specific values.
 
-**Critical rule: when no user guidelines are provided, extract parameter values directly from the document.** Don't transcribe values by hand — point at a representative paragraph and let the tool extract them.
+2. **Manual mode**: specify fields directly — when no representative paragraph exists, when synthesizing a role, or when the user fully specified the style.
 
-The `apply_styles` `styles` array supports two modes:
-
-1. **`fromParagraph` mode (preferred when extracting from the document):** Pick one paragraph that exemplifies the role (typically the first occurrence of the dominant fingerprint), set `fromParagraph: <index>`, and the tool will extract the full computed rPr + pPr and use them as the style definition. Use `overrides` to add structural fields the source paragraph lacks or to override a specific value the user requested.
-
-2. **Manual mode (when there is no representative paragraph):** Specify each field directly — used when the user provides explicit formatting requirements, when extracting from a template document where you don't have it loaded as the source, or when synthesizing a style for a role with no existing instance.
-
-You can mix modes within the same `styles` array. Example:
+Modes can mix within one `styles` array:
 
 ```json
 {
   "styles": [
     { "id": "BodyText", "name": "正文", "fromParagraph": 60 },
     { "id": "Heading2", "name": "二级标题", "fromParagraph": 19,
-      "overrides": { "outlineLevel": 1, "alignment": "left" } },
+      "overrides": { "outlineLevel": 1 } },
     { "id": "Caption",  "name": "图表注", "font": "宋体", "size": 10.5,
       "alignment": "center", "lineSpacing": 1.5 }
   ]
 }
 ```
 
-When a fingerprint has an outlier (e.g. Heading1 appears 5 times, 4 in one pattern + 1 in another), use a paragraph from the majority as `fromParagraph` source — not the outlier.
-
-"Normalize" means routing inconsistent paragraphs to one consistent style — pick the majority pattern as your source, NOT values you think look better. The same rule applies when two different fingerprints play the same role (e.g. one bold black, another non-bold blue at the same size, both serving as Heading1): take the majority's values, route both fingerprints' paragraphs to the same style.
+For outliers (e.g. Heading1 appears 5 times, 4 of one pattern + 1 different), source from the majority. The same applies when two fingerprints play the same role — take the majority's values, route both to the same style. "Normalize" means routing inconsistent paragraphs to one consistent style, NOT replacing the author's choices with values you think look better.
 
 **What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel.
 
-**Indent unit preservation:** when the source paragraph used Word's character-based indent (`w:firstLineChars` / `w:hangingChars` — what Word writes for "首行缩进 N 字符"), `fromParagraph` extracts it as `"Nchar"` so the round-trip preserves font-size auto-scaling. When the source used fixed twips (`w:firstLine` / `w:hanging`), it extracts as `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size and breaks downstream font changes.
+**Does NOT extract** (add via `overrides` if needed): `outlineLevel` when the source has none, `numId` / `numLevel` (numbering is bound through `numbering.levels[].styleId`, not hardcoded per paragraph).
 
-**Source-run selection within `fromParagraph`:** the tool picks the *dominant text run* — the run carrying the most non-numbering text. Numbering-prefix-only runs (pure digits/dots/parens/bullets/whitespace) are excluded. So `"1.1 研究方法"` (numbering-prefix run + bold title run) extracts the title run's formatting, not the prefix run's. You don't need to hand-pick a no-prefix paragraph as the source.
+**Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
 
-**What `fromParagraph` does NOT extract** (so you must add via `overrides` if needed): `outlineLevel` when the source paragraph has none, `numId`/`numLevel` (always omitted — numbering is bound through the `numbering.levels[].styleId` field, not by hardcoding the source's numId).
-
-**Validation:** `fromParagraph` must reference an indexed paragraph (1-based). Paragraphs inside data tables and form tables are not indexed and cannot be referenced. The tool errors out at the start of execution if the index is invalid.
-
-**Handling existing styles in the document:**
-
-The document may already define named styles like `Heading1`, `BodyText`, etc. Rules:
-- **Style exists and matches your target** → reuse it as-is. Do not re-inject.
-- **Style exists but parameters differ from your target** → override it with your target parameters. This updates the existing definition rather than creating a duplicate. But first confirm the style is actually used for its intended role — if `Heading1` is misused as body text throughout the document, overriding it would break those paragraphs. In that case, reassign paragraphs to the correct styles before overriding.
-- **Style does not exist** → create it. Use Word built-in IDs (`Heading1`, `Heading2`, `BodyText`, `Caption`) when the role matches, so the document works with Word's TOC, navigation pane, and outline view.
-- **Never create a parallel style** like `MyHeading1` when `Heading1` would be correct. This fragments the style system.
+**When the document already defines the style ID you want:** if its parameters match your target, reuse as-is. If they differ, override (the script updates the existing definition rather than creating a duplicate). But first verify the style is actually used for its intended role — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first. Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
 
 When the user provides text requirements, parse Chinese font size names using this mapping:
 
@@ -193,38 +144,24 @@ When the user provides text requirements, parse Chinese font size names using th
 
 ### Step 5: Define the Numbering Scheme
 
-**Default behavior — always migrate manual numbering to automatic when the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法"` / `"第N章 ..."`).** This is part of standardization, not an optional extra. Without auto-numbering: insert a new chapter and downstream numbers, TOC entries, and cross-references all break. The user almost always wants this even when they don't explicitly ask — they ask for "排版" / "标准化" / "执行skill" and expect a properly-styled document, not one that still has manual numbers waiting to break.
+When the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法"` / `"第N章 ..."`), migrate to automatic numbering — this is part of standardization. Skip only when the user explicitly opts out, the source already has real `numId` references you want to preserve (verify with `inspect_range` — typed-text prefixes look identical to auto-numbers but behave totally differently), or no numbered headings exist.
 
-**Only skip numbering migration in these specific cases:**
+Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. See `references/numbering-formats.md` for `numFmt` / `lvlText` syntax.
 
-| Skip reason | Trigger |
-|---|---|
-| User **explicitly opts out** | "保留手动编号" / "不要动编号" / "keep manual numbering" / "don't touch the numbering" |
-| Source already has `<w:numPr>` you want to preserve | Headings carry real `numId` references (verify with `inspect_range`) — smart-strip keeps `<w:numPr>` intact when restyling |
-| No numbered headings exist at all | Preface / foreword without chapter numbers |
+**Mixed manual prefix styles within one role:** authors often mix patterns at the same heading level — e.g. chapter 1's H2s are "1.1 ..." while chapter 2's are "1. ..." (restart per chapter). One regex can't normalize both. Use `stripPrefixPatterns: ["%1.%2", "%1."]` — patterns tried in order, first match wins; longer pattern must come first or `"%1."` will strip just "1." from "1.1 ..." leaving ".1 ...".
 
-When in doubt, migrate — or ask. The user can say "保留手动编号" if they don't want it.
-
-Don't reason "the document already shows 1./1.1 in the text, so numbering must already be set up." Typed-text prefixes look identical to auto-numbers in the rendered doc but behave completely differently. Use `inspect_range` on a heading; if `numId` isn't in the computed pPr, the prefix is plain text and you need `numbering` to convert.
-
-Refer to `references/numbering-formats.md` for the full pattern table and `numFmt` / `lvlText` syntax. Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically.
-
-**Mixed manual prefix styles within one role:** authors often mix patterns within the same heading level — e.g. chapter 1's H2 paragraphs are written as "1.1 …", but chapter 2's H2 paragraphs are written as "1. …" (restart per chapter, no chapter prefix). One regex can't normalize both. Use `stripPrefixPatterns: ["%1.%2", "%1."]` on the level — patterns are tried in order, first match wins. Always list the longer pattern first or you'll strip a partial prefix (e.g. `"%1."` would strip just "1." from "1.1 …" leaving ".1 …").
-
-**Preserving design colors on numbers:** if the source document deliberately styles auto/manual numbers in a different color/weight than the title text (very common in design documents — blue numbers + black bold titles), set `numRPr` on the level. The number marker is rendered with this rPr; the rest of the heading uses the paragraph style.
+**Preserving design colors on numbers:** if the source styles numbers in a different color/weight than title text (e.g. blue numbers + black bold titles), set `numRPr` on the level. The marker is rendered with this rPr; the title uses the paragraph style.
 
 ### Step 6: Review Plan Before Execution
 
-Before calling `apply_styles`, present your plan to yourself as a self-check:
+Before calling `apply_styles`, self-check:
 
-1. **Style parameter source** — for each style, are the parameter values taken from `inspect_style` output (or user requirements)? If any value was made up without a source, call `inspect_style` for that fingerprint first.
-2. **Style definitions** — list each style with its parameters. Does any style have missing critical fields (e.g. a heading without `outlineLevel`)?
-3. **Numbering scheme** — if the document has typed heading prefixes, did you define `numbering.levels[]`? Default is to migrate (see Step 5 skip exceptions). Does the `lvlText` match observed prefixes, are all levels bound to the right styles, do `stripPrefixPatterns` cover all the observed variants (mixed patterns within one role — `"1.1 ..."` and `"1. ..."` for the same level — need both)?
-4. **Fingerprint coverage** — does every fingerprint from the overview have a decision? Each should map to one of: a style (`restyle`), fixed content (`keep`/`exclude`), or uncertain (`flag`). No fingerprint should be left unaccounted for.
-5. **Exclude list** — are cover page paragraphs, TOC entries, and other fixed content excluded?
-6. **High-risk paragraphs** — are there paragraphs where the role is ambiguous? Flag them rather than guess.
+1. **Style values have sources** — every parameter came from user spec, template, or `inspect_style` extraction. None were invented.
+2. **Heading styles have `outlineLevel`** — required for TOC / nav / outline view.
+3. **Numbering migrated** when source has typed heading prefixes (per Step 5). `stripPrefixPatterns` covers mixed variants within a role.
+4. **Every fingerprint has a decision** — restyle / keep / exclude / flag. No fingerprint left unaccounted for.
 
-If any of these checks reveal an issue, go back and inspect further before proceeding.
+Fix any issue before proceeding.
 
 ### Step 7: Execute
 
@@ -241,13 +178,8 @@ Call `apply_styles` with your decision in a JSON config.
                                            //   either via fromParagraph extraction or
                                            //   manual fields, with optional overrides.
 
-  numbering: { levels: [ ... ] },          // Default-on whenever heading text in source carries
-                                           //   typed digit prefix ("1." / "1.1" / "第N章"),
-                                           //   regardless of how narrow the user's other
-                                           //   requests look. Skip only if (a) user opts out
-                                           //   explicitly, (b) source already has real numId
-                                           //   references to preserve, or (c) no numbered
-                                           //   headings exist. See Step 5.
+  numbering: { levels: [ ... ] },          // Multi-level auto-numbering bound to heading
+                                           //   styles. See Step 5 for when to include / skip.
 
   template: { source, styles: [ ... ] },   // optional. Import named styles from another
                                            //   docx; basedOn ancestors auto-pulled,
@@ -266,41 +198,26 @@ Call `apply_styles` with your decision in a JSON config.
 }
 ```
 
-**For the full schema** — every field, every option, every comment, plus the complete style-field merge priority and paragraph-mapping resolution order — read `references/apply-styles-config.md` once before composing your first config. The reference is structured by section (Style entries / Numbering / Template import / Paragraph mapping) so you can jump to what you need.
+Full schema in `references/apply-styles-config.md` — read once before composing your first config.
 
-**Quick anchors:**
-- Paragraph indexing is 1-based, matching `#001`, `#002` labels in the overview skeleton. Paragraphs inside layout tables are indexed; data/form tables are not.
-- Resolution order: `exclude > assignments > pattern_rules > bulk_rules > implicit-keep`. First match wins.
-- Style-field priority (later wins): defaults → template-imported → fromParagraph → direct styles[i] fields → overrides. requirements doesn't participate (annotation only).
+Key invariants:
+- Paragraph indexing is 1-based, matching `#NNN` labels in the skeleton. Layout-table paragraphs are indexed; data/form tables are not.
+- Paragraph mapping order (first match wins): `exclude > assignments > pattern_rules > bulk_rules > implicit-keep`.
+- Style-field priority (later wins): defaults → template-imported → fromParagraph → direct fields → overrides.
 
 ### Step 8: Validate and Report
 
-**Safety rules (non-negotiable):**
+Iterate with `apply_styles --dry-run` first. The change report includes a per-style sample of the first affected paragraphs and a Style Resolution block (when `requirements` is set) showing user spec vs. resolved fields side-by-side — read these to confirm routing is right before committing.
 
-1. The original file is NEVER modified. `apply_styles` copies it first, then modifies the copy.
-2. After modification, the tool validates the output file.
-3. If validation fails: the output file is discarded, the original is returned unchanged, and the error is reported. Do NOT attempt to manually fix validation errors and retry silently — report the failure to the user.
-4. **When to `flag` vs. when to apply:**
-   - **Flag:** Structural ambiguity (is this a heading or emphasized text?), numbering pattern unclear (manual prefix doesn't match any known pattern), paragraph could belong to two different roles.
-   - **Don't flag:** Minor formatting inconsistency within a clear role (e.g. one heading is 15pt while the rest are 16pt — just normalize it). Repetitive patterns that match an already-classified fingerprint — apply the bulk rule confidently.
-   - Principle: flag when the *role assignment* is uncertain, not when the *formatting parameters* have minor variance.
-5. Never modify section properties (page size, margins, headers, footers, columns). These are preserved as-is from the original.
+**Safety guarantees:**
 
-**Iterate with `--dry-run` first.** Before committing, run `apply_styles --dry-run <config>` to see the full change report without writing the output. The report includes a per-style sample of the first ~5 affected paragraphs (with text preview, route used, and any prefix stripping) — use this to verify your `bulk_rules` / `pattern_rules` / `requirements` actually targeted the right segments. Adjust the config and re-run until the dry-run looks right, then drop the flag to commit.
+- The original file is never modified — `apply_styles` writes a fresh copy.
+- The output is validated before being kept; if validation fails the output is discarded, the original returned unchanged, and the error reported. Don't silently retry on validation errors — surface them.
+- Section properties (page size, margins, headers, footers, columns) are never modified.
 
-**Change report:** `apply_styles` writes the report to stdout as structured text. Present a concise summary to the user in chat, then deliver the output `.docx` file. The report includes:
+**When to `flag` vs. apply:** flag when the *role assignment* is genuinely uncertain (could be heading or emphasized body, prefix doesn't match any known pattern, ambiguous between two roles). Don't flag formatting variance within a clear role (one heading is 15pt while the rest are 16pt — just normalize it).
 
-- Template import summary (if `template` was used): which style IDs imported, basedOn ancestors auto-pulled, numId remappings.
-- Styles injected (count and list).
-- Paragraphs restyled (count, grouped by style).
-- Manual numbering prefixes converted (per pattern).
-- Pattern rules matched (per regex, with strip count).
-- **Style Resolution** (if `requirements` was provided): per style, "user specified X / agent resolved {Y}" side-by-side. The script doesn't grade — you / the user / a reviewer reads and confirms the translation captures intent. There's no algorithmic check here on purpose; a regex check would silently miss negation, hierarchical refs, and synonyms.
-- Sample affected paragraphs per style — use to verify routing.
-- Inconsistencies fixed (e.g. "3 headings normalized from 15pt to 16pt").
-- Flagged paragraphs (with reasons — the user should review these).
-- Validation result (pass/fail).
-- If the document contains a TOC: remind the user to right-click the TOC in Word and select "Update Field" after opening.
+**Hand-off:** present a concise summary of the change report to the user, then deliver the output. If the document contains a TOC, remind the user to right-click → "Update Field" in Word after opening.
 
 ## Important Guidelines
 
@@ -311,42 +228,23 @@ Call `apply_styles` with your decision in a JSON config.
 - Normalize inconsistent formatting to the majority pattern
 
 ### What This Skill Does NOT Do
-- Rewrite or rephrase content
-- Fix cross-references or field codes
-- Correct grammar, punctuation, or spelling
-- Rearrange document structure
-- Generate new content or sections
-- Modify or regenerate table of contents (this skill ensures heading styles have correct `outlineLevel`, but does not update the TOC itself — remind the user to manually update the TOC in Word after opening the output file)
-- Restyle paragraphs inside data tables (multi-row/multi-column tables with headers that present structured data — preserve their formatting as-is)
-- Modify table structure, cell sizes, borders, or cell-level formatting
-- Modify or interpret field codes (`STYLEREF`, `TOC`, `REF`, `DATE`, etc.) — these are preserved as-is
-
-**One exception to "does not edit content":** When converting manual numbering to automatic numbering, the manually typed prefix (e.g. "第1章 " in "第1章 绪论") must be removed from the paragraph text, because the numbering system will now generate it automatically. This is not a content edit — it is migrating formatting information from inline text into the style system. The same applies to manual bullet characters ("• ", "- ") when converting to proper list styles.
+- Edit content (text, grammar, structure) — except removing manual numbering prefixes ("第1章 " / "1.1 " / "• ") when migrating to automatic numbering, since the numbering system regenerates them.
+- Restyle paragraphs inside data tables, or modify any table structure (cell sizes, borders, cell-level formatting).
+- Update the TOC itself — heading `outlineLevel` is set correctly, but the user must right-click → "Update Field" in Word after opening.
+- Modify field codes (`STYLEREF`, `TOC`, `REF`, `DATE`, ...) — preserved as-is.
 
 ### Edge Cases to Watch For
 
-**Mixed-format paragraphs:** a paragraph may have runs with different formatting — e.g. "关键词：" (bold) followed by keyword text (normal). This is one paragraph with character-level differences, not two roles. Assign the paragraph its role; the tool preserves cross-run differences automatically — when restyling, only run-level formatting that is *uniform across all runs* (redundant overrides) is stripped, while properties that differ between runs are kept as intentional inline emphasis.
-
-**Empty paragraphs as spacing:** Many documents use blank paragraphs for vertical spacing. Always preserve them — removing empty paragraphs is a structural change, not a formatting change, and risks breaking intentional layout (especially on cover pages).
-
-**Table caption position:** Table captions go ABOVE the table. Figure captions go BELOW the figure. Run `inspect_neighbors <para>` and check which side the image/table is on — distance 1 with image before = figure caption, distance 1 with table after = table caption.
-
-**Table footnotes:** Text immediately after a table with smaller font or starting with "注：", "来源：", "Note:" is a table footnote, not body text.
-
-**Unnumbered special headings:** Sections like 摘要, Abstract, 目录, 参考文献, 致谢, 附录 share the visual style of Heading1 but have no chapter number. Create a separate `HeadingNoNum` style or use the same style with numbering suppressed.
-
-**Appendix numbering:** Appendices often restart with a different numbering scheme (附录A, A.1, A.2). This may require a second numbering definition.
-
-**Layout tables vs data tables:** Some documents (e.g. 开题报告表, 申请表) use single-cell tables as bordered content containers — the entire document body lives inside table cells. These are layout tables, not data tables.
-- **Layout table** (typically 1 column, or a single merged cell): the paragraphs inside are regular content (headings, body text, lists). Treat them exactly like top-level paragraphs — classify, restyle, include in the skeleton.
-- **Data table** (multiple rows × multiple columns, has a header row): presents structured data. Do not restyle content inside. Show only a summary in the skeleton.
-- **Form table** (label-value grid, e.g. "姓名：___"): fixed layout for user input. Treat as fixed content (`keep`).
-- **Mixed tables:** A single large table may contain layout regions, form fields, and data grids. Classify by region, not by table — the tool may expand some rows and summarize others within the same table.
-- The overview tool detects layout tables and expands their content in the skeleton. The Agent does not need to handle this distinction manually — but should verify the tool's classification when inspecting.
+- **Empty paragraphs as spacing**: preserve them. Removing is structural, not stylistic, and risks breaking cover-page layout.
+- **Table caption vs figure caption**: table captions go ABOVE the table, figure captions BELOW the figure. Use `inspect_neighbors` to confirm which side the image/table is on.
+- **Table footnotes**: text right after a table starting with "注：" / "来源：" / "Note:" is a footnote, not body text.
+- **Unnumbered special headings** (摘要 / Abstract / 目录 / 参考文献 / 致谢 / 附录): share the visual style of Heading1 but have no chapter number. Use `HeadingNoNum` or suppress numbering on the same style.
+- **Appendix numbering** often restarts with a different scheme (附录A / A.1 / A.2) — may need a second `numbering` entry.
+- **Layout vs data tables**: the overview tool classifies these — layout tables (single-cell content containers) are inlined into the skeleton; data/form tables are summarized. Verify the classification when inspecting unfamiliar table-heavy documents.
 
 ## Document Skeleton Format
 
-The `overview` tool outputs document metadata, page setup, theme, style definitions, numbering definitions, a visual style summary, and a document skeleton. The skeleton format:
+`overview` outputs metadata, page setup, theme, style definitions, numbering schemes, visual style summary, and a document skeleton:
 
 ```
 === Visual Style Summary (deduplicated) ===
@@ -371,7 +269,6 @@ Footer: Roman numeral page number
 
   #012 [B]  "摘  要"
   #013 [D]  "（摘要内容）"
-  ...
 
 --- Section 3 (para #29-#68) ---
 Footer: Arabic page number (restart from 1)
@@ -383,54 +280,16 @@ Footer: Arabic page number (restart from 1)
   #049 [E]  "表 3-1 不同方法的性能对比"
   --- TABLE (5×4) headers:["方法","Precision","Recall","F1"] ---
   #050 [F]  "注：加粗数据表示最优结果"
-  ...
   --- IMAGE (14cm × 8cm) ---
   #062 [E]  "图 3-2 实验结果对比"
-  ...
   #081 --- empty ×3 ---
-  ...
 ```
 
-**Skeleton conventions:**
-- `[A]`, `[B]`, etc. are visual fingerprint labels from the summary. The fingerprint hash includes font, size, weight/italic, color, alignment, first-line-indent, AND whether the paragraph carries a numbering reference. So two paragraphs that look visually identical but one is in an auto-numbered list and the other is plain body text will get *different* fingerprints (the listed one will be marked "List" in the summary). This lets `bulk_rules` map list items to a `ListNumber` style without sweeping plain body paragraphs along with them.
-- Non-paragraph elements appear as `--- TYPE (details) ---`
-- Consecutive empty paragraphs are compressed: `--- empty ×N ---`
-- Section breaks show header/footer changes
-- Text is truncated to ~40 chars with full text available via `inspect_range`
-- **Layout tables** (single-cell content containers) are expanded — their internal paragraphs appear with sequential `#NNN` numbering, indented under `--- LAYOUT TABLE ---` / `--- END LAYOUT TABLE ---` markers
-- **Data tables** (multi-column with headers) show only a summary line: `--- TABLE (rows×cols) headers:[...] ---`
-- **Form tables** (label-value grids) show a summary: `--- FORM TABLE (rows×cols) ---`
-
-**Example: form-style document (e.g. 学位论文开题报告表)**
-
-```
-  #001 [A]  "某某大学"
-  #002 [A]  "学位论文开题报告表"
-  ...
-  #011 [B]  "表格填写要求：正文字体宋体，字号小四，行间距固定值20磅。"
-  #012 --- empty ×20 ---
-  #032 [C]  "论文概况"
-  --- LAYOUT TABLE ---
-    #033 [D]  "选题来源：自主命题"
-    #034 [D]  "中文摘要："
-    #035 [D]  "本研究针对某某问题展开探索..."
-  --- END LAYOUT TABLE ---
-  #046 [C]  "选题依据"
-  --- LAYOUT TABLE ---
-    #047 [E]  "选题意义"
-    #048 [D]  "近年来某某领域发展迅速..."
-    #049 [D]  "然而现有研究仍存在若干不足..."
-    ...
-    #055 [E]  "国内外研究现状"
-    #056 [D]  "该领域的发展经历了多个阶段..."
-    #057 [F]  "某某方向的研究进展"
-    #058 [D]  "在这一方向上，相关工作主要集中在..."
-    ...
-  --- END LAYOUT TABLE ---
-  ...
-  #200 [C]  "评审评语及结论"
-  --- TABLE (6×3) headers:["一级指标","二级指标","评价意见"] ---
-```
+**Conventions:**
+- `[A]`, `[B]` are visual fingerprint labels from the summary. The hash includes font, size, weight/italic, color, alignment, first-line-indent, AND whether the paragraph carries a numbering reference — so visually identical paragraphs split into different fingerprints (with "List" suffix) when one is auto-numbered and the other is plain body. `bulk_rules` can target list items independently.
+- Non-paragraph elements appear as `--- TYPE (details) ---`. Consecutive empty paragraphs are compressed: `--- empty ×N ---`.
+- Layout tables (single-cell content containers) are expanded inline under `--- LAYOUT TABLE ---` / `--- END LAYOUT TABLE ---` markers; data tables and form tables are summarized.
+- Text is truncated to ~40 chars; use `inspect_range` for full text.
 
 ## File Structure
 
