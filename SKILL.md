@@ -19,10 +19,10 @@ Tools only present facts — computed styles, element positions, document struct
 
 Check what the user has provided. Only ask for clarification if the goal is genuinely ambiguous — otherwise proceed with defaults and state your assumptions in the report.
 
-- **Explicit text guidelines** ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): translate the user's natural language into structured `styles[i]` fields yourself. The script does NOT parse natural language — that would be brittle (it can't tell "不要加粗" from "加粗", can't expand "比一级小一号", and silently fails on synonyms / Chinese numerals / sentence grammar). You're an LLM; translation is exactly what you're for. Use the 字号 / 字体 / 颜色 reference tables in this document (Step 4) to map keywords. Pass the user's original text *verbatim* into `requirements: { styleId: "..." }` — the script will display "user specified X / agent resolved {Y}" side-by-side in the change report so any reviewer can verify your translation by eye.
-- **Template / reference document**: pass it via `apply_styles`'s `template: { source, styles: [...] }` field. The script copies the named styles' full pPr/rPr definitions (including basedOn ancestors) into the source's styles.xml, and migrates any referenced `numId` to fresh IDs in the source's numbering.xml. You don't need to run a separate analysis pass on the template by hand — but DO run `overview` / `inspect_style_def` on the template first to know which styleIds are worth importing.
-- **No guidelines**: infer the intended style system from the document itself, identify inconsistencies, and normalize to the majority pattern.
-- **Default scope:** Reformat in place, preserving all content.
+- **Explicit text guidelines** (e.g. "一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): you translate the natural language into structured `styles[i]` fields — the script does NOT parse it (a regex can't tell "不要加粗" from "加粗"). Pass the user's original wording *verbatim* into `requirements: { styleId: "..." }`; the script prints it side-by-side with your resolved fields in the change report for human verification. See Step 4 for 字号 / 字体 / 颜色 mappings.
+- **Template / reference document**: pass via `template: { source, styles: [...] }`. The script clones the named styles' full pPr/rPr (with basedOn ancestors) into the source's styles.xml and migrates any referenced numId. Run `overview` / `inspect_style_def` on the template first to choose which styleIds to import — no separate analysis pass needed.
+- **No guidelines**: infer the intended style system from the document, normalize to the majority pattern.
+- **Default scope:** Reformat in place, preserve all content.
 
 **When the user provides a template/reference document + a target document:**
 
@@ -101,6 +101,7 @@ Only drill into individual paragraphs (via `inspect_range` or `inspect_style`) w
 - `Reference` — bibliography entries ([1] ..., with hanging indent)
 - `Keywords` — keyword line (关键词：... / Keywords: ...)
 - `Abstract` — abstract body text (may differ from normal body)
+- `BodyEmphasis` — short uniformly-bold paragraphs that act as in-paragraph sub-titles or labels (no outline level, no auto-numbering, typically a short phrase). The style **must explicitly set `bold: true`** because smart-strip would otherwise drop the uniform bold during restyle.
 
 **Fixed content (do not restyle — preserve as-is):**
 - Cover page elements (school name, field labels, date)
@@ -144,26 +145,22 @@ You can mix modes within the same `styles` array. Example:
 }
 ```
 
-For example:
-- Document uses 1.2× line spacing everywhere → use `fromParagraph` on a body paragraph; the tool extracts 1.2× faithfully (not 1.5×)
-- Title is left-aligned → `fromParagraph` preserves it; don't override `alignment` to center
-- Heading1 appears 5 times, 4 are blue non-bold, 1 is bold non-blue → pass one of the four as `fromParagraph` (the majority), not the outlier
+Examples:
+- Document uses 1.2× line spacing → `fromParagraph` extracts 1.2× faithfully; don't override to 1.5×.
+- Title is left-aligned → preserve it; don't force-center.
+- Heading1 appears 5 times with one outlier → use one of the majority as `fromParagraph`, not the outlier.
 
-"Normalize" means making inconsistent formatting consistent (by routing all five paragraphs to the same style), NOT replacing the author's chosen formatting with values you think look better.
+"Normalize" means routing inconsistent paragraphs to one consistent style — pick the majority pattern as your source, NOT values you think look better. The same rule applies when two different fingerprints play the same role (e.g. one is bold black, another is non-bold blue at the same size both serving as Heading1): take the majority's values, route both fingerprints' paragraphs to the same style.
 
 **What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel.
 
 **Indent unit preservation:** when the source paragraph used Word's character-based indent (`w:firstLineChars` / `w:hangingChars` — what Word writes for "首行缩进 N 字符"), `fromParagraph` extracts it as `"Nchar"` (e.g. `"2char"`) so the round-trip preserves font-size auto-scaling. When the source used fixed twips (`w:firstLine` / `w:hanging`), it extracts as `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size and breaks downstream font changes.
 
-**Source-run selection within `fromParagraph`:** the tool picks the *dominant text run* — the run carrying the most non-numbering text. Numbering-prefix-only runs (pure digits/dots/parens/bullets/whitespace) are excluded. So `"1.1 数据集导入"` (prefix run + bold title run) extracts the title run's "DengXian 15pt Bold", not the prefix run's "DengXian 15pt blue". You don't need to hand-pick a no-prefix paragraph as the source.
+**Source-run selection within `fromParagraph`:** the tool picks the *dominant text run* — the run carrying the most non-numbering text. Numbering-prefix-only runs (pure digits/dots/parens/bullets/whitespace) are excluded. So `"1.1 研究方法"` (numbering-prefix run + bold title run) extracts the title run's formatting, not the prefix run's. You don't need to hand-pick a no-prefix paragraph as the source.
 
 **What `fromParagraph` does NOT extract** (so you must add via `overrides` if needed): `outlineLevel` when the source paragraph has none, `numId`/`numLevel` (always omitted — numbering is bound through the `numbering.levels[].styleId` field, not by hardcoding the source's numId).
 
 **Validation:** `fromParagraph` must reference an indexed paragraph (1-based). Paragraphs inside data tables and form tables are not indexed and cannot be referenced. The tool errors out at the start of execution if the index is invalid.
-
-**Handling inconsistencies between fingerprints of the same role:**
-
-When two fingerprints should map to the same role but differ slightly (e.g. H=18pt blue and F=18pt bold for the same heading level), take the majority pattern's values. Report the normalization in the change report.
 
 **Handling existing styles in the document:**
 
@@ -198,8 +195,8 @@ When the user provides text requirements, parse Chinese font size names using th
 
 | Source state | Action |
 |---|---|
-| Headings have **typed prefix text** like `"1. 开发背景"` / `"1.1 数据集导入"` / `"第1章 绪论"` (you can SEE the digits in the paragraph text) | **Write numbering**. The script strips the typed prefix and lets Word render auto-numbers. This is the typical thesis/paper case. |
-| Headings have **no prefix text** at all (`"开发背景"`, `"系统方案设计"`) but should be numbered | **Write numbering**. Word generates `"1. "`, `"2. "`, etc. without any text prefix to strip. |
+| Headings have **typed prefix text** like `"1. 引言"` / `"1.1 研究方法"` / `"第1章 绪论"` (digits visible in paragraph text) | **Write numbering**. Script strips the typed prefix; Word renders auto-numbers. Typical thesis/paper case. |
+| Headings have **no prefix text** (`"绪论"`, `"参考文献"`) but should be numbered | **Write numbering**. Word generates `"1. "`, `"2. "`, etc. — no prefix to strip. |
 | Headings already have `<w:numPr>` (auto-numbered via existing `numId` from a prior author setup) AND you don't want to change the scheme | **Skip numbering**. smart-strip preserves `<w:numPr>` so applying a style keeps existing auto-numbering. |
 | User explicitly says "keep manual numbering" / "不要自动编号" | **Skip numbering**. Honor the override. |
 | Document has no numbered headings at all (preface, foreword without chapter numbers) | **Skip numbering**. Nothing to bind. |
@@ -324,7 +321,7 @@ Call `apply_styles` with your decision in a JSON config.
 
 ### Edge Cases to Watch For
 
-**Mixed-format paragraphs:** A paragraph may contain runs with different roles — e.g. "关键词：" (bold) followed by keyword text (normal), or a list item with a bold lead phrase ("幻觉与安全性 与传统软件不同…"), or a heading with a colored numbering run before a bold title ("1. 开发背景"). This is a single paragraph with character-level style differences, not two roles. Assign the paragraph its role (`Keywords` / `ListNumber` / `Heading1`) and the tool will preserve the cross-run differences automatically: when restyling, only run-level direct formatting that is *uniform across all runs* (i.e. redundant overrides) is stripped — properties that differ between runs are kept as intentional inline emphasis.
+**Mixed-format paragraphs:** a paragraph may have runs with different formatting — e.g. "关键词：" (bold) followed by keyword text (normal), a list item starting with a bold lead phrase, or a heading whose numbering prefix is a different color from the title. This is one paragraph with character-level differences, not two roles. Assign the paragraph its role (`Keywords` / `ListNumber` / `Heading1`); the tool preserves cross-run differences automatically — when restyling, only run-level formatting that is *uniform across all runs* (redundant overrides) is stripped, while properties that differ between runs are kept as intentional inline emphasis.
 
 **Empty paragraphs as spacing:** Many documents use blank paragraphs for vertical spacing. Always preserve them — removing empty paragraphs is a structural change, not a formatting change, and risks breaking intentional layout (especially on cover pages).
 
