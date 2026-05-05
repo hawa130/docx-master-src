@@ -21,8 +21,10 @@ export interface ComputedParaStyle {
   lineRule?: string
   indentLeft?: number
   indentRight?: number
-  firstLineIndent?: number
-  hangingIndent?: number
+  firstLineIndent?: number       // twips (1/20 pt)
+  firstLineIndentChars?: number  // hundredths of a character; auto-scales with font size
+  hangingIndent?: number         // twips
+  hangingIndentChars?: number    // hundredths of a character
   outlineLevel?: number
   numId?: string
   numLevel?: number

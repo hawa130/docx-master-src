@@ -144,6 +144,8 @@ For example:
 
 **What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel.
 
+**Indent unit preservation:** when the source paragraph used Word's character-based indent (`w:firstLineChars` / `w:hangingChars` — what Word writes for "首行缩进 N 字符"), `fromParagraph` extracts it as `"Nchar"` (e.g. `"2char"`) so the round-trip preserves font-size auto-scaling. When the source used fixed twips (`w:firstLine` / `w:hanging`), it extracts as `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size and breaks downstream font changes.
+
 **Source-run selection within `fromParagraph`:** the tool picks the *dominant text run* — the run carrying the most non-numbering text. Numbering-prefix-only runs (pure digits/dots/parens/bullets/whitespace) are excluded. So `"1.1 数据集导入"` (prefix run + bold title run) extracts the title run's "DengXian 15pt Bold", not the prefix run's "DengXian 15pt blue". You don't need to hand-pick a no-prefix paragraph as the source.
 
 **What `fromParagraph` does NOT extract** (so you must add via `overrides` if needed): `outlineLevel` when the source paragraph has none, `numId`/`numLevel` (always omitted — numbering is bound through the `numbering.levels[].styleId` field, not by hardcoding the source's numId).
@@ -247,8 +249,17 @@ apply_styles({
                                          //   document's atLeast rule via fromParagraph round-trip.
       spaceBefore:     12,               // optional. Space before paragraph in pt.
       spaceAfter:      6,                // optional. Space after paragraph in pt.
-      firstLineIndent: "2char",          // optional. "Nchar" or pt value.
-      hangingIndent:   null,             // optional. Hanging indent in pt.
+      firstLineIndent: "2char",          // optional. "Nchar" / "Npt" / pt number.
+                                         //   "Nchar" → emitted as `w:firstLineChars`
+                                         //     (1/100 char), Word auto-scales with font
+                                         //     size — required for the standard "首行缩进
+                                         //     2 字符" academic convention.
+                                         //   "Npt" or number → emitted as `w:firstLine`
+                                         //     (fixed twips), does NOT scale with font.
+                                         //   Prefer "Nchar" for thesis/paper body text.
+      hangingIndent:   null,             // optional. Same units as firstLineIndent.
+                                         //   For bibliography/reference entries use
+                                         //   "2char" (or matching the leading "[N] ").
       outlineLevel:    0,                // optional. 0-8. REQUIRED for heading styles (enables TOC).
     },
     ...
