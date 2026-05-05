@@ -19,7 +19,7 @@ Tools only present facts — computed styles, element positions, document struct
 
 Check what the user has provided. Only ask for clarification if the goal is genuinely ambiguous — otherwise proceed with defaults and state your assumptions in the report.
 
-- **Explicit text guidelines** ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): pass the user's text verbatim through `apply_styles`'s `requirements: { styleId: "..." }` field. The script's Chinese-typography parser handles 字号 / 字体 / 加粗 / 行距 / 缩进 / 段距 / 对齐 / 颜色. The change report's "Requirements Check" section will diff the parsed values against the actual injected style — confirm everything matches before delivering. Unparsed tokens are surfaced so you know what didn't translate.
+- **Explicit text guidelines** ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): translate the user's natural language into structured `styles[i]` fields yourself. The script does NOT parse natural language — that would be brittle (it can't tell "不要加粗" from "加粗", can't expand "比一级小一号", and silently fails on synonyms / Chinese numerals / sentence grammar). You're an LLM; translation is exactly what you're for. Use the 字号 / 字体 / 颜色 reference tables in this document (Step 4) to map keywords. Pass the user's original text *verbatim* into `requirements: { styleId: "..." }` — the script will display "user specified X / agent resolved {Y}" side-by-side in the change report so any reviewer can verify your translation by eye.
 - **Template / reference document**: pass it via `apply_styles`'s `template: { source, styles: [...] }` field. The script copies the named styles' full pPr/rPr definitions (including basedOn ancestors) into the source's styles.xml, and migrates any referenced `numId` to fresh IDs in the source's numbering.xml. You don't need to run a separate analysis pass on the template by hand — but DO run `overview` / `inspect_style_def` on the template first to know which styleIds are worth importing.
 - **No guidelines**: infer the intended style system from the document itself, identify inconsistencies, and normalize to the majority pattern.
 - **Default scope:** Reformat in place, preserving all content.
@@ -313,18 +313,16 @@ apply_styles({
     // leading text — useful for label-only prefixes the new style replaces.
   ],
 
-  requirements: {                        // optional. Free-form Chinese typographic specs per style.
-    BodyText: "小四宋体首行缩进2字符1.5倍行距",
-    Heading1: "二号黑体加粗居中段前段后各12磅",
-    Heading2: "三号黑体加粗段前12磅段后6磅",
-    Reference: "五号宋体悬挂缩进2字符",
-    // Parsed and merged into the corresponding styles[i] before injection.
-    // Recognized tokens: 字号 (初号..八号 / 小初..小六 / Npt / N磅), 字体
-    // (宋体/黑体/楷体/仿宋/华文.../方正.../Times/Arial/...), 加粗/粗体/Bold,
-    // 倾斜/斜体, 下划线, N倍行距 / 单倍 / 1.5倍 / 双倍 / 固定值N磅 / 至少N磅,
-    // 段前N磅 / 段后N磅 / 段前段后各N磅, 首行缩进N字符/Npt, 悬挂缩进N字符/Npt,
-    // 居中/居左/居右/两端对齐, 颜色 #RRGGBB / 红/绿/蓝/黑/白/灰/黄/橙/紫/深蓝/浅蓝.
-    // Unparsed tokens are surfaced in the change report.
+  requirements: {                        // optional. User's original natural-language spec, ANNOTATION ONLY.
+    BodyText: "正文请使用宋体小四号字，行距设为1.5倍，首行缩进两个字符",
+    Heading1: "标题用黑体三号加粗居中显示",
+    // The script does NOT parse this. It records the string and displays it
+    // side-by-side with the agent-resolved structured fields in the change
+    // report. Use this to give reviewers a way to verify your translation
+    // by reading. The agent (you) is responsible for translating the user's
+    // text into the structured fields above (font / size / bold / etc.) —
+    // see Step 4 for the keyword tables, and handle negation / hierarchical
+    // refs / synonyms with your own reasoning.
   },
 
   template: {                            // optional. Import named styles from another docx.
@@ -351,11 +349,12 @@ apply_styles({
 
 **Style-field resolution priority** (for each style entry's final values):
 1. `styles[i].overrides` — deliberate per-style escape, always wins.
-2. `requirements[id]` parsed values — user's stated intent.
-3. `styles[i]` direct fields (font/size/bold/...).
-4. `styles[i].fromParagraph` extracted values — from a representative paragraph.
-5. `template` imported style (if same ID) — copied from template's styles.xml.
-6. Defaults.
+2. `styles[i]` direct fields (font/size/bold/...) — agent-translated from user text.
+3. `styles[i].fromParagraph` extracted values — from a representative paragraph.
+4. `template` imported style (if same ID) — copied from template's styles.xml.
+5. Defaults.
+
+(`requirements` is annotation-only and does not participate in resolution.)
 
 **Assignment actions:**
 - `keep` — preserve original formatting exactly, do not apply any style.
@@ -384,7 +383,7 @@ apply_styles({
 - Paragraphs restyled (count, grouped by style).
 - Manual numbering prefixes converted (per pattern).
 - Pattern rules matched (per regex, with strip count).
-- **Requirements check** (if `requirements` was provided): per style, field-by-field expected vs. actual. ✓ marks pass, ✗ marks mismatch (often means an explicit `overrides` clobbered a parsed requirement). Unparsed tokens listed for review.
+- **Style Resolution** (if `requirements` was provided): per style, "user specified X / agent resolved {Y}" side-by-side. The script doesn't grade — you / the user / a reviewer reads and confirms the translation captures intent. There's no algorithmic check here on purpose; a regex check would silently miss negation, hierarchical refs, and synonyms.
 - Sample affected paragraphs per style — use to verify routing.
 - Inconsistencies fixed (e.g. "3 headings normalized from 15pt to 16pt").
 - Flagged paragraphs (with reasons — the user should review these).
