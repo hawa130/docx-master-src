@@ -22,7 +22,8 @@ async function main() {
     out.push(`Fingerprint ${label}: ${sum.description}`)
     if (matches.length > 0) {
       const first = matches[0]!
-      out.push(`Computed style: ${formatComputed(first)}`)
+      out.push(`Computed rPr: ${formatRPr(first)}`)
+      out.push(`Computed pPr: ${formatPPr(first, matches)}`)
     }
     out.push(`Referenced pStyles: [${styleIds.map((s) => `"${s}"`).join(", ")}]`)
     out.push(`Occurrences: ${matches.length}`)
@@ -44,18 +45,59 @@ async function main() {
   }
 }
 
-function formatComputed(p: ParsedParagraph): string {
+function formatRPr(p: ParsedParagraph): string {
   const r = p.rPr
   const parts: string[] = []
-  const font = r.fontEastAsia || r.fontAscii || r.fontHAnsi
+  const font = r.fontAscii || r.fontHAnsi
   if (font) parts.push(`font: "${font}"`)
-  if (r.size !== undefined) parts.push(`size: ${r.size} (${r.size / 2}pt)`)
-  if (r.bold !== undefined) parts.push(`bold: ${r.bold}`)
-  if (r.italic !== undefined) parts.push(`italic: ${r.italic}`)
-  if (r.color) parts.push(`color: ${r.color}`)
-  if (p.pPr.alignment) parts.push(`alignment: ${p.pPr.alignment}`)
-  if (p.pPr.firstLineIndent) parts.push(`firstLineIndent: ${p.pPr.firstLineIndent}`)
-  return `{ ${parts.join(", ")} }`
+  if (r.fontEastAsia && r.fontEastAsia !== font)
+    parts.push(`fontEastAsia: "${r.fontEastAsia}"`)
+  if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
+  if (r.bold) parts.push(`bold: true`)
+  if (r.italic) parts.push(`italic: true`)
+  if (r.color && r.color !== "auto") parts.push(`color: ${r.color}`)
+  if (r.underline) parts.push(`underline: ${r.underline}`)
+  return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
+}
+
+function formatPPr(p: ParsedParagraph, all: ParsedParagraph[]): string {
+  const pp = p.pPr
+  const parts: string[] = []
+  if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
+  if (pp.spaceBefore !== undefined)
+    parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
+  if (pp.spaceAfter !== undefined)
+    parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
+  if (pp.lineSpacing !== undefined)
+    parts.push(`lineSpacing: ${formatLineSpacing(pp.lineSpacing, pp.lineRule)}`)
+  if (pp.firstLineIndent !== undefined)
+    parts.push(`firstLineIndent: ${pp.firstLineIndent}twips`)
+  if (pp.hangingIndent !== undefined)
+    parts.push(`hangingIndent: ${pp.hangingIndent}twips`)
+  if (pp.outlineLevel !== undefined)
+    parts.push(`outlineLevel: ${pp.outlineLevel}`)
+  const numIdDisplay = resolveNumId(all)
+  if (numIdDisplay) parts.push(`numId: ${numIdDisplay}`)
+  return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
+}
+
+function formatLineSpacing(line: number, rule: string | undefined): string {
+  const r = rule || "auto"
+  if (r === "exact") return `${line / 20}pt fixed`
+  if (r === "atLeast") return `${line / 20}pt atLeast`
+  return `${parseFloat((line / 240).toFixed(2))}×`
+}
+
+function resolveNumId(all: ParsedParagraph[]): string | null {
+  const seen = new Set<string>()
+  let hasUnset = false
+  for (const p of all) {
+    if (p.pPr.numId !== undefined) seen.add(p.pPr.numId)
+    else hasUnset = true
+  }
+  if (seen.size === 0) return null
+  if (seen.size === 1 && !hasUnset) return Array.from(seen)[0]!
+  return "mixed"
 }
 
 function truncate(s: string, n: number): string {

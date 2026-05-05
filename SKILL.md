@@ -110,8 +110,49 @@ Priority order:
 1. User's explicit formatting requirements (highest authority)
 2. A reference/template document provided by the user
 3. The document's existing `styles.xml` definitions (if well-defined)
-4. The majority pattern in the document content (most common format for each role)
-5. Reasonable defaults for the document type
+4. The actual computed values from the document content (extract, don't invent)
+5. Reasonable defaults for the document type (last resort only)
+
+**Critical rule: when no user guidelines are provided, extract parameter values directly from the document.** Don't transcribe values by hand — point at a representative paragraph and let the tool extract them.
+
+The `apply_styles` `styles` array supports two modes:
+
+1. **`fromParagraph` mode (preferred when extracting from the document):** Pick one paragraph that exemplifies the role (typically the first occurrence of the dominant fingerprint), set `fromParagraph: <index>`, and the tool will extract the full computed rPr + pPr and use them as the style definition. Use `overrides` to add structural fields the source paragraph lacks (e.g. `outlineLevel` for headings) or to override a specific value the user requested.
+
+2. **Manual mode (when there is no representative paragraph):** Specify each field directly — used when the user provides explicit formatting requirements, when extracting from a template document where you don't have it loaded as the source, or when synthesizing a style for a role with no existing instance.
+
+You can mix modes within the same `styles` array. Example:
+
+```json
+{
+  "styles": [
+    { "id": "BodyText", "name": "正文", "fromParagraph": 60 },
+    { "id": "Heading2", "name": "二级标题", "fromParagraph": 19,
+      "overrides": { "outlineLevel": 1, "alignment": "left" } },
+    { "id": "Caption",  "name": "图表注", "font": "宋体", "size": 10.5,
+      "alignment": "center", "lineSpacing": 1.5 }
+  ]
+}
+```
+
+For example:
+- Document uses 1.2× line spacing everywhere → use `fromParagraph` on a body paragraph; the tool extracts 1.2× faithfully (not 1.5×)
+- Title is left-aligned → `fromParagraph` preserves it; don't override `alignment` to center
+- Heading1 appears 5 times, 4 are blue non-bold, 1 is bold non-blue → pass one of the four as `fromParagraph` (the majority), not the outlier
+
+"Normalize" means making inconsistent formatting consistent (by routing all five paragraphs to the same style), NOT replacing the author's chosen formatting with values you think look better.
+
+**What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel.
+
+**Source-run selection within `fromParagraph`:** the tool picks the *dominant text run* — the run carrying the most non-numbering text. Numbering-prefix-only runs (pure digits/dots/parens/bullets/whitespace) are excluded. So `"1.1 数据集导入"` (prefix run + bold title run) extracts the title run's "DengXian 15pt Bold", not the prefix run's "DengXian 15pt blue". You don't need to hand-pick a no-prefix paragraph as the source.
+
+**What `fromParagraph` does NOT extract** (so you must add via `overrides` if needed): `outlineLevel` when the source paragraph has none, `numId`/`numLevel` (always omitted — numbering is bound through the `numbering.levels[].styleId` field, not by hardcoding the source's numId).
+
+**Validation:** `fromParagraph` must reference an indexed paragraph (1-based). Paragraphs inside data tables and form tables are not indexed and cannot be referenced. The tool errors out at the start of execution if the index is invalid.
+
+**Handling inconsistencies between fingerprints of the same role:**
+
+When two fingerprints should map to the same role but differ slightly (e.g. H=18pt blue and F=18pt bold for the same heading level), take the majority pattern's values. Report the normalization in the change report.
 
 **Handling existing styles in the document:**
 
@@ -141,15 +182,20 @@ Each level binds to a heading style via `pStyle`. When a higher-level heading ap
 
 If the document uses manual numbering (just typed text, no `numPr`), convert it to automatic numbering so users no longer need to renumber manually when inserting new sections.
 
+**Mixed manual prefix styles within one role:** authors often mix patterns within the same heading level — e.g. chapter 1's H2 paragraphs are written as "1.1 …", but chapter 2's H2 paragraphs are written as "1. …" (restart per chapter, no chapter prefix). One regex can't normalize both. Use `stripPrefixPatterns: ["%1.%2", "%1."]` on the level — patterns are tried in order, first match wins. Always list the longer pattern first or you'll strip a partial prefix (e.g. `"%1."` would strip just "1." from "1.1 …" leaving ".1 …").
+
+**Preserving design colors on numbers:** if the source document deliberately styles auto/manual numbers in a different color/weight than the title text (very common in design documents — blue numbers + black bold titles), set `numRPr` on the level. The number marker is rendered with this rPr; the rest of the heading uses the paragraph style.
+
 ### Step 6: Review Plan Before Execution
 
 Before calling `apply_styles`, present your plan to yourself as a self-check:
 
-1. **Style definitions** — list each style with its parameters. Does any style have missing critical fields (e.g. a heading without `outlineLevel`)?
-2. **Numbering scheme** — does the `lvlText` pattern match what appears in the document? Are all levels bound to the correct styles?
-3. **Fingerprint coverage** — does every fingerprint from the overview have a decision? Each should map to one of: a style (`restyle`), fixed content (`keep`/`exclude`), or uncertain (`flag`). No fingerprint should be left unaccounted for.
-4. **Exclude list** — are cover page paragraphs, TOC entries, and other fixed content excluded?
-5. **High-risk paragraphs** — are there paragraphs where the role is ambiguous? Flag them rather than guess.
+1. **Style parameter source** — for each style, are the parameter values taken from `inspect_style` output (or user requirements)? If any value was made up without a source, call `inspect_style` for that fingerprint first.
+2. **Style definitions** — list each style with its parameters. Does any style have missing critical fields (e.g. a heading without `outlineLevel`)?
+3. **Numbering scheme** — does the `lvlText` pattern match what appears in the document? Are all levels bound to the correct styles?
+4. **Fingerprint coverage** — does every fingerprint from the overview have a decision? Each should map to one of: a style (`restyle`), fixed content (`keep`/`exclude`), or uncertain (`flag`). No fingerprint should be left unaccounted for.
+5. **Exclude list** — are cover page paragraphs, TOC entries, and other fixed content excluded?
+6. **High-risk paragraphs** — are there paragraphs where the role is ambiguous? Flag them rather than guess.
 
 If any of these checks reveal an issue, go back and inspect further before proceeding.
 
@@ -169,20 +215,36 @@ apply_styles({
                                          // Must differ from source.
 
   styles: [                              // REQUIRED. At least one style.
+    // ---- Mode A: extract from a paragraph (preferred) ----
     {
       id:              "Heading1",       // REQUIRED. Style ID for styles.xml.
-                                         //   Use Word built-in IDs when possible
-                                         //   (Heading1, Heading2, BodyText, Caption, etc.)
       name:            "一级标题",        // REQUIRED. Display name.
-      basedOn:         "Normal",         // optional. Parent style ID. Default: "Normal".
+      basedOn:         "Normal",         // optional. Default: "Normal".
+      fromParagraph:   33,               // 1-based paragraph index. Tool extracts this
+                                         //   paragraph's full computed rPr + pPr and uses
+                                         //   them as the style definition.
+      overrides: {                       // optional. Any field below overrides extracted value.
+        outlineLevel: 0,                 // typical use: add structural fields the source lacks
+        alignment:    "left",            // or override a value explicitly per user request
+      },
+    },
+
+    // ---- Mode B: define manually (when no representative paragraph) ----
+    {
+      id:              "Caption",        // REQUIRED.
+      name:            "图表注",          // REQUIRED.
+      basedOn:         "Normal",         // optional. Default: "Normal".
       font:            "黑体",           // optional. Latin/ASCII font.
       fontEastAsia:    "黑体",           // optional. CJK font. Default: same as font.
-      size:            16,               // optional. Font size in pt (not half-pt).
-      bold:            true,             // optional. Default: false.
+      size:            10.5,             // optional. Font size in pt (not half-pt).
+      bold:            false,            // optional. Default: false.
       italic:          false,            // optional. Default: false.
       color:           "auto",           // optional. Hex ("2E75B6") or "auto". Default: "auto".
-      alignment:       "left",           // optional. "left"|"center"|"right"|"both". Default: "left".
-      lineSpacing:     1.5,              // optional. Multiple (1.0, 1.5, 2.0) or exact pt value.
+      alignment:       "center",         // optional. "left"|"center"|"right"|"both". Default: "left".
+      lineSpacing:     1.5,              // optional. <10 = multiplier (auto rule); ≥10 = pt (exact rule).
+      lineRule:        "atLeast",        // optional. "auto"|"exact"|"atLeast". Overrides the
+                                         //   <10/≥10 heuristic. Use "atLeast" to preserve a source
+                                         //   document's atLeast rule via fromParagraph round-trip.
       spaceBefore:     12,               // optional. Space before paragraph in pt.
       spaceAfter:      6,                // optional. Space after paragraph in pt.
       firstLineIndent: "2char",          // optional. "Nchar" or pt value.
@@ -200,6 +262,15 @@ apply_styles({
         text:    "第%1章",               // REQUIRED. lvlText pattern.
         styleId: "Heading1",             // REQUIRED. Binds this level to a style.
         start:   1,                      // optional. Starting number. Default: 1.
+        stripPrefixPatterns: ["%1.%2", "%1."], // optional. Alternative manual-prefix
+                                         //   patterns to strip (tried in order, longest
+                                         //   first). Use when the source mixes styles —
+                                         //   e.g. some H2 written as "1.1 …", others as
+                                         //   "1. …". Defaults to [text].
+        numRPr: {                        // optional. Formats the auto-generated number marker
+          color: "3370FF",               //   itself (independent of the title text). Use to
+          bold:  false,                  //   keep designs like "blue numbering + black title".
+        },
       },
       ...
     ]
@@ -280,7 +351,7 @@ apply_styles({
 
 ### Edge Cases to Watch For
 
-**Mixed-format paragraphs:** A paragraph may contain runs with different roles — e.g. "关键词：" (bold) followed by keyword text (normal). This is a single paragraph with a character-level style difference, not two roles. Assign the paragraph its role (`Keywords`) and note the run-level formatting in the style definition.
+**Mixed-format paragraphs:** A paragraph may contain runs with different roles — e.g. "关键词：" (bold) followed by keyword text (normal), or a list item with a bold lead phrase ("幻觉与安全性 与传统软件不同…"), or a heading with a colored numbering run before a bold title ("1. 开发背景"). This is a single paragraph with character-level style differences, not two roles. Assign the paragraph its role (`Keywords` / `ListNumber` / `Heading1`) and the tool will preserve the cross-run differences automatically: when restyling, only run-level direct formatting that is *uniform across all runs* (i.e. redundant overrides) is stripped — properties that differ between runs are kept as intentional inline emphasis.
 
 **Empty paragraphs as spacing:** Many documents use blank paragraphs for vertical spacing. Always preserve them — removing empty paragraphs is a structural change, not a formatting change, and risks breaking intentional layout (especially on cover pages).
 
@@ -347,7 +418,7 @@ Footer: Arabic page number (restart from 1)
 ```
 
 **Skeleton conventions:**
-- `[A]`, `[B]`, etc. are visual fingerprint labels from the summary
+- `[A]`, `[B]`, etc. are visual fingerprint labels from the summary. The fingerprint hash includes font, size, weight/italic, color, alignment, first-line-indent, AND whether the paragraph carries a numbering reference. So two paragraphs that look visually identical but one is in an auto-numbered list and the other is plain body text will get *different* fingerprints (the listed one will be marked "List" in the summary). This lets `bulk_rules` map list items to a `ListNumber` style without sweeping plain body paragraphs along with them.
 - Non-paragraph elements appear as `--- TYPE (details) ---`
 - Consecutive empty paragraphs are compressed: `--- empty ×N ---`
 - Section breaks show header/footer changes
