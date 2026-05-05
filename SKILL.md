@@ -19,17 +19,16 @@ Tools only present facts — computed styles, element positions, document struct
 
 Check what the user has provided. Only ask for clarification if the goal is genuinely ambiguous — otherwise proceed with defaults and state your assumptions in the report.
 
-- **Explicit guidelines provided?** The user may provide formatting requirements in text ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距") or as a separate reference document. If so, these are the authoritative style definitions — the document's actual formatting is secondary.
-- **No guidelines?** Infer the intended style system from the document itself, identify inconsistencies, and normalize to the majority pattern.
+- **Explicit text guidelines** ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): pass the user's text verbatim through `apply_styles`'s `requirements: { styleId: "..." }` field. The script's Chinese-typography parser handles 字号 / 字体 / 加粗 / 行距 / 缩进 / 段距 / 对齐 / 颜色. The change report's "Requirements Check" section will diff the parsed values against the actual injected style — confirm everything matches before delivering. Unparsed tokens are surfaced so you know what didn't translate.
+- **Template / reference document**: pass it via `apply_styles`'s `template: { source, styles: [...] }` field. The script copies the named styles' full pPr/rPr definitions (including basedOn ancestors) into the source's styles.xml, and migrates any referenced `numId` to fresh IDs in the source's numbering.xml. You don't need to run a separate analysis pass on the template by hand — but DO run `overview` / `inspect_style_def` on the template first to know which styleIds are worth importing.
+- **No guidelines**: infer the intended style system from the document itself, identify inconsistencies, and normalize to the majority pattern.
 - **Default scope:** Reformat in place, preserving all content.
 
 **When the user provides a template/reference document + a target document:**
 
-This is a two-phase task. Keep the phases separate:
-1. **Extract style definitions from the template.** Run `overview` on the template first. Extract the style system (format parameters for each role, numbering scheme). The template defines *what styles should look like*. Note: page setup (margins, paper size, headers/footers) is not transferred — only report differences to the user.
-2. **Classify the target document.** Run `overview` on the target. Identify what role each paragraph plays. The target defines *which paragraphs get which styles*.
+Don't blindly copy the template's document structure onto the target. A template may have 3 chapters as examples, but the target has 8 — the style system transfers via `template.styles`, the structure does not. Also note: page setup (margins, paper size, headers/footers) is not transferred by `template` — report differences to the user but don't auto-apply.
 
-Do not blindly copy the template's document structure onto the target. A template may have 3 chapters as examples, but the target has 8 — the style system transfers, the structure does not.
+**Combine layers freely.** A common pattern is: import a school's template for the heading hierarchy + body text, supply user requirements that override one or two specific fields ("摘要部分用楷体"), and use `pattern_rules` for figure/table/reference classification. All three coexist; resolution priority is documented under Step 7.
 
 ### Step 2: Inspect the Document
 
@@ -42,17 +41,21 @@ Read the overview carefully. Form hypotheses about:
 
 Then use `inspect_*` tools **only as needed** to resolve uncertainties. You don't need to inspect everything. For a simple document, the overview alone may be sufficient. For a complex one, you might drill into 3-5 areas.
 
+**When to reach for `inspect_runs`:** if a paragraph's role is unclear, *before* assuming the dominant-run fingerprint covers everything, dump its runs. The "Run-level diversity" section at the bottom tells you which character properties are uniform vs. mixed — this is what `apply_styles` will preserve vs. strip when you restyle. If you see e.g. `b: on / —` mixed across runs, that's a bold lead phrase that will survive the smart-strip; if you see `b=on` uniform, the bold is style-controllable. Skipping this and assuming uniform formatting is the most common source of post-apply surprises.
+
 **Tool Reference:**
 
 All tools are invoked via `node <script> <args>` and write structured output to stdout.
 
 | Tool | Invocation | When to Use |
 |------|------------|-------------|
-| `overview` | `node scripts/overview.js <file>` | Always. Call this first. Returns metadata, page setup, theme, style definitions, numbering schemes, visual style statistics, and document skeleton. |
-| `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | When you need full text and computed styles for a specific paragraph range. |
+| `overview` | `node scripts/overview.js <file>` | Always. Call this first. Returns metadata, page setup (mm), theme, style definitions, numbering schemes (clustered by pattern), visual style statistics, and document skeleton. |
+| `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | When you need full text, computed styles, and nearest-image/table context for a specific paragraph range. |
+| `inspect_runs` | `node scripts/inspect_runs.js <file> <para>` | When a paragraph has run-level mixed formatting (bold lead phrase, colored numbering prefix, inline emphasis) and you need to see each run's rPr separately. Output also tells you which properties are uniform vs. mixed across runs — critical for predicting what `apply_styles` will preserve vs. strip. |
 | `inspect_style` | `node scripts/inspect_style.js <file> <fingerprint>` | When you see a fingerprint in the overview and need to understand what role it plays across the document. |
 | `inspect_style_def` | `node scripts/inspect_style_def.js <file> <styleId>` | When the document has pre-defined styles in `styles.xml` and you want to understand or preserve them. |
 | `inspect_section` | `node scripts/inspect_section.js <file> <index>` | When you need to understand page setup differences between sections (headers, footers, page numbering). |
+| `apply_styles --dry-run` | `node scripts/apply_styles.js --dry-run <config.json>` | Iterate on a config without writing the output file. Returns the full change report including sample affected paragraphs and a requirements-vs-output diff. Use this between config edits — it's seconds-per-cycle instead of full write+validate. |
 | `apply_styles` | `node scripts/apply_styles.js <config.json>` | Final step. Reads a JSON config file containing your complete decision. Outputs the reformatted document and a change report. |
 
 ### Step 3: Classify by Visual Fingerprint
@@ -300,6 +303,39 @@ apply_styles({
     ...
   ],
 
+  pattern_rules: [                       // optional. Apply style when paragraph text matches regex.
+    { regex: "^图\\s*\\d+[-.]\\d+", style: "FigureCaption" },
+    { regex: "^表\\s*\\d+[-.]\\d+", style: "TableCaption" },
+    { regex: "^\\[\\d+\\]\\s+", style: "Reference" },
+    { regex: "^(关键词|Keywords?)\\s*[:：]", style: "Keywords", stripMatch: true },
+    // First match wins (rules tried in order). The match must be anchored
+    // at start of paragraph text. `stripMatch: true` removes the matched
+    // leading text — useful for label-only prefixes the new style replaces.
+  ],
+
+  requirements: {                        // optional. Free-form Chinese typographic specs per style.
+    BodyText: "小四宋体首行缩进2字符1.5倍行距",
+    Heading1: "二号黑体加粗居中段前段后各12磅",
+    Heading2: "三号黑体加粗段前12磅段后6磅",
+    Reference: "五号宋体悬挂缩进2字符",
+    // Parsed and merged into the corresponding styles[i] before injection.
+    // Recognized tokens: 字号 (初号..八号 / 小初..小六 / Npt / N磅), 字体
+    // (宋体/黑体/楷体/仿宋/华文.../方正.../Times/Arial/...), 加粗/粗体/Bold,
+    // 倾斜/斜体, 下划线, N倍行距 / 单倍 / 1.5倍 / 双倍 / 固定值N磅 / 至少N磅,
+    // 段前N磅 / 段后N磅 / 段前段后各N磅, 首行缩进N字符/Npt, 悬挂缩进N字符/Npt,
+    // 居中/居左/居右/两端对齐, 颜色 #RRGGBB / 红/绿/蓝/黑/白/灰/黄/橙/紫/深蓝/浅蓝.
+    // Unparsed tokens are surfaced in the change report.
+  },
+
+  template: {                            // optional. Import named styles from another docx.
+    source: "/path/to/template.docx",    // path to the template
+    styles: ["BodyText", "Heading1", "Heading2", "Heading3", "Caption"],
+    importNumbering: true,               // default true. Migrates abstractNum + numId references.
+    // basedOn ancestors are auto-pulled if they don't exist in source.
+    // If a styleId already exists in source, the template's wins (template
+    // is the authoritative stylebook).
+  },
+
   exclude: [1, 2, 3, 4, 5]              // optional. Para indices to never touch. Overrides everything.
 })
 ```
@@ -309,8 +345,17 @@ apply_styles({
 **Resolution order** when multiple rules match the same paragraph:
 1. `exclude` — if listed here, paragraph is untouched. Full stop.
 2. `assignments` — if a per-paragraph rule exists, it wins.
-3. `bulk_rules` — if no per-paragraph rule, match by fingerprint.
-4. No match — paragraph is left unchanged (implicit `keep`).
+3. `pattern_rules` — text-based regex match (first match wins among the rules).
+4. `bulk_rules` — match by fingerprint label.
+5. No match — paragraph is left unchanged (implicit `keep`).
+
+**Style-field resolution priority** (for each style entry's final values):
+1. `styles[i].overrides` — deliberate per-style escape, always wins.
+2. `requirements[id]` parsed values — user's stated intent.
+3. `styles[i]` direct fields (font/size/bold/...).
+4. `styles[i].fromParagraph` extracted values — from a representative paragraph.
+5. `template` imported style (if same ID) — copied from template's styles.xml.
+6. Defaults.
 
 **Assignment actions:**
 - `keep` — preserve original formatting exactly, do not apply any style.
@@ -330,14 +375,21 @@ apply_styles({
    - Principle: flag when the *role assignment* is uncertain, not when the *formatting parameters* have minor variance.
 5. Never modify section properties (page size, margins, headers, footers, columns). These are preserved as-is from the original.
 
+**Iterate with `--dry-run` first.** Before committing, run `apply_styles --dry-run <config>` to see the full change report without writing the output. The report includes a per-style sample of the first ~5 affected paragraphs (with text preview, route used, and any prefix stripping) — use this to verify your `bulk_rules` / `pattern_rules` / `requirements` actually targeted the right segments. Adjust the config and re-run until the dry-run looks right, then drop the flag to commit.
+
 **Change report:** `apply_styles` writes the report to stdout as structured text. Present a concise summary to the user in chat, then deliver the output `.docx` file. The report includes:
 
-- Styles injected (count and list)
-- Paragraphs restyled (count, grouped by style)
-- Inconsistencies fixed (e.g. "3 headings normalized from 15pt to 16pt")
-- Flagged paragraphs (with reasons — the user should review these)
-- Validation result (pass/fail)
-- If the document contains a TOC: remind the user to right-click the TOC in Word and select "Update Field" after opening
+- Template import summary (if `template` was used): which style IDs imported, basedOn ancestors auto-pulled, numId remappings.
+- Styles injected (count and list).
+- Paragraphs restyled (count, grouped by style).
+- Manual numbering prefixes converted (per pattern).
+- Pattern rules matched (per regex, with strip count).
+- **Requirements check** (if `requirements` was provided): per style, field-by-field expected vs. actual. ✓ marks pass, ✗ marks mismatch (often means an explicit `overrides` clobbered a parsed requirement). Unparsed tokens listed for review.
+- Sample affected paragraphs per style — use to verify routing.
+- Inconsistencies fixed (e.g. "3 headings normalized from 15pt to 16pt").
+- Flagged paragraphs (with reasons — the user should review these).
+- Validation result (pass/fail).
+- If the document contains a TOC: remind the user to right-click the TOC in Word and select "Update Field" after opening.
 
 ## Important Guidelines
 
@@ -476,11 +528,12 @@ docx-normalize/
 ├── SKILL.md
 ├── scripts/
 │   ├── overview.js                   ← Document overview and skeleton
-│   ├── inspect_range.js              ← Detailed paragraph range view
+│   ├── inspect_range.js              ← Detailed paragraph range view (with image/table neighbor context)
+│   ├── inspect_runs.js               ← Per-run rPr dump + run-level diversity summary
 │   ├── inspect_style.js              ← Visual fingerprint occurrences
 │   ├── inspect_style_def.js          ← Named style definition details
 │   ├── inspect_section.js            ← Section page setup details
-│   └── apply_styles.js               ← Execute formatting changes, output new file + report
+│   └── apply_styles.js               ← Execute formatting changes; supports --dry-run
 └── references/
     └── numbering-formats.md          ← Numbering format reference (read when handling numbered headings)
 ```

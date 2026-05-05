@@ -50,6 +50,18 @@ function renderPara(p: ParsedParagraph): string[] {
   lines.push(
     `  successor:   ${succ ? `${succ.type}${succ.detail ? ` (${succ.detail})` : ""}` : "(none)"}`,
   )
+  const ctx = p.context
+  const ctxParts: string[] = []
+  const cm1 = (n: number) => n.toFixed(1)
+  if (ctx.nearestImageBefore)
+    ctxParts.push(`imgBefore@${ctx.nearestImageBefore.distance} (${cm1(ctx.nearestImageBefore.widthCm)}×${cm1(ctx.nearestImageBefore.heightCm)}cm)`)
+  if (ctx.nearestImageAfter)
+    ctxParts.push(`imgAfter@${ctx.nearestImageAfter.distance} (${cm1(ctx.nearestImageAfter.widthCm)}×${cm1(ctx.nearestImageAfter.heightCm)}cm)`)
+  if (ctx.nearestTableBefore)
+    ctxParts.push(`tblBefore@${ctx.nearestTableBefore.distance} (${ctx.nearestTableBefore.rows}×${ctx.nearestTableBefore.cols})`)
+  if (ctx.nearestTableAfter)
+    ctxParts.push(`tblAfter@${ctx.nearestTableAfter.distance} (${ctx.nearestTableAfter.rows}×${ctx.nearestTableAfter.cols})`)
+  if (ctxParts.length > 0) lines.push(`  near: ${ctxParts.join(", ")}`)
   lines.push(`  section: ${p.context.sectionIndex}`)
   return lines
 }
@@ -74,26 +86,32 @@ function formatRPr(r: ComputedRunStyle): string {
 function formatPPr(pp: ComputedParaStyle): string {
   const parts: string[] = []
   if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
-  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore}twips`)
-  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter}twips`)
+  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
+  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
   if (pp.lineSpacing !== undefined) {
-    const rule = pp.lineRule ? ` ${pp.lineRule}` : ""
-    parts.push(`lineSpacing: ${pp.lineSpacing}${rule}`)
+    parts.push(`lineSpacing: ${formatLineSpacing(pp.lineSpacing, pp.lineRule)}`)
   }
-  if (pp.indentLeft !== undefined) parts.push(`indentLeft: ${pp.indentLeft}twips`)
-  if (pp.indentRight !== undefined) parts.push(`indentRight: ${pp.indentRight}twips`)
+  if (pp.indentLeft !== undefined) parts.push(`indentLeft: ${pp.indentLeft / 20}pt`)
+  if (pp.indentRight !== undefined) parts.push(`indentRight: ${pp.indentRight / 20}pt`)
   if (pp.firstLineIndentChars !== undefined)
     parts.push(`firstLineIndent: ${pp.firstLineIndentChars / 100}char`)
   else if (pp.firstLineIndent !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndent}twips`)
+    parts.push(`firstLineIndent: ${pp.firstLineIndent / 20}pt`)
   if (pp.hangingIndentChars !== undefined)
     parts.push(`hangingIndent: ${pp.hangingIndentChars / 100}char`)
   else if (pp.hangingIndent !== undefined)
-    parts.push(`hangingIndent: ${pp.hangingIndent}twips`)
+    parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
   if (pp.outlineLevel !== undefined) parts.push(`outlineLevel: ${pp.outlineLevel}`)
   if (pp.numId) parts.push(`numId: ${pp.numId}`)
   if (pp.numLevel !== undefined) parts.push(`numLevel: ${pp.numLevel}`)
   return `{ ${parts.join(", ")} }`
+}
+
+function formatLineSpacing(line: number, rule: string | undefined): string {
+  const r = rule || "auto"
+  if (r === "exact") return `${line / 20}pt fixed`
+  if (r === "atLeast") return `${line / 20}pt atLeast`
+  return `${parseFloat((line / 240).toFixed(2))}×`
 }
 
 function pad(n: number): string {

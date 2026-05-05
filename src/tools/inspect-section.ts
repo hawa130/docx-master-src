@@ -19,10 +19,11 @@ async function main() {
     const out: string[] = []
     out.push(`Section ${sec.index} (paragraphs #${sec.paraRange[0]}-#${sec.paraRange[1]})`)
     const paper = paperName(sec.pageSize.width, sec.pageSize.height)
-    out.push(`  Paper:       ${paper} (${sec.pageSize.width} × ${sec.pageSize.height} twips)`)
+    const tw2mm = (t: number) => +(t / 56.6929).toFixed(1)
+    out.push(`  Paper:       ${paper} (${tw2mm(sec.pageSize.width)} × ${tw2mm(sec.pageSize.height)} mm)`)
     out.push(`  Orientation: ${sec.orientation}`)
     out.push(
-      `  Margins:     top=${sec.margins.top} bottom=${sec.margins.bottom} left=${sec.margins.left} right=${sec.margins.right} (twips)`,
+      `  Margins:     top=${tw2mm(sec.margins.top)} bottom=${tw2mm(sec.margins.bottom)} left=${tw2mm(sec.margins.left)} right=${tw2mm(sec.margins.right)} mm`,
     )
     out.push(`  Header: ${sec.header ?? "(none)"}`)
     if (sec.headerHasImage) out.push(`    contains image`)
@@ -46,13 +47,14 @@ async function main() {
 
 function diffSections(a: SectionInfo, b: SectionInfo): string[] {
   const out: string[] = []
+  const tw2mm = (t: number) => +(t / 56.6929).toFixed(1)
   if (a.pageSize.width !== b.pageSize.width || a.pageSize.height !== b.pageSize.height)
-    out.push(`paper changed: ${a.pageSize.width}×${a.pageSize.height} → ${b.pageSize.width}×${b.pageSize.height}`)
+    out.push(`paper changed: ${tw2mm(a.pageSize.width)}×${tw2mm(a.pageSize.height)}mm → ${tw2mm(b.pageSize.width)}×${tw2mm(b.pageSize.height)}mm`)
   if (a.orientation !== b.orientation)
     out.push(`orientation: ${a.orientation} → ${b.orientation}`)
   for (const k of ["top", "bottom", "left", "right"] as const) {
     if (a.margins[k] !== b.margins[k])
-      out.push(`margin.${k}: ${a.margins[k]} → ${b.margins[k]}`)
+      out.push(`margin.${k}: ${tw2mm(a.margins[k])}mm → ${tw2mm(b.margins[k])}mm`)
   }
   if ((a.header ?? "") !== (b.header ?? "")) {
     out.push(

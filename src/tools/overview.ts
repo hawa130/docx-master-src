@@ -50,12 +50,13 @@ function renderPageSetup(doc: LoadedDoc): string[] {
     return lines
   }
   const paper = paperName(s.pageSize.width, s.pageSize.height)
+  const tw2mm = (t: number) => +(t / 56.6929).toFixed(1)
   lines.push(
-    `Paper:       ${paper} (${s.pageSize.width} × ${s.pageSize.height} twips)`,
+    `Paper:       ${paper} (${tw2mm(s.pageSize.width)} × ${tw2mm(s.pageSize.height)} mm)`,
   )
   lines.push(`Orientation: ${s.orientation}`)
   lines.push(
-    `Margins:     top=${s.margins.top} bottom=${s.margins.bottom} left=${s.margins.left} right=${s.margins.right} (twips)`,
+    `Margins:     top=${tw2mm(s.margins.top)} bottom=${tw2mm(s.margins.bottom)} left=${tw2mm(s.margins.left)} right=${tw2mm(s.margins.right)} mm`,
   )
   return lines
 }
@@ -117,12 +118,47 @@ function renderNumbering(doc: LoadedDoc): string[] {
     lines.push("(no numbering)")
     return lines
   }
+
+  // Cluster numIds whose abstractNum has identical lvlText pattern across all
+  // levels — Word frequently emits N near-identical abstractNums (one per
+  // list region, varying only by start values). Showing them collapsed beats
+  // dumping 24 nearly-identical blocks.
+  const clusters = new Map<string, typeof defs>()
   for (const def of defs) {
-    lines.push(`  numId=${def.numId} (abstract=${def.abstractNumId})`)
-    for (const lvl of def.levels) {
+    const sig = def.levels
+      .map((l) => `${l.level}:${l.format}|${l.text}|${l.pStyle ?? ""}`)
+      .join(";;")
+    if (!clusters.has(sig)) clusters.set(sig, [])
+    clusters.get(sig)!.push(def)
+  }
+
+  let clusterIdx = 0
+  for (const [, group] of clusters) {
+    clusterIdx++
+    const sample = group[0]!
+    const ids = group.map((d) => d.numId).join(", ")
+    const starts = new Set(group.map((d) => d.levels[0]?.start ?? 1))
+    const startsStr =
+      starts.size === 1
+        ? `start=${[...starts][0]}`
+        : `starts: {${[...starts].sort((a, b) => a - b).join(", ")}}`
+
+    if (group.length === 1) {
+      lines.push(`  numId=${sample.numId} (abstract=${sample.abstractNumId})`)
+    } else {
+      lines.push(`  Scheme ${clusterIdx} × ${group.length} numIds: [${ids}]  ${startsStr}`)
+    }
+    // Only show non-empty levels; trailing decimal-with-empty-text levels are
+    // Word's default filler that distract from the actual scheme
+    const meaningful = sample.levels.filter(
+      (l) => l.text.length > 0 || l.pStyle !== undefined,
+    )
+    const shown = meaningful.length > 0 ? meaningful : sample.levels.slice(0, 1)
+    for (const lvl of shown) {
       const ps = lvl.pStyle ? ` pStyle=${lvl.pStyle}` : ""
+      const startNote = group.length === 1 ? ` start=${lvl.start}` : ""
       lines.push(
-        `    L${lvl.level}: numFmt=${lvl.format} lvlText="${lvl.text}" start=${lvl.start}${ps}`,
+        `    L${lvl.level}: numFmt=${lvl.format} lvlText="${lvl.text}"${startNote}${ps}`,
       )
     }
   }
