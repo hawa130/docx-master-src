@@ -225,15 +225,51 @@ export class DocumentParser {
     const pStyleEl = pPr ? firstChildNS(pPr, NS.w, "pStyle") : null
     const styleId = (pStyleEl && wVal(pStyleEl)) || "Normal"
 
-    // first run rPr (or paragraph mark rPr in pPr)
+    // dominant run rPr — pick the run with the most visible text characters.
+    // Fallback to first non-empty run, then paragraph-mark rPr in pPr.
+    // Why dominant rather than first: a heading may begin with a stylistically
+    // distinct number prefix run ("1. " in blue) before its bold black title;
+    // a list item may begin with a bold lead phrase before non-bold body text.
+    // Taking the first run misclassifies the paragraph by its prefix.
     const runs = getChildrenNS(pEl, NS.w, "r")
-    const firstRun = runs[0] || null
-    const firstRunRPr = firstRun ? firstChildNS(firstRun, NS.w, "rPr") : null
+    let dominantRun: Element | null = null
+    let dominantLen = -1
+    let firstNonEmptyRun: Element | null = null
+    let firstSubstantiveRun: Element | null = null
+    for (const r of runs) {
+      let text = ""
+      for (const c of getChildren(r)) {
+        if (c.namespaceURI === NS.w && c.localName === "t") text += textContent(c)
+      }
+      if (text.length > 0 && firstNonEmptyRun === null) firstNonEmptyRun = r
+      // Skip runs that look like a numbering / bullet prefix: pure digits,
+      // CJK numerals, list punctuation, or whitespace. Otherwise a heading
+      // "4.5 导出器" (prefix 4 chars, title 3 chars) would be classified by
+      // its prefix run instead of the title.
+      const isNumberingPrefix = text.length > 0 &&
+        /^[\d一二三四五六七八九十百千零０-９\.\(\)（）【】［］〔〕\[\]•·○●◆◇■□★☆※\-、，,\s]+$/.test(text)
+      if (!isNumberingPrefix && text.length > 0 && firstSubstantiveRun === null) {
+        firstSubstantiveRun = r
+      }
+      const len = isNumberingPrefix ? 0 : text.length
+      // Use >= so later runs win on ties: a heading "1.1 标题" typically has a
+      // numbering-prefix run followed by a title run; the title run carries
+      // the role-defining formatting.
+      if (len >= dominantLen) {
+        dominantLen = len
+        dominantRun = r
+      }
+    }
+    const chosenRun =
+      dominantLen > 0
+        ? dominantRun
+        : firstSubstantiveRun || firstNonEmptyRun || runs[0] || null
+    const chosenRPr = chosenRun ? firstChildNS(chosenRun, NS.w, "rPr") : null
     const paraMarkRPr = pPr ? firstChildNS(pPr, NS.w, "rPr") : null
 
     const computed = this.resolver.computeRunStyle(
       styleId,
-      firstRunRPr || paraMarkRPr,
+      chosenRPr || paraMarkRPr,
     )
 
     // overlay paragraph-level pPr direct formatting onto computed pPr

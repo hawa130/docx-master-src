@@ -63,7 +63,12 @@ function makeHash(p: ParsedParagraph): string {
   const color = r.color && r.color !== "auto" ? r.color : ""
   const alignment = pp.alignment || ""
   const indent = pp.firstLineIndent ? "1stInd" : ""
-  return `${font}|${size}|${flags}|${color}|${alignment}|${indent}`
+  // Include numbering presence so list items split out from visually-identical
+  // body paragraphs. Without this, two paragraphs that share the same rPr
+  // (e.g. 11pt non-bold body text vs. 11pt non-bold list item) would collapse
+  // into one fingerprint and bulk_rules couldn't target lists separately.
+  const list = pp.numId ? "L" : ""
+  return `${font}|${size}|${flags}|${color}|${alignment}|${indent}|${list}`
 }
 
 function describe(p: ParsedParagraph): string {
@@ -80,6 +85,7 @@ function describe(p: ParsedParagraph): string {
   if (r.color && r.color !== "auto") parts.push(`#${r.color}`)
   if (pp.alignment) parts.push(capitalize(pp.alignment))
   if (pp.firstLineIndent) parts.push("1stIndent")
+  if (pp.numId) parts.push("List")
   return parts.join(" ") || "(no formatting)"
 }
 

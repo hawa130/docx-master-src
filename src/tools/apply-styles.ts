@@ -32,11 +32,14 @@ interface StyleConfigEntry {
   color?: string
   alignment?: "left" | "center" | "right" | "both"
   lineSpacing?: number // multiple or exact pt
+  lineRule?: "auto" | "exact" | "atLeast"
   spaceBefore?: number // pt
   spaceAfter?: number // pt
   firstLineIndent?: string | number | null
   hangingIndent?: string | number | null
   outlineLevel?: number
+  fromParagraph?: number // 1-based paragraph index — extract computed style from this paragraph
+  overrides?: Partial<Omit<StyleConfigEntry, "id" | "name" | "fromParagraph" | "overrides">>
 }
 
 interface NumberingConfig {
@@ -46,6 +49,27 @@ interface NumberingConfig {
     text: string
     styleId: string
     start?: number
+    /**
+     * Additional manual-prefix patterns to strip from paragraphs at this level.
+     * Same syntax as `text` (e.g. "%1.%2", "%1.", "（%1）"). Tried in order;
+     * the first regex that matches the leading text of a run is removed.
+     * If omitted, the level falls back to using only `text` for stripping.
+     * Useful when authors mixed numbering styles across chapters
+     * (e.g. some H2 written as "1.1 …", others as "1. …").
+     */
+    stripPrefixPatterns?: string[]
+    /**
+     * rPr applied to the auto-generated number marker only (not the title text).
+     * Use to keep designs where headings have e.g. blue numbering + black title.
+     */
+    numRPr?: {
+      font?: string
+      fontEastAsia?: string
+      size?: number
+      bold?: boolean
+      italic?: boolean
+      color?: string
+    }
   }>
 }
 
@@ -151,13 +175,18 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   const { Fingerprinter } = await import("../core/fingerprint.ts")
   new Fingerprinter().assign(parsed.paragraphs)
 
-  // 4. Inject styles into styles.xml (modify or create)
+  // 4. Resolve fromParagraph references, then inject styles into styles.xml
+  const resolvedStyles = config.styles.map((def) => resolveStyleDef(def, parsed.paragraphs))
   const injected: string[] = []
   const updated: string[] = []
-  for (const def of config.styles) {
+  const derivedFrom = new Map<string, number>() // styleId → fromParagraph index (for report)
+  for (let i = 0; i < resolvedStyles.length; i++) {
+    const def = resolvedStyles[i]!
     const result = upsertStyle(stylesDoc, def)
     if (result === "created") injected.push(def.id)
     else updated.push(def.id)
+    const src = config.styles[i]!
+    if (src.fromParagraph !== undefined) derivedFrom.set(def.id, src.fromParagraph)
   }
 
   // 5. Inject numbering
@@ -182,11 +211,16 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   const flags: FlagRecord[] = []
   let manualNumberingRemoved: Map<string, number> = new Map()
 
-  // Build a map of styleId → numbering lvlText (to support manual prefix stripping)
-  const numLvlTextByStyle = new Map<string, string>()
+  // Build a map of styleId → list of lvlText patterns (to support manual prefix stripping).
+  // Each style can have multiple alternative patterns tried in order — useful when the
+  // source document mixed numbering styles across sections.
+  const numLvlTextByStyle = new Map<string, string[]>()
   if (config.numbering) {
     for (const lvl of config.numbering.levels) {
-      numLvlTextByStyle.set(lvl.styleId, lvl.text)
+      const patterns = lvl.stripPrefixPatterns && lvl.stripPrefixPatterns.length > 0
+        ? lvl.stripPrefixPatterns
+        : [lvl.text]
+      numLvlTextByStyle.set(lvl.styleId, patterns)
     }
   }
 
@@ -236,6 +270,7 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
     restyleStats,
     flags,
     manualNumberingRemoved,
+    derivedFrom,
     output,
   })
 }
@@ -248,7 +283,7 @@ interface ApplyContext {
   restyleStats: Map<string, number>
   flags: FlagRecord[]
   manualNumberingRemoved: Map<string, number>
-  numLvlTextByStyle: Map<string, string>
+  numLvlTextByStyle: Map<string, string[]>
   config: ApplyConfig
 }
 
@@ -323,15 +358,20 @@ function processOneParagraph(
   stripConflictingDirectFormatting(pEl, targetStyle, ctx)
   ctx.restyleStats.set(targetStyle, (ctx.restyleStats.get(targetStyle) ?? 0) + 1)
 
-  // Manual numbering text stripping
-  const lvlText = ctx.numLvlTextByStyle.get(targetStyle)
-  if (lvlText) {
-    const removed = removeManualNumberingPrefix(pEl, lvlText)
-    if (removed) {
-      ctx.manualNumberingRemoved.set(
-        lvlText,
-        (ctx.manualNumberingRemoved.get(lvlText) ?? 0) + 1,
-      )
+  // Manual numbering text stripping. Try each configured pattern in order;
+  // first match wins. Report which pattern was used so the change report can
+  // call out mixed authoring (e.g. some headings stripped via "%1.%2" and
+  // others via "%1." for the same style).
+  const lvlPatterns = ctx.numLvlTextByStyle.get(targetStyle)
+  if (lvlPatterns && lvlPatterns.length > 0) {
+    for (const pat of lvlPatterns) {
+      if (removeManualNumberingPrefix(pEl, pat)) {
+        ctx.manualNumberingRemoved.set(
+          pat,
+          (ctx.manualNumberingRemoved.get(pat) ?? 0) + 1,
+        )
+        break
+      }
     }
   }
 }
@@ -351,6 +391,17 @@ function setParagraphStyle(pEl: Element, styleId: string) {
   pStyle.setAttributeNS(w, "w:val", styleId)
 }
 
+const RPR_CONFLICT_NAMES = [
+  "rFonts",
+  "sz",
+  "szCs",
+  "b",
+  "bCs",
+  "i",
+  "iCs",
+  "color",
+] as const
+
 function stripConflictingDirectFormatting(
   pEl: Element,
   _styleId: string,
@@ -358,55 +409,78 @@ function stripConflictingDirectFormatting(
 ) {
   const w = NS.w
   const pPr = firstChildNS(pEl, w, "pPr")
-  if (!pPr) return
-  // remove direct paragraph formatting that the style now controls
-  const conflictNames = new Set([
-    "jc",
-    "spacing",
-    "ind",
-    "outlineLvl",
-  ])
-  for (const c of Array.from(getChildren(pPr))) {
-    if (c.namespaceURI === w && conflictNames.has(c.localName!)) {
-      pPr.removeChild(c)
+  if (pPr) {
+    // remove direct paragraph formatting that the style now controls
+    const conflictNames = new Set(["jc", "spacing", "ind", "outlineLvl"])
+    for (const c of Array.from(getChildren(pPr))) {
+      if (c.namespaceURI === w && conflictNames.has(c.localName!)) {
+        pPr.removeChild(c)
+      }
+    }
+    // paragraph-mark rPr applies only to the paragraph mark itself; safe to strip wholesale
+    const paraRPr = firstChildNS(pPr, w, "rPr")
+    if (paraRPr) {
+      stripAllConflicts(paraRPr)
+      if (getChildren(paraRPr).length === 0) pPr.removeChild(paraRPr)
     }
   }
-  // remove paragraph-mark rPr direct font/size/bold/italic
-  const paraRPr = firstChildNS(pPr, w, "rPr")
-  if (paraRPr) {
-    stripRunRPrConflicts(paraRPr)
-    if (getChildren(paraRPr).length === 0) {
-      pPr.removeChild(paraRPr)
+
+  // Run-level rPr: only strip a property when ALL runs in the paragraph carry
+  // the same value for it (it's redundant direct formatting that the style can
+  // safely take over). When runs disagree on a property, that disagreement is
+  // intentional mixed formatting (e.g. a bold lead phrase + non-bold body, or
+  // a colored numbering prefix + a bold title) and must be preserved.
+  const runs = getChildrenNS(pEl, w, "r")
+  if (runs.length === 0) return
+
+  const valuesByProp = new Map<string, Set<string>>()
+  for (const name of RPR_CONFLICT_NAMES) valuesByProp.set(name, new Set())
+  for (const r of runs) {
+    const rPr = firstChildNS(r, w, "rPr")
+    for (const name of RPR_CONFLICT_NAMES) {
+      const child = rPr ? firstChildNS(rPr, w, name) : null
+      valuesByProp.get(name)!.add(child ? rPrChildSignature(child, name) : "<absent>")
     }
   }
-  // for each run, strip conflicting rPr
-  for (const r of getChildrenNS(pEl, w, "r")) {
+  const uniformToStrip = new Set<string>()
+  for (const [name, vals] of valuesByProp) {
+    if (vals.size <= 1) uniformToStrip.add(name)
+  }
+
+  for (const r of runs) {
     const rPr = firstChildNS(r, w, "rPr")
     if (!rPr) continue
-    stripRunRPrConflicts(rPr)
-    if (getChildren(rPr).length === 0) {
-      r.removeChild(rPr)
+    for (const c of Array.from(getChildren(rPr))) {
+      if (c.namespaceURI === w && uniformToStrip.has(c.localName!)) {
+        rPr.removeChild(c)
+      }
     }
+    if (getChildren(rPr).length === 0) r.removeChild(rPr)
   }
 }
 
-function stripRunRPrConflicts(rPr: Element) {
+function stripAllConflicts(rPr: Element) {
   const w = NS.w
-  const conflictNames = new Set([
-    "rFonts",
-    "sz",
-    "szCs",
-    "b",
-    "bCs",
-    "i",
-    "iCs",
-    "color",
-  ])
+  const conflictNames = new Set<string>(RPR_CONFLICT_NAMES)
   for (const c of Array.from(getChildren(rPr))) {
     if (c.namespaceURI === w && conflictNames.has(c.localName!)) {
       rPr.removeChild(c)
     }
   }
+}
+
+function rPrChildSignature(el: Element, name: string): string {
+  if (name === "rFonts") {
+    return ["ascii", "hAnsi", "eastAsia", "cs"]
+      .map((a) => `${a}=${wAttr(el, a) ?? ""}`)
+      .join("|")
+  }
+  // toggles (b, bCs, i, iCs): absence==off; presence==on unless val="0"/"false"
+  if (name === "b" || name === "bCs" || name === "i" || name === "iCs") {
+    const v = wAttr(el, "val")
+    return v === "0" || v === "false" ? "off" : "on"
+  }
+  return wAttr(el, "val") ?? ""
 }
 
 function removeManualNumberingPrefix(pEl: Element, lvlText: string): boolean {
@@ -436,6 +510,60 @@ function removeManualNumberingPrefix(pEl: Element, lvlText: string): boolean {
     if (txt.trim().length > 0) break
   }
   return false
+}
+
+/* ------------- fromParagraph resolution ------------- */
+
+function resolveStyleDef(
+  def: StyleConfigEntry,
+  paragraphs: ParsedParagraph[],
+): StyleConfigEntry {
+  if (def.fromParagraph === undefined) return def
+  const para = paragraphs.find((p) => p.index === def.fromParagraph)
+  if (!para) {
+    throw new Error(
+      `style "${def.id}": fromParagraph #${def.fromParagraph} not found (paragraph indices are 1-based and must refer to indexed paragraphs — content inside data/form tables is not indexed)`,
+    )
+  }
+  const extracted = paragraphToStyleEntry(para)
+  return {
+    basedOn: "Normal",
+    ...extracted,
+    ...(def.overrides ?? {}),
+    id: def.id,
+    name: def.name,
+    ...(def.basedOn !== undefined ? { basedOn: def.basedOn } : {}),
+  }
+}
+
+function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
+  const r = p.rPr
+  const pp = p.pPr
+  const out: Partial<StyleConfigEntry> = {}
+  const font = r.fontAscii ?? r.fontHAnsi
+  if (font) out.font = font
+  if (r.fontEastAsia && r.fontEastAsia !== font) out.fontEastAsia = r.fontEastAsia
+  if (r.size !== undefined) out.size = r.size / 2
+  if (r.bold) out.bold = true
+  if (r.italic) out.italic = true
+  if (r.color && r.color !== "auto") out.color = r.color
+  if (pp.alignment) out.alignment = pp.alignment as StyleConfigEntry["alignment"]
+  if (pp.spaceBefore !== undefined) out.spaceBefore = pp.spaceBefore / 20
+  if (pp.spaceAfter !== undefined) out.spaceAfter = pp.spaceAfter / 20
+  if (pp.lineSpacing !== undefined) {
+    const rule = (pp.lineRule || "auto") as "auto" | "exact" | "atLeast"
+    if (rule === "auto") {
+      out.lineSpacing = pp.lineSpacing / 240
+    } else {
+      out.lineSpacing = pp.lineSpacing / 20
+      out.lineRule = rule
+    }
+  }
+  if (pp.firstLineIndent !== undefined) out.firstLineIndent = pp.firstLineIndent / 20
+  if (pp.hangingIndent !== undefined) out.hangingIndent = pp.hangingIndent / 20
+  if (pp.outlineLevel !== undefined) out.outlineLevel = pp.outlineLevel
+  // intentionally omitted: pStyle (would self-reference), numId/numLevel (bound via numbering config)
+  return out
 }
 
 /* ------------- styles.xml manipulation ------------- */
@@ -495,12 +623,13 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
     if (def.spaceAfter !== undefined)
       spacing.setAttributeNS(w, "w:after", String(Math.round(def.spaceAfter * 20)))
     if (def.lineSpacing !== undefined) {
-      if (def.lineSpacing < 10) {
+      const rule = def.lineRule ?? (def.lineSpacing < 10 ? "auto" : "exact")
+      if (rule === "auto") {
         spacing.setAttributeNS(w, "w:line", String(Math.round(def.lineSpacing * 240)))
         spacing.setAttributeNS(w, "w:lineRule", "auto")
       } else {
         spacing.setAttributeNS(w, "w:line", String(Math.round(def.lineSpacing * 20)))
-        spacing.setAttributeNS(w, "w:lineRule", "exact")
+        spacing.setAttributeNS(w, "w:lineRule", rule)
       }
     }
     pPr.appendChild(spacing)
@@ -601,6 +730,10 @@ function injectNumbering(numberingDoc: Document, config: NumberingConfig): strin
     const pStyle = numberingDoc.createElementNS(w, "w:pStyle")
     pStyle.setAttributeNS(w, "w:val", lvl.styleId)
     lvlEl.appendChild(pStyle)
+    if (lvl.numRPr) {
+      const rPr = buildLvlRPr(numberingDoc, lvl.numRPr)
+      if (rPr) lvlEl.appendChild(rPr)
+    }
     abs.appendChild(lvlEl)
   }
   // abstractNum must come before num children — insert before any existing num
@@ -616,6 +749,44 @@ function injectNumbering(numberingDoc: Document, config: NumberingConfig): strin
   root.appendChild(num)
 
   return String(nextNum)
+}
+
+function buildLvlRPr(
+  doc: Document,
+  spec: NonNullable<NumberingConfig["levels"][number]["numRPr"]>,
+): Element | null {
+  const w = NS.w
+  const rPr = doc.createElementNS(w, "w:rPr")
+  if (spec.font || spec.fontEastAsia) {
+    const rFonts = doc.createElementNS(w, "w:rFonts")
+    if (spec.font) {
+      rFonts.setAttributeNS(w, "w:ascii", spec.font)
+      rFonts.setAttributeNS(w, "w:hAnsi", spec.font)
+    }
+    if (spec.fontEastAsia) rFonts.setAttributeNS(w, "w:eastAsia", spec.fontEastAsia)
+    rPr.appendChild(rFonts)
+  }
+  if (spec.size !== undefined) {
+    const sz = doc.createElementNS(w, "w:sz")
+    sz.setAttributeNS(w, "w:val", String(Math.round(spec.size * 2)))
+    rPr.appendChild(sz)
+  }
+  if (spec.bold !== undefined) {
+    const b = doc.createElementNS(w, "w:b")
+    if (!spec.bold) b.setAttributeNS(w, "w:val", "0")
+    rPr.appendChild(b)
+  }
+  if (spec.italic !== undefined) {
+    const i = doc.createElementNS(w, "w:i")
+    if (!spec.italic) i.setAttributeNS(w, "w:val", "0")
+    rPr.appendChild(i)
+  }
+  if (spec.color) {
+    const color = doc.createElementNS(w, "w:color")
+    color.setAttributeNS(w, "w:val", spec.color)
+    rPr.appendChild(color)
+  }
+  return getChildren(rPr).length > 0 ? rPr : null
 }
 
 function attachNumberingToStyle(
@@ -727,12 +898,21 @@ function printReport(args: {
   restyleStats: Map<string, number>
   flags: FlagRecord[]
   manualNumberingRemoved: Map<string, number>
+  derivedFrom: Map<string, number>
   output: string
 }) {
   const lines: string[] = []
   lines.push("=== Change Report ===")
-  lines.push(`Styles injected: ${args.injected.length} (${args.injected.join(", ")})`)
-  lines.push(`Styles updated:  ${args.updated.length} (${args.updated.join(", ")})`)
+  const annotate = (id: string) => {
+    const src = args.derivedFrom.get(id)
+    return src !== undefined ? `${id} (from #${src})` : id
+  }
+  lines.push(
+    `Styles injected: ${args.injected.length} (${args.injected.map(annotate).join(", ")})`,
+  )
+  lines.push(
+    `Styles updated:  ${args.updated.length} (${args.updated.map(annotate).join(", ")})`,
+  )
   lines.push("")
   let totalRestyled = 0
   for (const [, c] of args.restyleStats) totalRestyled += c
