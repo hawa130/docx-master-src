@@ -17,12 +17,24 @@ Tools only present facts — computed styles, element positions, document struct
 
 ### Step 1: Understand the Goal
 
-Check what the user has provided. Only ask for clarification if the goal is genuinely ambiguous — otherwise proceed with defaults and state your assumptions in the report.
+Check what the user has provided.
 
 - **Explicit text guidelines** (e.g. "一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): you translate the natural language into structured `styles[i]` fields — the script does NOT parse it (a regex can't tell "不要加粗" from "加粗"). Pass the user's original wording *verbatim* into `requirements: { styleId: "..." }`; the script prints it side-by-side with your resolved fields in the change report for human verification. See Step 4 for 字号 / 字体 / 颜色 mappings.
 - **Template / reference document**: pass via `template: { source, styles: [...] }`. The script clones the named styles' full pPr/rPr (with basedOn ancestors) into the source's styles.xml and migrates any referenced numId. Run `overview` / `inspect_style_def` on the template first to choose which styleIds to import — no separate analysis pass needed.
 - **No guidelines**: infer the intended style system from the document, normalize to the majority pattern.
-- **Default scope:** Reformat in place, preserve all content.
+- **Default scope**: full standardization — paragraph roles classified, named styles injected, manual heading numbering migrated to auto, content preserved. **Invoking the skill IS the standardization request**; typography preferences the user mentions are applied on top, not in place of it.
+
+**Reading scope cues**:
+
+| Phrasing | Meaning |
+|---|---|
+| Action verbs ("执行skill", "标准化", "整理排版") | Full default. |
+| "附加要求是 X" / "另外 X" / "顺便 X" / typography preferences ("正文用宋体") | Default PLUS X — augmentation, NOT replacement. |
+| "只 X" / "仅 X" / "保留 Y" / "不要动 Y" | Genuine scope limit / opt-out. Honor it. |
+
+The most common misread is parsing "附加要求是 X" as "X only" — it means the opposite.
+
+**When uncertain, ask before guessing.** Genuine ambiguity comes up in three places: (a) scope — is the user's narrow-sounding request actually narrow or just preferences-on-top of standardization? (b) role assignment — is this paragraph a heading or emphasized body? (c) conflict between user spec and document reality — user said one font but doc majority is another. For these, ask one focused clarifying question. For everything else, proceed with defaults and surface assumptions in the change report.
 
 **When the user provides a template/reference document + a target document:**
 
@@ -181,22 +193,17 @@ When the user provides text requirements, parse Chinese font size names using th
 
 ### Step 5: Define the Numbering Scheme
 
-**Default expectation for thesis / paper / report / 设计方案 layouts: define `numbering.levels[]` covering every heading level that has numbered text.** This is the single most-skipped step and the most damaging to skip — without it, the numbers stay as plain typed text and the user gets:
+**Default behavior — always migrate manual numbering to automatic when the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法"` / `"第N章 ..."`).** This is part of standardization, not an optional extra. Without auto-numbering: insert a new chapter and downstream numbers, TOC entries, and cross-references all break. The user almost always wants this even when they don't explicitly ask — they ask for "排版" / "标准化" / "执行skill" and expect a properly-styled document, not one that still has manual numbers waiting to break.
 
-- Insert a new chapter → all subsequent chapter numbers stay wrong, manual renumber required
-- TOC / 目录 → built from heading text, includes the stale text numbers
-- Cross-references (`STYLEREF`, `REF`) → may resolve to wrong section labels
-- The whole point of "automatic numbering" is undelivered
+**Only skip numbering migration in these specific cases:**
 
-**Decision rule** — read this before deciding whether to write `numbering`:
-
-| Source state | Action |
+| Skip reason | Trigger |
 |---|---|
-| Headings have **typed prefix text** like `"1. 引言"` / `"1.1 研究方法"` / `"第1章 绪论"` (digits visible in paragraph text) | **Write numbering**. Script strips the typed prefix; Word renders auto-numbers. Typical thesis/paper case. |
-| Headings have **no prefix text** (`"绪论"`, `"参考文献"`) but should be numbered | **Write numbering**. Word generates `"1. "`, `"2. "`, etc. — no prefix to strip. |
-| Headings already have `<w:numPr>` (auto-numbered via existing `numId` from a prior author setup) AND you don't want to change the scheme | **Skip numbering**. smart-strip preserves `<w:numPr>` so applying a style keeps existing auto-numbering. |
-| User explicitly says "keep manual numbering" / "不要自动编号" | **Skip numbering**. Honor the override. |
-| Document has no numbered headings at all (preface, foreword without chapter numbers) | **Skip numbering**. Nothing to bind. |
+| User **explicitly opts out** | "保留手动编号" / "不要动编号" / "keep manual numbering" / "don't touch the numbering" |
+| Source already has `<w:numPr>` you want to preserve | Headings carry real `numId` references (verify with `inspect_range`) — smart-strip keeps `<w:numPr>` intact when restyling |
+| No numbered headings exist at all | Preface / foreword without chapter numbers |
+
+When in doubt, migrate — or ask. The user can say "保留手动编号" if they don't want it.
 
 Don't reason "the document already shows 1./1.1 in the text, so numbering must already be set up." Typed-text prefixes look identical to auto-numbers in the rendered doc but behave completely differently. Use `inspect_range` on a heading; if `numId` isn't in the computed pPr, the prefix is plain text and you need `numbering` to convert.
 
@@ -212,7 +219,7 @@ Before calling `apply_styles`, present your plan to yourself as a self-check:
 
 1. **Style parameter source** — for each style, are the parameter values taken from `inspect_style` output (or user requirements)? If any value was made up without a source, call `inspect_style` for that fingerprint first.
 2. **Style definitions** — list each style with its parameters. Does any style have missing critical fields (e.g. a heading without `outlineLevel`)?
-3. **Numbering scheme** — for any heading style whose paragraphs have typed numeric prefix in source text (`"1. ..."`, `"1.1 ..."`, `"第N章 ..."`), is there a corresponding `numbering.levels[]` entry binding to that style? If you're about to skip `numbering` entirely, double-check via `inspect_range` that the headings actually have `numId` already set — visual digits in text mean nothing if `numId` is absent. **Skipping `numbering` for a doc with manual-prefix headings is the single most common mistake**: the output looks fine but inserting a new chapter will break all subsequent numbers. If `numbering` is present, also check: does the `lvlText` pattern match what appears in the document? Are all levels bound to the correct styles? Do `stripPrefixPatterns` cover all observed prefix variants?
+3. **Numbering scheme** — if the document has typed heading prefixes, did you define `numbering.levels[]`? Default is to migrate (see Step 5 skip exceptions). Does the `lvlText` match observed prefixes, are all levels bound to the right styles, do `stripPrefixPatterns` cover all the observed variants (mixed patterns within one role — `"1.1 ..."` and `"1. ..."` for the same level — need both)?
 4. **Fingerprint coverage** — does every fingerprint from the overview have a decision? Each should map to one of: a style (`restyle`), fixed content (`keep`/`exclude`), or uncertain (`flag`). No fingerprint should be left unaccounted for.
 5. **Exclude list** — are cover page paragraphs, TOC entries, and other fixed content excluded?
 6. **High-risk paragraphs** — are there paragraphs where the role is ambiguous? Flag them rather than guess.
@@ -234,13 +241,13 @@ Call `apply_styles` with your decision in a JSON config.
                                            //   either via fromParagraph extraction or
                                            //   manual fields, with optional overrides.
 
-  numbering: { levels: [ ... ] },          // REQUIRED whenever heading text in source carries
-                                           //   typed digit prefix (1./1.1/第N章/...) — without
-                                           //   this, those numbers stay as plain text and
-                                           //   inserting a new chapter breaks all subsequent
-                                           //   numbering. Skip ONLY when source already has
-                                           //   numId references you want preserved, or no
-                                           //   headings are numbered. See Step 5 decision rule.
+  numbering: { levels: [ ... ] },          // Default-on whenever heading text in source carries
+                                           //   typed digit prefix ("1." / "1.1" / "第N章"),
+                                           //   regardless of how narrow the user's other
+                                           //   requests look. Skip only if (a) user opts out
+                                           //   explicitly, (b) source already has real numId
+                                           //   references to preserve, or (c) no numbered
+                                           //   headings exist. See Step 5.
 
   template: { source, styles: [ ... ] },   // optional. Import named styles from another
                                            //   docx; basedOn ancestors auto-pulled,
