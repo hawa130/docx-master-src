@@ -2,6 +2,8 @@
 
 This repo builds the `docx-normalize` Claude skill — scripts that classify paragraph roles in a Word document and inject named styles. `SKILL.md` is the agent-facing contract; this file is for working *on* the project.
 
+**Keep this file in sync.** Tool names, build commands, file paths, and the lessons below are referenced concretely. When any of them changes, update here in the same commit — stale references mislead future maintainers and the next agent reviewing the design.
+
 ## Layout
 
 ```
@@ -11,6 +13,7 @@ references/     agent-facing reference docs (progressive disclosure from SKILL.m
 SKILL.md        the skill spec the agent reads at runtime
 test/fixtures/  sample .docx files for manual testing
 dist/           build output; dist/docx-normalize/ is the staged skill bundle
+build-skill.ts  packages the staged dir into the .skill zip
 ```
 
 ## Commands
@@ -25,29 +28,39 @@ No automated tests — run scripts against `test/fixtures/*.docx` manually after
 
 ## Design principles
 
-### Tools expose visible facts; the agent makes role judgments
+### Tools expose visible facts; agents make role judgments
 
-Tools should expose what a human reader of the document can see — font, size, weight, color, alignment, indent, numbering markers, text content. The agent classifies roles from these facts.
+Tools should expose what a human reader of the artifact can see — in this skill: font, size, weight, color, alignment, indent, numbering markers, text content. The agent classifies roles from those visible facts.
 
-**Don't pre-digest hidden metadata or natural language into role hints in default output.** Two times this was tried — a regex parser for Chinese typography ("小四宋体" → fields), and an `[LN]` outline-level hint on the fingerprint summary — both backfired the same way: the agent accepts the convenient pre-classification as ground truth and bypasses its own judgment, the same judgment that would have caught upstream errors. Both removed.
+**Don't pre-digest hidden metadata or natural language into role hints in default output.** When tooling presents a "convenient pre-classification" (a parsed translation, a metadata-derived label), the LLM accepts it as ground truth and bypasses its own judgment — the same judgment that would have caught upstream errors. This anti-pattern showed up twice in this project (a regex parser for Chinese typography, an `[LN]` outline-level hint on the fingerprint summary); both were removed for the same reason.
 
-Hidden metadata (`outlineLevel`, `pStyle`, `numId`, abstractNum) can still be exposed by tools — but as **raw data on demand**, when the agent calls `inspect_range` / `inspect_style_def`. Never pre-packaged into a default summary.
+Hidden metadata can still be exposed — but as **raw data on demand**, when the agent explicitly calls `inspect_range` / `inspect_style_def`. On-demand exposure means the agent has already started reasoning and is using the metadata as one input among many. Pre-packaging it into a default summary means the tool is doing the reasoning for the agent.
 
-**Litmus test for any new "helpful hint":** could a human reader derive this without opening the XML? Yes → expose it. No → only on demand, never as a role hint.
+**Litmus test for any new "helpful hint":** could a human reader derive this from the artifact's normal rendering, without opening the underlying file format? Yes → expose it. No → only on demand, never as a role hint in default output.
+
+### Verification must check against intent, not interpretation
+
+If a check grades the system's output against the same system's interpretation of the input, it's a tautology and passes regardless of correctness. The removed `requirements-parser.ts` had this flaw — it parsed user text into fields, then verified the script wrote those same fields; the parser's own misreading was invisible to the check.
+
+Real verification compares against ground truth: human-readable side-by-side display (Style Resolution shows raw user text + agent-resolved fields for visual review), or output re-parsed against an independent invariant (apply_styles validates by re-reading the produced docx).
+
+### Recognize a recurring anti-pattern; codify it as a principle
+
+When the same root cause shows up in two different shapes — here, "tooling pre-classifies for the agent and the agent stops verifying" surfaced once as a NL parser and once as a metadata hint — don't just fix the second instance. Promote it to a principle in CLAUDE.md / SKILL.md so the third proposal hits the wall. Two occurrences is the signal that the underlying gravity is going to keep pulling.
 
 ### SKILL.md is the agent's runtime context — keep it lean
 
-Every line of SKILL.md is loaded into the agent's context on every invocation. Encode only what the agent can't derive: technical invariants the script depends on, workflow anchors, tool references. Cut restated points, disambiguation tables for things an LLM infers from context, and examples of tool output (the tool prints them). Detailed schema lives in `references/`, loaded on demand.
+Every line is loaded into the agent's context on every invocation. Encode only what the agent can't derive: technical invariants the scripts depend on, workflow anchors, tool references. Cut restated points, disambiguation tables for things an LLM infers from context, examples of output the tool prints itself. Detailed schema lives in `references/`, loaded on demand.
 
-When feedback comes in, ask first: *can the agent's own judgment cover this?* If yes, don't add. Encode only what's repeatedly missed across multiple agents or mechanically non-obvious.
+Reactive maintenance is a trap: each external feedback adds a paragraph; over multiple rounds the doc bloats with restatements. When feedback comes in, ask first: *can the agent's own judgment cover this?* If yes, don't add. Periodically zoom out and audit holistically — patch-by-patch additions all looked justified, but the sum may not be.
 
 ### Tools follow the on-demand pattern
 
-Each tool has one focused job. Don't add always-on enrichment to default outputs — prefer a new focused script (e.g. `inspect_neighbors` is separate rather than putting neighbor info on every paragraph in `inspect_range`).
+Each tool has one focused job. Don't add always-on enrichment to default outputs — prefer a new focused script. Default outputs stay scannable; deep info is one tool call away.
 
 ### Mechanical correctness is the script's job
 
-LLMs are bad at byte-level work. The scripts must guarantee:
+LLMs are bad at byte-level work; scripts must guarantee these and never bend them under refactoring pressure:
 
 - XML-namespace-correct mutation of `styles.xml` / `numbering.xml` / `document.xml`
 - Cross-run formatting preservation (smart-strip's uniform-vs-mixed rule)
