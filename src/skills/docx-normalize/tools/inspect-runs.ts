@@ -21,6 +21,7 @@ import {
   wAttr,
 } from "@core/xml-utils.ts"
 import { summarizeTable } from "@core/table-classifier.ts"
+import { pad } from "../lib/format.ts"
 
 interface RunInfo {
   index: number
@@ -192,8 +193,7 @@ function renderReport(
   runs: RunInfo[],
 ): string {
   const lines: string[] = []
-  const pad = paraIdx.toString().padStart(3, "0")
-  lines.push(`#${pad} [${fingerprint}]  pStyle="${styleId}"  ${runs.length} run${runs.length === 1 ? "" : "s"}`)
+  lines.push(`#${pad(paraIdx)} [${fingerprint}]  pStyle="${styleId}"  ${runs.length} run${runs.length === 1 ? "" : "s"}`)
   const truncated = fullText.length > 80 ? fullText.slice(0, 77) + "…" : fullText
   lines.push(`  text: ${JSON.stringify(truncated)}`)
   lines.push("")

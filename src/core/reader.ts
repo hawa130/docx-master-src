@@ -22,10 +22,6 @@ export class DocxReader {
     return new DocxReader(filePath, zip, buf.length)
   }
 
-  hasEntry(entryPath: string): boolean {
-    return this.zip.file(entryPath) !== null
-  }
-
   async readText(entryPath: string): Promise<string | null> {
     const entry = this.zip.file(entryPath)
     if (!entry) return null
@@ -36,19 +32,6 @@ export class DocxReader {
     const text = await this.readText(entryPath)
     if (text === null) return null
     return this.parser.parseFromString(text, "text/xml") as unknown as Document
-  }
-
-  async readBinary(entryPath: string): Promise<Buffer | null> {
-    const entry = this.zip.file(entryPath)
-    if (!entry) return null
-    const u8 = await entry.async("uint8array")
-    return Buffer.from(u8)
-  }
-
-  listEntries(): string[] {
-    const names: string[] = []
-    this.zip.forEach((path) => names.push(path))
-    return names
   }
 
   /**
@@ -74,10 +57,11 @@ export class DocxReader {
   }
 }
 
-export const xmlSerializer = new XMLSerializer()
+const xmlSerializer = new XMLSerializer()
 
 export function serializeXml(doc: Document): string {
-  // ensure declaration; @xmldom does not include one by default for top-level Document
+  // @xmldom omits the XML declaration when serializing a Document; re-add it
+  // since Word expects the standard `<?xml ...?>` prelude on every part.
   const out = xmlSerializer.serializeToString(doc as any)
   if (out.startsWith("<?xml")) return out
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${out}`

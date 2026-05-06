@@ -16,6 +16,7 @@
  * pattern matches multiple roles and you want to scope to one visual class.
  */
 import { loadDocx } from "@core/load.ts"
+import { pad } from "../lib/format.ts"
 
 async function main() {
   const argv = process.argv.slice(2)
@@ -94,10 +95,6 @@ async function main() {
     console.error(`Error: ${(err as Error).message}`)
     process.exit(1)
   }
-}
-
-function pad(n: number): string {
-  return n.toString().padStart(3, "0")
 }
 
 main()

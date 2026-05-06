@@ -3,10 +3,11 @@ import { dirname, resolve } from "node:path"
 import JSZip from "jszip"
 import { DOMParser } from "@xmldom/xmldom"
 import { DocxReader, serializeXml } from "@core/reader.ts"
-import { importTemplateStyles } from "@core/template-import.ts"
+import { importTemplateStyles, type ImportResult } from "@core/template-import.ts"
 import { StyleResolver } from "@core/style-resolver.ts"
 import { DocumentParser } from "@core/document-parser.ts"
 import { summarizeTable } from "@core/table-classifier.ts"
+import { Fingerprinter } from "@core/fingerprint.ts"
 import {
   NS,
   type DocumentElement,
@@ -229,13 +230,14 @@ interface RestyleStat {
 }
 
 export async function applyStyles(source: string, output: string, config: ApplyConfig) {
-  // 1. In dry-run: read source directly. Otherwise copy first, modify the copy.
+  // 1. Dry-run reads the source directly; otherwise copy first and modify
+  // the copy so the original stays untouched on validation failure.
   if (!config.dryRun) {
     mkdirSync(dirname(output), { recursive: true })
     copyFileSync(source, output)
   }
 
-  // 2. Open the COPY as our working zip
+  // 2. Open whichever path we'll be reading from (source or output copy).
   const reader = await DocxReader.open(config.dryRun ? source : output)
   const stylesDoc =
     (await reader.readXml("word/styles.xml")) ??
@@ -250,9 +252,9 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   const resolver = new StyleResolver(stylesDoc, themeDoc)
   const parser = new DocumentParser(documentDoc, resolver, numberingDoc)
   const parsed = parser.parse()
-  // parsed.paragraphs already has fingerprints? No — fingerprinter is run in load.ts only.
-  // Run fingerprinter here:
-  const { Fingerprinter } = await import("@core/fingerprint.ts")
+  // DocumentParser doesn't fingerprint — that's a fingerprinter pass run by
+  // load.ts (which we don't use here, since we want the in-memory mutated
+  // documentDoc, not a fresh re-open via loadDocx). Run it ourselves.
   const fpResult = new Fingerprinter().assign(parsed.paragraphs)
   // Build hash → letter map so bulk_rules can reference fingerprints by
   // either the in-session letter (A, B, ...) or the content-derived hash
@@ -269,7 +271,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // styles[] entries with the same ID can still override a template-imported
   // style (user-declared takes precedence so the template is the baseline,
   // not a hard ceiling).
-  let templateImport: { imported: string[]; numIdRemap: Map<string, string>; pulledAncestors: string[] } | null = null
+  let templateImport: ImportResult | null = null
   if (config.template) {
     const tplCfg = config.template
     if (!Array.isArray(tplCfg.styles) || tplCfg.styles.length === 0) {
@@ -288,22 +290,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       numberingDoc,
       { importNumbering: tplCfg.importNumbering },
     )
-    // If we imported numbering, the source needs the numbering content type
-    // and rels — same plumbing as our own injectNumbering branch handles
-    // later. Mark this for later.
+    // If template numbering was imported, ensureNumberingContentType /
+    // ensureNumberingRelationship below picks it up via numIdRemap.size > 0.
   }
 
-  // 4. Resolve fromParagraph references, then merge in parsed requirements,
-  // then inject styles into styles.xml.
-  //
-  // Note: `requirements` is annotation-only. The script does NOT parse the
-  // user's natural-language spec — that's the agent's job (the agent is an
-  // LLM, ideal for handling negation, synonyms, hierarchical references,
-  // sentence structure, ambiguity). The script just records the user's raw
-  // text and the agent-resolved structured fields side-by-side in the
-  // change report so any reader can verify by eye that the resolution
-  // matches intent. A regex parser would give false confidence (it can't
-  // tell "不要加粗" from "加粗") and tempt the agent to be lazy.
+  // 4. Resolve fromParagraph references and inject styles into styles.xml.
+  // `requirements` is annotation-only; see ApplyConfig.requirements docs.
   if (config.requirements) {
     const declared = new Set(config.styles.map((s) => s.id))
     for (const styleId of Object.keys(config.requirements)) {
@@ -343,7 +335,6 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   }
 
   // 5. Inject numbering
-  let numIdMap = new Map<string, string>() // styleId → numId
   if (config.numbering && config.numbering.levels.length > 0) {
     const declaredIds = new Set(config.styles.map((s) => s.id))
     // Numbering levels can also bind to styles already present in the
@@ -400,9 +391,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       }
     }
     const newNumId = injectNumbering(numberingDoc, config.numbering)
-    // Update the relevant styles' numPr
     for (const lvl of config.numbering.levels) {
-      numIdMap.set(lvl.styleId, newNumId)
       attachNumberingToStyle(stylesDoc, lvl.styleId, newNumId, lvl.level)
     }
   }
@@ -467,24 +456,23 @@ export async function applyStyles(source: string, output: string, config: ApplyC
 
   const restyleStats = new Map<string, number>()
   const flags: FlagRecord[] = []
-  let manualNumberingRemoved: Map<string, number> = new Map()
-  // Parallel tracking keyed by styleId → pattern → count, so the report can
+  const manualNumberingRemoved = new Map<string, number>()
+  // Parallel tracking keyed by styleId → pattern → count so the report can
   // detect "this heading style had >1 distinct strip pattern hit" — i.e. the
   // source mixed manual numbering schemes within one role (e.g. some H2 as
   // "1.1" and some as "1." across chapters). manualNumberingRemoved alone
   // can't surface this because it merges across styles.
-  const manualNumberingByStyle: Map<string, Map<string, number>> = new Map()
+  const manualNumberingByStyle = new Map<string, Map<string, number>>()
   const patternMatchStats = new Map<string, number>()
   const patternStripStats = new Map<string, number>()
 
   // Compile pattern_rules eagerly so a bad regex fails before we touch
   // the docx, and we can reuse the compiled regex per paragraph.
-  const definedStyleIds = new Set(config.styles.map((s) => s.id))
   const patternRules: CompiledPatternRule[] = []
   for (const [i, p] of (config.pattern_rules ?? []).entries()) {
-    if (!definedStyleIds.has(p.style)) {
+    if (!declaredStyleIds.has(p.style)) {
       throw new Error(
-        `pattern_rules[${i}].style "${p.style}" is not declared in styles[]. Defined: [${[...definedStyleIds].join(", ")}]`,
+        `pattern_rules[${i}].style "${p.style}" is not declared in styles[]. Defined: [${[...declaredStyleIds].join(", ")}]`,
       )
     }
     let re: RegExp
@@ -543,7 +531,6 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     samples,
     samplesPerStyleCap: 5,
     implicitKeepByFingerprint,
-    config,
   }
   applyToBody(documentDoc, ctx)
 
@@ -553,22 +540,20 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   if (numberingDoc) replacements.set("word/numbering.xml", serializeXml(numberingDoc))
   replacements.set("word/document.xml", serializeXml(documentDoc))
   // Make sure numbering.xml is referenced from [Content_Types].xml when
-  // newly created — covers our own injectNumbering and template numbering
+  // newly created — covers both injectNumbering and template numbering
   // migration paths.
   const numberingTouched =
-    !!config.numbering ||
-    (templateImport && templateImport.numIdRemap.size > 0)
+    !!config.numbering || !!templateImport?.numIdRemap.size
   if (numberingTouched) {
     await ensureNumberingContentType(reader, replacements)
     await ensureNumberingRelationship(reader, replacements)
   }
-  // 8b. Dry-run short-circuits here: skip writing the file and the
-  // post-write validation. The agent gets the report and can iterate.
-  let validation: { ok: boolean; error?: string } = { ok: true }
+  // 8b. Dry-run skips both write and validation; the agent iterates on the
+  // report alone. Otherwise: write, then re-parse the modified entries to
+  // catch malformed XML before claiming success.
   if (!config.dryRun) {
     await reader.copyAndModify(output, replacements)
-    // 9. Validate by re-parsing modified entries
-    validation = await validateOutput(output, Array.from(replacements.keys()))
+    const validation = await validateOutput(output, Array.from(replacements.keys()))
     if (!validation.ok) {
       if (existsSync(output)) {
         try {
@@ -619,7 +604,6 @@ interface RestyleSample {
   textPreview: string
   via: "assignment" | "pattern" | "bulk"
   patternSource?: string
-  prefixStripped?: string
   notes: string[]
 }
 
@@ -647,7 +631,6 @@ interface ApplyContext {
    * the paragraph has visible text — empty paragraphs are likely intentional
    * spacers, non-empty are coverage signal. */
   implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number }>
-  config: ApplyConfig
 }
 
 /* ------------- paragraph processing ------------- */
@@ -748,7 +731,7 @@ function processOneParagraph(
   // apply restyle
   const oldPStyle = para.styleId
   setParagraphStyle(pEl, targetStyle)
-  stripConflictingDirectFormatting(pEl, targetStyle, ctx)
+  stripConflictingDirectFormatting(pEl)
   ctx.restyleStats.set(targetStyle, (ctx.restyleStats.get(targetStyle) ?? 0) + 1)
 
   // Record sample for the change report (cap per style to keep output bounded).
@@ -804,10 +787,7 @@ function processOneParagraph(
           ctx.manualNumberingByStyle.set(targetStyle, perStyle)
         }
         perStyle.set(pat, (perStyle.get(pat) ?? 0) + 1)
-        if (thisSample) {
-          thisSample.prefixStripped = pat
-          thisSample.notes.push(`stripped manual prefix "${pat}"`)
-        }
+        if (thisSample) thisSample.notes.push(`stripped manual prefix "${pat}"`)
         break
       }
     }
@@ -840,25 +820,23 @@ const RPR_CONFLICT_NAMES = [
   "color",
 ] as const
 
-function stripConflictingDirectFormatting(
-  pEl: Element,
-  _styleId: string,
-  _ctx: ApplyContext,
-) {
+function stripConflictingDirectFormatting(pEl: Element) {
   const w = NS.w
   const pPr = firstChildNS(pEl, w, "pPr")
   if (pPr) {
-    // remove direct paragraph formatting that the style now controls
-    const conflictNames = new Set(["jc", "spacing", "ind", "outlineLvl"])
+    // Strip direct paragraph-level overrides the style now controls. The
+    // paragraph-mark rPr is also wholesale-stripped of conflicts because it
+    // applies only to the trailing paragraph mark; nothing the user sees
+    // depends on its values that the new style can't provide.
+    const directConflicts = new Set(["jc", "spacing", "ind", "outlineLvl"])
     for (const c of Array.from(getChildren(pPr))) {
-      if (c.namespaceURI === w && conflictNames.has(c.localName!)) {
+      if (c.namespaceURI === w && directConflicts.has(c.localName!)) {
         pPr.removeChild(c)
       }
     }
-    // paragraph-mark rPr applies only to the paragraph mark itself; safe to strip wholesale
     const paraRPr = firstChildNS(pPr, w, "rPr")
     if (paraRPr) {
-      stripAllConflicts(paraRPr)
+      removeRPrConflicts(paraRPr)
       if (getChildren(paraRPr).length === 0) pPr.removeChild(paraRPr)
     }
   }
@@ -897,11 +875,11 @@ function stripConflictingDirectFormatting(
   }
 }
 
-function stripAllConflicts(rPr: Element) {
+function removeRPrConflicts(rPr: Element) {
   const w = NS.w
-  const conflictNames = new Set<string>(RPR_CONFLICT_NAMES)
+  const conflicts = new Set<string>(RPR_CONFLICT_NAMES)
   for (const c of Array.from(getChildren(rPr))) {
-    if (c.namespaceURI === w && conflictNames.has(c.localName!)) {
+    if (c.namespaceURI === w && conflicts.has(c.localName!)) {
       rPr.removeChild(c)
     }
   }
@@ -922,17 +900,13 @@ function rPrChildSignature(el: Element, name: string): string {
 }
 
 /**
- * Strip a regex match (anchored at start) from the leading text run of a
- * paragraph. The match may span multiple runs in a single w:t — we only
- * touch the first non-empty w:t. If the matched prefix is longer than that
- * w:t's text, we strip what's there and leave the rest alone (rare in
- * practice; manual prefixes are usually a single run).
+ * Replace a leading match in the paragraph's first non-empty w:t with the
+ * regex stripped. Returns true on a hit. Touches only the first non-empty
+ * w:t — if the prefix straddles runs (rare for manual numbering), the
+ * trailing portion is left in the next run.
  */
-function removeRegexPrefix(pEl: Element, regex: RegExp): boolean {
+function stripLeadingMatch(pEl: Element, re: RegExp): boolean {
   const w = NS.w
-  const re = regex.source.startsWith("^")
-    ? regex
-    : new RegExp("^" + regex.source, regex.flags)
   for (const run of getChildrenNS(pEl, w, "r")) {
     const tEl = firstChildNS(run, w, "t")
     if (!tEl) continue
@@ -949,33 +923,20 @@ function removeRegexPrefix(pEl: Element, regex: RegExp): boolean {
   return false
 }
 
+function removeRegexPrefix(pEl: Element, regex: RegExp): boolean {
+  const re = regex.source.startsWith("^")
+    ? regex
+    : new RegExp("^" + regex.source, regex.flags)
+  return stripLeadingMatch(pEl, re)
+}
+
 function removeManualNumberingPrefix(pEl: Element, lvlText: string): boolean {
-  const w = NS.w
-  // build regex from lvlText: replace %N with a generic numeric/Chinese capture
+  // Build a regex from lvlText: replace each %N placeholder with a generic
+  // numeric / CJK-numeral capture (matches "1.1", "第三章", etc.).
   const pattern = lvlText
     .replace(/[.*+?^${}()|[\]\\]/g, (m) => "\\" + m)
     .replace(/%\d/g, "(?:\\d+|[一二三四五六七八九十百千]+)")
-  const re = new RegExp("^\\s*" + pattern + "\\s*")
-
-  // find first w:t descendant and modify its text if it matches
-  const runs = getChildrenNS(pEl, w, "r")
-  for (const run of runs) {
-    const tEl = firstChildNS(run, w, "t")
-    if (!tEl) continue
-    const txt = textContent(tEl)
-    if (re.test(txt)) {
-      const replaced = txt.replace(re, "")
-      // overwrite text
-      while (tEl.firstChild) tEl.removeChild(tEl.firstChild)
-      tEl.appendChild(tEl.ownerDocument!.createTextNode(replaced))
-      // preserve spaces
-      tEl.setAttribute("xml:space", "preserve")
-      return true
-    }
-    // only check first non-empty run
-    if (txt.trim().length > 0) break
-  }
-  return false
+  return stripLeadingMatch(pEl, new RegExp("^\\s*" + pattern + "\\s*"))
 }
 
 /* ------------- fromParagraph resolution ------------- */
@@ -1061,12 +1022,13 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
   const root = stylesDoc.documentElement!
   const existing = getChildrenNS(root, w, "style").find((s) => wAttr(s, "styleId") === def.id)
   let target: Element
-  let created = false
   if (existing) {
     target = existing
-    // wipe basedOn, pPr, rPr — we'll rebuild them
+    // Wipe the parts we're about to rebuild — leave anything else (uiPriority,
+    // qFormat, link, etc.) intact so we don't strip metadata Word relies on.
+    const rebuildable = new Set(["pPr", "rPr", "basedOn", "name"])
     for (const c of Array.from(getChildren(target))) {
-      if (c.namespaceURI === w && (c.localName === "pPr" || c.localName === "rPr" || c.localName === "basedOn" || c.localName === "name")) {
+      if (c.namespaceURI === w && rebuildable.has(c.localName!)) {
         target.removeChild(c)
       }
     }
@@ -1075,7 +1037,6 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
     target.setAttributeNS(w, "w:type", "paragraph")
     target.setAttributeNS(w, "w:styleId", def.id)
     root.appendChild(target)
-    created = true
   }
 
   const nameEl = stylesDoc.createElementNS(w, "w:name")
@@ -1180,7 +1141,7 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
   }
   if (rPr.childNodes.length > 0) target.appendChild(rPr)
 
-  return created ? "created" : "updated"
+  return existing ? "updated" : "created"
 }
 
 /**
@@ -1417,7 +1378,7 @@ function printReport(args: {
   dryRun: boolean
   samples: Map<string, RestyleSample[]>
   implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number }>
-  templateImport: { imported: string[]; numIdRemap: Map<string, string>; pulledAncestors: string[] } | null
+  templateImport: ImportResult | null
 }) {
   const lines: string[] = []
   lines.push(args.dryRun ? "=== Change Report (DRY RUN — no file written) ===" : "=== Change Report ===")
@@ -1448,7 +1409,7 @@ function printReport(args: {
   )
   lines.push("")
   let totalRestyled = 0
-  for (const [, c] of args.restyleStats) totalRestyled += c
+  for (const c of args.restyleStats.values()) totalRestyled += c
   lines.push(`Paragraphs restyled: ${totalRestyled}`)
   for (const [styleId, count] of args.restyleStats) {
     lines.push(`  ${styleId}: ${count} paragraphs`)
@@ -1456,12 +1417,11 @@ function printReport(args: {
   if (args.implicitKeepByFingerprint.size > 0) {
     let totalEmpty = 0
     let totalNonEmpty = 0
-    for (const [, v] of args.implicitKeepByFingerprint) {
+    for (const v of args.implicitKeepByFingerprint.values()) {
       totalEmpty += v.empty
       totalNonEmpty += v.nonEmpty
     }
-    const totalImplicit = totalEmpty + totalNonEmpty
-    lines.push(`Paragraphs untouched: ${totalImplicit}`)
+    lines.push(`Paragraphs untouched: ${totalEmpty + totalNonEmpty}`)
     if (totalEmpty > 0) {
       lines.push(`  empty (likely spacers): ${totalEmpty}`)
     }

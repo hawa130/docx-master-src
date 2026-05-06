@@ -12,8 +12,6 @@ import {
   type SectionInfo,
 } from "./types.ts"
 import {
-  attr,
-  descendantsNS,
   firstChildNS,
   getChildrenNS,
   textContent,

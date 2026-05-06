@@ -1,6 +1,6 @@
 import { NS } from "./types.ts"
 
-export function isElement(node: any): node is Element {
+function isElement(node: any): node is Element {
   return node && node.nodeType === 1
 }
 
@@ -80,19 +80,6 @@ export function wAttr(el: Element | null, name: string): string | null {
 
 export function wVal(el: Element | null): string | null {
   return wAttr(el, "val")
-}
-
-/** Get text content of all w:t descendants joined. */
-export function getRunText(runEl: Element): string {
-  let out = ""
-  walk(runEl as any, (e) => {
-    if (e.namespaceURI === NS.w) {
-      if (e.localName === "t") out += textContent(e)
-      else if (e.localName === "tab") out += "\t"
-      else if (e.localName === "br") out += "\n"
-    }
-  })
-  return out
 }
 
 export function textContent(el: Element): string {

@@ -73,20 +73,6 @@ export interface StyleDefinition {
   usageCount: number
 }
 
-export interface NumberingLevel {
-  level: number
-  format: string
-  text: string
-  pStyle?: string
-  start: number
-}
-
-export interface NumberingDefinition {
-  numId: string
-  abstractNumId: string
-  levels: NumberingLevel[]
-}
-
 export interface SectionInfo {
   index: number
   paraRange: [number, number]

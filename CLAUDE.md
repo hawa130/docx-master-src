@@ -12,7 +12,10 @@ src/core/                          shared across all skills:
 src/skills/<name>/                 one directory per skill, fully self-contained:
 src/skills/<name>/SKILL.md           the skill spec the agent reads at runtime
 src/skills/<name>/references/        on-demand reference docs (progressive disclosure)
-src/skills/<name>/tools/             TS source for the skill's CLI scripts
+src/skills/<name>/tools/             TS source for CLIs the agent invokes directly
+                                       (each file = one entry in tsdown.config.ts)
+src/skills/<name>/lib/               skill-internal helpers (CLI scaffolding, display
+                                       formatters); NOT built as scripts, only imported
 test/fixtures/                     sample .docx files for manual testing
 dist/<name>/                       staged skill bundle (SKILL.md + references/ + scripts/)
 dist/<name>.zip                    zipped bundle ready to publish
@@ -35,8 +38,9 @@ No automated tests — run scripts against `test/fixtures/*.docx` manually after
 
 1. `mkdir -p src/skills/<name>/{tools,references}` and write `src/skills/<name>/SKILL.md`
 2. Add the skill's tool entries to `tsdown.config.ts` (each entry maps a script name → its `tools/<file>.ts`)
-3. Tools import shared modules via `@core/...` and skill-internal modules via relative paths
-4. `bun run build:skill <name>` produces `dist/<name>/` and `dist/<name>.zip`
+3. Tools import shared modules via `@core/...`, skill-internal helpers via `../lib/...`
+4. **`tools/` is exclusively for files that get built as agent-callable CLIs.** Anything that's only imported (CLI scaffolding, formatters) goes in `lib/` so the build entry list and the agent's mental model of "tools" stay aligned.
+5. `bun run build:skill <name>` produces `dist/<name>/` and `dist/<name>.zip`
 
 ## Design principles
 

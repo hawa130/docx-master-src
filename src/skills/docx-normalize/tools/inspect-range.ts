@@ -1,5 +1,6 @@
 import { loadDocx } from "@core/load.ts"
 import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "@core/types.ts"
+import { formatLineSpacing, pad } from "../lib/format.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -85,17 +86,6 @@ function formatPPr(pp: ComputedParaStyle): string {
   if (pp.numId) parts.push(`numId: ${pp.numId}`)
   if (pp.numLevel !== undefined) parts.push(`numLevel: ${pp.numLevel}`)
   return `{ ${parts.join(", ")} }`
-}
-
-function formatLineSpacing(line: number, rule: string | undefined): string {
-  const r = rule || "auto"
-  if (r === "exact") return `${line / 20}pt fixed`
-  if (r === "atLeast") return `${line / 20}pt atLeast`
-  return `${parseFloat((line / 240).toFixed(2))}×`
-}
-
-function pad(n: number): string {
-  return n.toString().padStart(3, "0")
 }
 
 main()

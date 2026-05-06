@@ -1,7 +1,6 @@
 import {
   NS,
   type ComputedParaStyle,
-  type ComputedRunStyle,
   type DocumentElement,
   type NeighborItem,
   type ParsedParagraph,
@@ -78,7 +77,7 @@ export class DocumentParser {
     const root = this.docXml.documentElement
     const body = firstChildNS(root, NS.w, "body")
     if (!body) {
-      return { paragraphs: [], elements: [], sections: [] }
+      return { paragraphs: [], elements: [], sections: [], neighborItems: [] }
     }
 
     const allParagraphs: ParsedParagraph[] = []

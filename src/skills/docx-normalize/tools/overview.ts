@@ -1,6 +1,7 @@
 import { loadDocx, parseNumbering } from "@core/load.ts"
-import type { DocumentElement, ParsedParagraph, SectionInfo } from "@core/types.ts"
+import type { DocumentElement } from "@core/types.ts"
 import type { LoadedDoc } from "@core/load.ts"
+import { pad, paperName, truncate, tw2mm } from "../lib/format.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -50,7 +51,6 @@ function renderPageSetup(doc: LoadedDoc): string[] {
     return lines
   }
   const paper = paperName(s.pageSize.width, s.pageSize.height)
-  const tw2mm = (t: number) => +(t / 56.6929).toFixed(1)
   lines.push(
     `Paper:       ${paper} (${tw2mm(s.pageSize.width)} × ${tw2mm(s.pageSize.height)} mm)`,
   )
@@ -256,36 +256,10 @@ function renderElement(el: DocumentElement, indent: string): string[] {
   return lines
 }
 
-function truncate(s: string, n: number): string {
-  const collapsed = s.replace(/\s+/g, " ").trim()
-  if (collapsed.length <= n) return collapsed
-  return collapsed.slice(0, n) + "…"
-}
-
-function pad(n: number): string {
-  return n.toString().padStart(3, "0")
-}
-
 function formatSize(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(2)} MB`
-}
-
-function paperName(width: number, height: number): string {
-  // common paper sizes in twips
-  const known: Array<[string, number, number]> = [
-    ["A4", 11906, 16838],
-    ["A4", 16838, 11906],
-    ["A3", 16838, 23811],
-    ["A5", 8392, 11906],
-    ["Letter", 12240, 15840],
-    ["Legal", 12240, 20160],
-  ]
-  for (const [name, w, h] of known) {
-    if (Math.abs(width - w) < 50 && Math.abs(height - h) < 50) return name
-  }
-  return "Custom"
 }
 
 main()

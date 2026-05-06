@@ -21,9 +21,27 @@ interface ThemeFonts {
   minorEastAsia?: string
 }
 
+/** Map of theme color slot (dk1, lt1, accent1, ...) → hex. */
 interface ThemeColors {
-  // map theme color slot → hex
   [slot: string]: string
+}
+
+/** Style entry as parsed from styles.xml — basedOn chain not yet resolved. */
+interface RawStyle {
+  id: string
+  name: string
+  type: string
+  basedOn: string | null
+  rPr: ComputedRunStyle
+  pPr: ComputedParaStyle
+  isDefault: boolean
+}
+
+interface ResolvedStyle {
+  rPr: ComputedRunStyle
+  pPr: ComputedParaStyle
+  styleName: string
+  chain: string[]
 }
 
 export class StyleResolver {
@@ -32,23 +50,8 @@ export class StyleResolver {
   private styles = new Map<string, StyleDefinition>()
   private themeFonts: ThemeFonts = {}
   private themeColors: ThemeColors = {}
-  // raw rPr/pPr elements per style id, plus inheritance
-  private rawStyles = new Map<
-    string,
-    {
-      id: string
-      name: string
-      type: string
-      basedOn: string | null
-      rPr: ComputedRunStyle
-      pPr: ComputedParaStyle
-      isDefault: boolean
-    }
-  >()
-  private resolvedCache = new Map<
-    string,
-    { rPr: ComputedRunStyle; pPr: ComputedParaStyle; styleName: string; chain: string[] }
-  >()
+  private rawStyles = new Map<string, RawStyle>()
+  private resolvedCache = new Map<string, ResolvedStyle>()
 
   constructor(stylesDoc: Document | null, themeDoc: Document | null) {
     if (themeDoc) this.parseTheme(themeDoc)
@@ -280,11 +283,27 @@ export class StyleResolver {
   }
 
   private resolveThemeFont(themeRef: string, isEastAsia: boolean): string | undefined {
-    const major = themeRef.includes("major") || themeRef.includes("Major")
-    if (isEastAsia || themeRef.endsWith("EastAsia")) {
-      return major ? this.themeFonts.majorEastAsia : this.themeFonts.minorEastAsia
+    // OOXML theme font tokens are a closed set (ECMA-376 §17.18.96).
+    // Match the exact token rather than fuzzy substring checks — guards
+    // against accidental matches in unrelated values.
+    switch (themeRef) {
+      case "majorAscii":
+      case "majorHAnsi":
+      case "majorBidi":
+        return this.themeFonts.majorLatin
+      case "minorAscii":
+      case "minorHAnsi":
+      case "minorBidi":
+        return this.themeFonts.minorLatin
+      case "majorEastAsia":
+        return this.themeFonts.majorEastAsia
+      case "minorEastAsia":
+        return this.themeFonts.minorEastAsia
     }
-    return major ? this.themeFonts.majorLatin : this.themeFonts.minorLatin
+    // Unknown token: fall back to the slot the caller asked for. Major vs
+    // minor is no longer derivable, so default to minor (the more common
+    // body-text slot).
+    return isEastAsia ? this.themeFonts.minorEastAsia : this.themeFonts.minorLatin
   }
 
   private resolveThemeColor(themeRef: string): string | undefined {
@@ -341,12 +360,7 @@ export class StyleResolver {
   }
 
   /** Resolve a style by id, walking basedOn chain from root downwards. */
-  resolveStyleChain(styleId: string): {
-    rPr: ComputedRunStyle
-    pPr: ComputedParaStyle
-    styleName: string
-    chain: string[]
-  } {
+  resolveStyleChain(styleId: string): ResolvedStyle {
     const cached = this.resolvedCache.get(styleId)
     if (cached) return cached
     const chain = this.buildChain(styleId)
@@ -410,20 +424,24 @@ export class StyleResolver {
   }
 }
 
-function mergeRPr(base: ComputedRunStyle, overlay: ComputedRunStyle): ComputedRunStyle {
+/**
+ * Overlay only the defined fields of `overlay` onto a copy of `base`. Used
+ * for merging both rPr and pPr inheritance frames; the field semantics are
+ * the same (later wins iff non-undefined) so one helper covers both.
+ */
+function mergeStyle<T extends object>(base: T, overlay: T): T {
   const out = { ...base }
-  for (const k of Object.keys(overlay) as (keyof ComputedRunStyle)[]) {
+  for (const k of Object.keys(overlay) as (keyof T)[]) {
     const v = overlay[k]
     if (v !== undefined) (out as any)[k] = v
   }
   return out
 }
 
+function mergeRPr(base: ComputedRunStyle, overlay: ComputedRunStyle): ComputedRunStyle {
+  return mergeStyle(base, overlay)
+}
+
 function mergePPr(base: ComputedParaStyle, overlay: ComputedParaStyle): ComputedParaStyle {
-  const out = { ...base }
-  for (const k of Object.keys(overlay) as (keyof ComputedParaStyle)[]) {
-    const v = overlay[k]
-    if (v !== undefined) (out as any)[k] = v
-  }
-  return out
+  return mergeStyle(base, overlay)
 }

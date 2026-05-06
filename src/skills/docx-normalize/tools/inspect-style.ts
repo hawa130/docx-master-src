@@ -1,5 +1,6 @@
 import { loadDocx } from "@core/load.ts"
 import type { ParsedParagraph } from "@core/types.ts"
+import { formatLineSpacing, pad, truncate } from "../lib/format.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -84,13 +85,6 @@ function formatPPr(p: ParsedParagraph, all: ParsedParagraph[]): string {
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 
-function formatLineSpacing(line: number, rule: string | undefined): string {
-  const r = rule || "auto"
-  if (r === "exact") return `${line / 20}pt fixed`
-  if (r === "atLeast") return `${line / 20}pt atLeast`
-  return `${parseFloat((line / 240).toFixed(2))}×`
-}
-
 function resolveNumId(all: ParsedParagraph[]): string | null {
   const seen = new Set<string>()
   let hasUnset = false
@@ -101,16 +95,6 @@ function resolveNumId(all: ParsedParagraph[]): string | null {
   if (seen.size === 0) return null
   if (seen.size === 1 && !hasUnset) return Array.from(seen)[0]!
   return "mixed"
-}
-
-function truncate(s: string, n: number): string {
-  const collapsed = s.replace(/\s+/g, " ").trim()
-  if (collapsed.length <= n) return collapsed
-  return collapsed.slice(0, n) + "…"
-}
-
-function pad(n: number): string {
-  return n.toString().padStart(3, "0")
 }
 
 main()

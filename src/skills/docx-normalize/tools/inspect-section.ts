@@ -1,5 +1,6 @@
 import { loadDocx } from "@core/load.ts"
 import type { SectionInfo } from "@core/types.ts"
+import { paperName, tw2mm } from "../lib/format.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -19,7 +20,6 @@ async function main() {
     const out: string[] = []
     out.push(`Section ${sec.index} (paragraphs #${sec.paraRange[0]}-#${sec.paraRange[1]})`)
     const paper = paperName(sec.pageSize.width, sec.pageSize.height)
-    const tw2mm = (t: number) => +(t / 56.6929).toFixed(1)
     out.push(`  Paper:       ${paper} (${tw2mm(sec.pageSize.width)} × ${tw2mm(sec.pageSize.height)} mm)`)
     out.push(`  Orientation: ${sec.orientation}`)
     out.push(
@@ -47,7 +47,6 @@ async function main() {
 
 function diffSections(a: SectionInfo, b: SectionInfo): string[] {
   const out: string[] = []
-  const tw2mm = (t: number) => +(t / 56.6929).toFixed(1)
   if (a.pageSize.width !== b.pageSize.width || a.pageSize.height !== b.pageSize.height)
     out.push(`paper changed: ${tw2mm(a.pageSize.width)}×${tw2mm(a.pageSize.height)}mm → ${tw2mm(b.pageSize.width)}×${tw2mm(b.pageSize.height)}mm`)
   if (a.orientation !== b.orientation)
@@ -71,21 +70,6 @@ function diffSections(a: SectionInfo, b: SectionInfo): string[] {
       `Footer page format: ${a.footerPageNumFormat ?? "(none)"} → ${b.footerPageNumFormat ?? "(none)"}`,
     )
   return out
-}
-
-function paperName(w: number, h: number): string {
-  const known: Array<[string, number, number]> = [
-    ["A4", 11906, 16838],
-    ["A4", 16838, 11906],
-    ["A3", 16838, 23811],
-    ["A5", 8392, 11906],
-    ["Letter", 12240, 15840],
-    ["Legal", 12240, 20160],
-  ]
-  for (const [n, ww, hh] of known) {
-    if (Math.abs(w - ww) < 50 && Math.abs(h - hh) < 50) return n
-  }
-  return "Custom"
 }
 
 main()
