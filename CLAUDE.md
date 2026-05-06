@@ -73,4 +73,4 @@ When changing any of these, verify against `test/fixtures/` and inspect the outp
 
 ## Commit style
 
-Detailed messages explaining *why*. The history is the design record — when a feature was removed (the natural-language parser, the always-on neighbor fields, the outline hint), the commit message documents the rationale so the same idea isn't reinvented. Don't include `co-authored-by` tags.
+Title: what changed. Body: why, in 1–3 short paragraphs max — enough that the next maintainer wouldn't accidentally revert the decision. The diff already shows what; don't restate it. No "Net: X → Y lines" stats, no per-bullet narration of each change, no recap of content already in CLAUDE.md / SKILL.md. Don't include `co-authored-by` tags.
