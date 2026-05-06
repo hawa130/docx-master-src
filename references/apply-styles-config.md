@@ -100,10 +100,10 @@ numbering: {
   levels: [
     {
       level:   0,                        // REQUIRED. 0-8.
-      format:  "chineseCounting",        // REQUIRED. numFmt value (decimal, bullet,
-                                         //   chineseCounting, lowerRoman, etc. —
-                                         //   see references/numbering-formats.md).
-      text:    "第%1章",                 // REQUIRED. lvlText pattern.
+      numFmt:  "chineseCounting",        // REQUIRED. OOXML w:numFmt value — decimal /
+                                         //   chineseCounting / bullet / lowerRoman / etc.
+                                         //   See references/numbering-formats.md for table.
+      lvlText: "第%1章",                 // REQUIRED. OOXML w:lvlText pattern.
       styleId: "Heading1",               // REQUIRED. Binds this level to a paragraph style.
       start:   1,                        // optional. Starting number. Default 1.
       stripPrefixPatterns: ["%1.%2", "%1."],
@@ -111,7 +111,7 @@ numbering: {
                                          //   to strip from paragraph text (tried in
                                          //   order, longest first). Use when the source
                                          //   mixes styles — some H2 written as "1.1 ...",
-                                         //   others as "1. ...". Defaults to [text].
+                                         //   others as "1. ...". Defaults to [lvlText].
       numRPr: {                          // optional. rPr applied to the auto-generated
         color: "3370FF",                 //   number marker only — independent of the
         bold:  false,                    //   title text. Use to keep designs like

@@ -46,8 +46,10 @@ interface StyleConfigEntry {
 interface NumberingConfig {
   levels: Array<{
     level: number
-    format: string
-    text: string
+    /** OOXML numFmt value: "decimal" | "chineseCounting" | "bullet" | "lowerRoman" | ... */
+    numFmt: string
+    /** OOXML lvlText pattern: e.g. "%1." / "%1.%2" / "第%1章" */
+    lvlText: string
     styleId: string
     start?: number
     /**
@@ -389,22 +391,20 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   if (config.numbering && config.numbering.levels.length > 0) {
     const declaredIds = new Set(config.styles.map((s) => s.id))
     for (const [i, lvl] of config.numbering.levels.entries()) {
-      // Required-field validation. Without this an undefined `text` /
-      // `format` crashes downstream with "Cannot read properties of
-      // undefined" instead of pointing at the offending field. The
-      // common confusion is using OOXML names (numFmt / lvlText) when
-      // the schema uses format / text — surface both names in the error.
+      // Required-field validation. Without this an undefined `lvlText` /
+      // `numFmt` crashes downstream with "Cannot read properties of
+      // undefined" instead of pointing at the offending field.
       if (typeof lvl.level !== "number") {
         throw new Error(`numbering.levels[${i}]: missing required field "level" (number, 0-8)`)
       }
-      if (typeof lvl.format !== "string" || !lvl.format) {
+      if (typeof lvl.numFmt !== "string" || !lvl.numFmt) {
         throw new Error(
-          `numbering.levels[${i}]: missing required field "format" (e.g. "decimal", "chineseCounting", "bullet"). Note: the field is "format", not "numFmt".`,
+          `numbering.levels[${i}]: missing required field "numFmt" (e.g. "decimal", "chineseCounting", "bullet")`,
         )
       }
-      if (typeof lvl.text !== "string") {
+      if (typeof lvl.lvlText !== "string") {
         throw new Error(
-          `numbering.levels[${i}]: missing required field "text" (lvlText pattern, e.g. "%1.", "%1.%2", "第%1章"). Note: the field is "text", not "lvlText".`,
+          `numbering.levels[${i}]: missing required field "lvlText" (level text pattern, e.g. "%1.", "%1.%2", "第%1章")`,
         )
       }
       if (typeof lvl.styleId !== "string" || !lvl.styleId) {
@@ -419,12 +419,12 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
       // sanity-check stripPrefixPatterns vs lvlText placeholder count: a
       // pattern with more %N placeholders than the level can produce will
       // never match (e.g. "%1.%2.%3" on a level-0 lvlText "%1.")
-      const numPlaceholders = (lvl.text.match(/%\d/g) ?? []).length
+      const numPlaceholders = (lvl.lvlText.match(/%\d/g) ?? []).length
       for (const p of lvl.stripPrefixPatterns ?? []) {
         const pn = (p.match(/%\d/g) ?? []).length
         if (pn > numPlaceholders) {
           console.error(
-            `Warning: numbering.levels[${i}].stripPrefixPatterns "${p}" has ${pn} placeholders but level lvlText "${lvl.text}" has only ${numPlaceholders}. Pattern may match more than intended.`,
+            `Warning: numbering.levels[${i}].stripPrefixPatterns "${p}" has ${pn} placeholders but lvlText "${lvl.lvlText}" has only ${numPlaceholders}. Pattern may match more than intended.`,
           )
         }
       }
@@ -535,7 +535,7 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
     for (const lvl of config.numbering.levels) {
       const patterns = lvl.stripPrefixPatterns && lvl.stripPrefixPatterns.length > 0
         ? lvl.stripPrefixPatterns
-        : [lvl.text]
+        : [lvl.lvlText]
       numLvlTextByStyle.set(lvl.styleId, patterns)
     }
   }
@@ -1227,12 +1227,12 @@ function injectNumbering(numberingDoc: Document, config: NumberingConfig): strin
     const start = numberingDoc.createElementNS(w, "w:start")
     start.setAttributeNS(w, "w:val", String(lvl.start ?? 1))
     lvlEl.appendChild(start)
-    const numFmt = numberingDoc.createElementNS(w, "w:numFmt")
-    numFmt.setAttributeNS(w, "w:val", lvl.format)
-    lvlEl.appendChild(numFmt)
-    const lvlText = numberingDoc.createElementNS(w, "w:lvlText")
-    lvlText.setAttributeNS(w, "w:val", lvl.text)
-    lvlEl.appendChild(lvlText)
+    const numFmtEl = numberingDoc.createElementNS(w, "w:numFmt")
+    numFmtEl.setAttributeNS(w, "w:val", lvl.numFmt)
+    lvlEl.appendChild(numFmtEl)
+    const lvlTextEl = numberingDoc.createElementNS(w, "w:lvlText")
+    lvlTextEl.setAttributeNS(w, "w:val", lvl.lvlText)
+    lvlEl.appendChild(lvlTextEl)
     const lvlJc = numberingDoc.createElementNS(w, "w:lvlJc")
     lvlJc.setAttributeNS(w, "w:val", "left")
     lvlEl.appendChild(lvlJc)

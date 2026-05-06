@@ -152,16 +152,16 @@ When the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法
 
 If the manual scheme itself is inconsistent across the document — e.g. H1 has numbers in chapter 1 but not chapter 2, or H2 uses chapter-prefixed `"1.1"` in some chapters and per-chapter-restart `"1."` in others — auto-migration is also a normalization decision that may change author-intended semantics. Ask the user before applying rather than picking one scheme silently.
 
-Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. The config field names are `format` (the OOXML `numFmt` value — `decimal` / `chineseCounting` / `bullet` etc.) and `text` (the OOXML `lvlText` pattern — `"%1."` / `"%1.%2"` / `"第%1章"`); see `references/numbering-formats.md` for the value tables. Minimal example for three-level decimal headings:
+Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. Field names mirror OOXML: `numFmt` (e.g. `decimal` / `chineseCounting` / `bullet`) and `lvlText` (the rendered prefix pattern, e.g. `"%1."` / `"%1.%2"` / `"第%1章"`); see `references/numbering-formats.md` for value tables. Minimal example for three-level decimal headings:
 
 ```jsonc
 "numbering": {
   "levels": [
-    { "level": 0, "format": "decimal", "text": "%1.",     "styleId": "Heading1",
+    { "level": 0, "numFmt": "decimal", "lvlText": "%1.",     "styleId": "Heading1",
       "stripPrefixPatterns": ["%1."] },
-    { "level": 1, "format": "decimal", "text": "%1.%2",   "styleId": "Heading2",
+    { "level": 1, "numFmt": "decimal", "lvlText": "%1.%2",   "styleId": "Heading2",
       "stripPrefixPatterns": ["%1.%2", "%1."] },
-    { "level": 2, "format": "decimal", "text": "%1.%2.%3", "styleId": "Heading3",
+    { "level": 2, "numFmt": "decimal", "lvlText": "%1.%2.%3", "styleId": "Heading3",
       "stripPrefixPatterns": ["%1.%2.%3", "%1.%2", "%1."] }
   ]
 }
