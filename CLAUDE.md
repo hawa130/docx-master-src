@@ -8,14 +8,17 @@ This repo builds a family of Word (.docx) automation skills. The first one shipp
 
 ```
 src/core/                          shared across all skills:
-                                     parsing / style / fingerprint / template-import
+                                     parsing / style / fingerprint / template-import,
+                                     plus display formatters (format.ts) for any
+                                     skill's print tools
 src/skills/<name>/                 one directory per skill, fully self-contained:
 src/skills/<name>/SKILL.md           the skill spec the agent reads at runtime
 src/skills/<name>/references/        on-demand reference docs (progressive disclosure)
 src/skills/<name>/tools/             TS source for CLIs the agent invokes directly
                                        (each file = one entry in tsdown.config.ts)
-src/skills/<name>/lib/               skill-internal helpers (CLI scaffolding, display
-                                       formatters); NOT built as scripts, only imported
+src/skills/<name>/lib/               skill-internal modules (CLI scaffolding, the
+                                       skill's engine, anything imported but never
+                                       built as a script entry)
 test/fixtures/                     sample .docx files for manual testing
 dist/<name>/                       staged skill bundle (SKILL.md + references/ + scripts/)
 dist/<name>.zip                    zipped bundle ready to publish

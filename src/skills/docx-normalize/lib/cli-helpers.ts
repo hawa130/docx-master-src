@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs"
 import { resolve } from "node:path"
-import { applyStyles, type ApplyConfig } from "../tools/apply-styles.ts"
+import { applyStyles, type ApplyConfig } from "./apply-styles.ts"
 
 /**
  * Shared scaffolding for the four apply-style-family CLIs (apply_styles,

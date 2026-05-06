@@ -16,7 +16,7 @@
  * pattern matches multiple roles and you want to scope to one visual class.
  */
 import { loadDocx } from "@core/load.ts"
-import { pad } from "../lib/format.ts"
+import { pad } from "@core/format.ts"
 
 async function main() {
   const argv = process.argv.slice(2)

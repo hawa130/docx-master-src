@@ -21,7 +21,7 @@ import {
   wAttr,
 } from "@core/xml-utils.ts"
 import { summarizeTable } from "@core/table-classifier.ts"
-import { pad } from "../lib/format.ts"
+import { pad } from "@core/format.ts"
 
 interface RunInfo {
   index: number

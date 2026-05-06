@@ -1,7 +1,7 @@
 import { loadDocx, parseNumbering } from "@core/load.ts"
 import type { DocumentElement } from "@core/types.ts"
 import type { LoadedDoc } from "@core/load.ts"
-import { pad, paperName, truncate, tw2mm } from "../lib/format.ts"
+import { pad, paperName, truncate, tw2mm } from "@core/format.ts"
 
 async function main() {
   const file = process.argv[2]
