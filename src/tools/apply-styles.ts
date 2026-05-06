@@ -207,8 +207,13 @@ function extractDisplayFields(
   def: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
+  // fontEastAsia first when set: in Chinese docs the CJK font is what users
+  // perceive as "the font", so leading with it avoids the "why is the body
+  // Arial?" double-take when the agent reviews the resolution block. When
+  // only `font` (Latin/ASCII) is set, fontEastAsia is absent and the order
+  // collapses to the natural one anyway.
   const interesting = [
-    "font", "fontEastAsia", "size", "bold", "italic", "color",
+    "fontEastAsia", "font", "size", "bold", "italic", "color",
     "alignment", "lineSpacing", "lineRule", "spaceBefore", "spaceAfter",
     "firstLineIndent", "hangingIndent", "outlineLevel",
   ]
@@ -463,6 +468,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   const restyleStats = new Map<string, number>()
   const flags: FlagRecord[] = []
   let manualNumberingRemoved: Map<string, number> = new Map()
+  // Parallel tracking keyed by styleId → pattern → count, so the report can
+  // detect "this heading style had >1 distinct strip pattern hit" — i.e. the
+  // source mixed manual numbering schemes within one role (e.g. some H2 as
+  // "1.1" and some as "1." across chapters). manualNumberingRemoved alone
+  // can't surface this because it merges across styles.
+  const manualNumberingByStyle: Map<string, Map<string, number>> = new Map()
   const patternMatchStats = new Map<string, number>()
   const patternStripStats = new Map<string, number>()
 
@@ -507,7 +518,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
 
   // 7. Walk document.xml in order and apply actions to each indexed paragraph
   const samples = new Map<string, RestyleSample[]>()
-  const implicitKeepByFingerprint = new Map<string, number>()
+  // Track implicit-keep paragraphs split by emptiness. Empty (whitespace-only)
+  // paragraphs are usually intentional spacers — silently keeping them is the
+  // right behavior. Non-empty untouched paragraphs are the agent's coverage
+  // signal on the Full Standardization path: if the count is unexpected, a
+  // role got missed. Splitting the report makes that signal cheap to read.
+  const implicitKeepByFingerprint = new Map<
+    string,
+    { empty: number; nonEmpty: number }
+  >()
   const ctx: ApplyContext = {
     excludeSet,
     assignmentMap,
@@ -519,6 +538,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     restyleStats,
     flags,
     manualNumberingRemoved,
+    manualNumberingByStyle,
     numLvlTextByStyle,
     samples,
     samplesPerStyleCap: 5,
@@ -567,6 +587,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     restyleStats,
     flags,
     manualNumberingRemoved,
+    manualNumberingByStyle,
     patternMatchStats,
     patternStripStats,
     styleResolutions,
@@ -613,14 +634,19 @@ interface ApplyContext {
   restyleStats: Map<string, number>
   flags: FlagRecord[]
   manualNumberingRemoved: Map<string, number>
+  /** styleId → (pattern → count). Used to detect mixed manual numbering
+   * schemes within one heading role across the document. */
+  manualNumberingByStyle: Map<string, Map<string, number>>
   numLvlTextByStyle: Map<string, string[]>
   /** First N restyled paragraphs per style — surfaced in the change report. */
   samples: Map<string, RestyleSample[]>
   /** How many samples to keep per style. */
   samplesPerStyleCap: number
   /** Paragraphs that matched no rule (no exclude, no assignment, no
-   * pattern_rule, no bulk_rule). Grouped by fingerprint for the report. */
-  implicitKeepByFingerprint: Map<string, number>
+   * pattern_rule, no bulk_rule). Grouped by fingerprint and split by whether
+   * the paragraph has visible text — empty paragraphs are likely intentional
+   * spacers, non-empty are coverage signal. */
+  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number }>
   config: ApplyConfig
 }
 
@@ -707,10 +733,14 @@ function processOneParagraph(
     // so the change report can show which fingerprints were not covered;
     // makes "where did the rest go?" verification cheap.
     if (!a) {
-      ctx.implicitKeepByFingerprint.set(
-        para.fingerprint,
-        (ctx.implicitKeepByFingerprint.get(para.fingerprint) ?? 0) + 1,
-      )
+      const isEmpty = para.text.trim().length === 0
+      const cur = ctx.implicitKeepByFingerprint.get(para.fingerprint) ?? {
+        empty: 0,
+        nonEmpty: 0,
+      }
+      if (isEmpty) cur.empty += 1
+      else cur.nonEmpty += 1
+      ctx.implicitKeepByFingerprint.set(para.fingerprint, cur)
     }
     return
   }
@@ -768,6 +798,12 @@ function processOneParagraph(
           pat,
           (ctx.manualNumberingRemoved.get(pat) ?? 0) + 1,
         )
+        let perStyle = ctx.manualNumberingByStyle.get(targetStyle)
+        if (!perStyle) {
+          perStyle = new Map()
+          ctx.manualNumberingByStyle.set(targetStyle, perStyle)
+        }
+        perStyle.set(pat, (perStyle.get(pat) ?? 0) + 1)
         if (thisSample) {
           thisSample.prefixStripped = pat
           thisSample.notes.push(`stripped manual prefix "${pat}"`)
@@ -1372,6 +1408,7 @@ function printReport(args: {
   restyleStats: Map<string, number>
   flags: FlagRecord[]
   manualNumberingRemoved: Map<string, number>
+  manualNumberingByStyle: Map<string, Map<string, number>>
   patternMatchStats: Map<string, number>
   patternStripStats: Map<string, number>
   styleResolutions: StyleResolutionEntry[]
@@ -1379,7 +1416,7 @@ function printReport(args: {
   output: string
   dryRun: boolean
   samples: Map<string, RestyleSample[]>
-  implicitKeepByFingerprint: Map<string, number>
+  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number }>
   templateImport: { imported: string[]; numIdRemap: Map<string, string>; pulledAncestors: string[] } | null
 }) {
   const lines: string[] = []
@@ -1417,13 +1454,29 @@ function printReport(args: {
     lines.push(`  ${styleId}: ${count} paragraphs`)
   }
   if (args.implicitKeepByFingerprint.size > 0) {
-    let totalImplicit = 0
-    for (const [, c] of args.implicitKeepByFingerprint) totalImplicit += c
-    const groups = [...args.implicitKeepByFingerprint.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([fp, n]) => `${fp}×${n}`)
-      .join(", ")
-    lines.push(`Paragraphs untouched (no rule matched): ${totalImplicit}  [${groups}]`)
+    let totalEmpty = 0
+    let totalNonEmpty = 0
+    for (const [, v] of args.implicitKeepByFingerprint) {
+      totalEmpty += v.empty
+      totalNonEmpty += v.nonEmpty
+    }
+    const totalImplicit = totalEmpty + totalNonEmpty
+    lines.push(`Paragraphs untouched: ${totalImplicit}`)
+    if (totalEmpty > 0) {
+      lines.push(`  empty (likely spacers): ${totalEmpty}`)
+    }
+    if (totalNonEmpty > 0) {
+      // Non-empty untouched are the coverage signal — break down by fingerprint
+      // so the agent can spot a missed role. On the Targeted Edit path this is
+      // expected (only intentional changes apply); on Full Standardization, an
+      // unfamiliar count here means a fingerprint slipped through.
+      const groups = [...args.implicitKeepByFingerprint.entries()]
+        .filter(([, v]) => v.nonEmpty > 0)
+        .sort((a, b) => b[1].nonEmpty - a[1].nonEmpty)
+        .map(([fp, v]) => `${fp}×${v.nonEmpty}`)
+        .join(", ")
+      lines.push(`  non-empty (verify coverage): ${totalNonEmpty}  [${groups}]`)
+    }
   }
   lines.push("")
   if (args.manualNumberingRemoved.size > 0) {
@@ -1431,6 +1484,30 @@ function printReport(args: {
     for (const [pat, count] of args.manualNumberingRemoved) {
       lines.push(`  Prefix removed: "${pat}" (${count})`)
     }
+    lines.push("")
+  }
+  // Mixed-scheme detection: a heading style that had >1 distinct strip pattern
+  // hit means the source document used inconsistent manual numbering within
+  // one logical level (e.g. chapter 1's H2 "1.1 ..." and chapter 2's H2
+  // "1. ..."). This was already handled correctly by stripPrefixPatterns
+  // matching in priority order; surfacing it here lets the agent tell the
+  // user explicitly that normalization changed an inconsistent input — which
+  // SKILL.md flags as a normalization decision worth confirming.
+  const mixedStyles = [...args.manualNumberingByStyle.entries()].filter(
+    ([, m]) => m.size >= 2,
+  )
+  if (mixedStyles.length > 0) {
+    lines.push("Mixed manual numbering detected (source inconsistent):")
+    for (const [styleId, patMap] of mixedStyles) {
+      const breakdown = [...patMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([pat, n]) => `"${pat}"×${n}`)
+        .join(", ")
+      lines.push(`  ${styleId}: ${breakdown}`)
+    }
+    lines.push(
+      "  Normalization unified these to one scheme — worth confirming with the user before final write.",
+    )
     lines.push("")
   }
   if (args.patternMatchStats.size > 0) {

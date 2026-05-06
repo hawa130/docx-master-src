@@ -160,17 +160,16 @@ Each level binds to a heading style via `styleId`; higher levels reset lower-lev
 ```jsonc
 "numbering": {
   "levels": [
-    { "level": 0, "numFmt": "decimal", "lvlText": "%1.",     "styleId": "Heading1",
-      "stripPrefixPatterns": ["%1."] },
-    { "level": 1, "numFmt": "decimal", "lvlText": "%1.%2",   "styleId": "Heading2",
-      "stripPrefixPatterns": ["%1.%2", "%1."] },
-    { "level": 2, "numFmt": "decimal", "lvlText": "%1.%2.%3", "styleId": "Heading3",
-      "stripPrefixPatterns": ["%1.%2.%3", "%1.%2", "%1."] }
+    { "level": 0, "numFmt": "decimal", "lvlText": "%1.",     "styleId": "Heading1" },
+    { "level": 1, "numFmt": "decimal", "lvlText": "%1.%2",   "styleId": "Heading2" },
+    { "level": 2, "numFmt": "decimal", "lvlText": "%1.%2.%3", "styleId": "Heading3" }
   ]
 }
 ```
 
-**Mixed manual prefix styles within one role:** authors often mix patterns at the same heading level — e.g. chapter 1's H2s are "1.1 ..." while chapter 2's are "1. ..." (restart per chapter). One regex can't normalize both. Use `stripPrefixPatterns: ["%1.%2", "%1."]` — patterns tried in order, first match wins; longer pattern must come first or `"%1."` will strip just "1." from "1.1 ..." leaving ".1 ...".
+**`outlineLevel` is independent of numbering level.** They co-occur for headings but are different OOXML concepts: `outlineLevel` (set on the paragraph style's pPr) controls TOC inclusion, navigation pane, outline view. Numbering level (the `level` field above) controls auto-number display. List styles (`ListBullet` / `ListNumber`) take numbering but **must not** carry `outlineLevel` — otherwise list items pollute the TOC. Set `outlineLevel` explicitly on heading styles via `overrides`; don't expect numbering to imply it.
+
+**`stripPrefixPatterns` — when to specify, when to skip.** When omitted, `stripPrefixPatterns` defaults to `[lvlText]` — so for the simple case where the doc's manual prefix matches the new auto-numbering pattern (`lvlText: "%1."` strips "1." / "2." / etc.), **you don't need to write it**. Specify it only when the source mixed prefix styles within one role — e.g. chapter 1's H2s are "1.1 ..." while chapter 2's are "1. ..." (restart per chapter). Use `stripPrefixPatterns: ["%1.%2", "%1."]` — patterns tried in order, first match wins; **longer pattern must come first** or `"%1."` will strip just "1." from "1.1 ..." leaving ".1 ...". The dry-run report flags this case as "Mixed manual numbering detected" so you can confirm with the user before final write.
 
 **Preserving design colors on numbers:** if the source styles numbers in a different color/weight than title text (e.g. blue numbers + black bold titles), set `numRPr` on the level. The marker is rendered with this rPr; the title uses the paragraph style.
 
@@ -223,6 +222,7 @@ Call `apply_styles` with your decision in a JSON config.
 Full schema in `references/apply-styles-config.md` — read once before composing your first config.
 
 Key invariants:
+- **Paths resolve against current working directory.** `source` and `output` are passed through `path.resolve()` against cwd; absolute paths are passed through unchanged. If you may have changed directories during the session, use absolute paths to avoid surprises.
 - Paragraph indexing is 1-based, matching `#NNN` labels in the skeleton. Layout-table paragraphs are indexed; data/form tables are not.
 - Paragraph mapping order (first match wins): `exclude > assignments > pattern_rules > bulk_rules > implicit-keep`.
 - Style-field priority (later wins): defaults → template-imported → fromParagraph → direct fields → overrides.
@@ -230,7 +230,12 @@ Key invariants:
 
 ### Step 8: Validate and Report
 
-Iterate with `apply_styles --dry-run` first. The change report includes a per-style sample of the first affected paragraphs and a Style Resolution block listing every injected style — styles with a `requirements` entry show user spec next to resolved fields for side-by-side verification, styles without one show the resolved fields alone (still auditable). Read both before committing.
+Iterate with `apply_styles --dry-run` first. The change report has several sections worth scanning before committing:
+
+- **Style Resolution** — every injected style listed with user spec (if `requirements` set) next to agent-resolved fields. Read for translation correctness.
+- **Paragraphs untouched** — split into "empty (likely spacers)" and "non-empty (verify coverage)". On the Full Standardization path, an unfamiliar count under non-empty means a fingerprint slipped through; on Targeted Edit, both are expected.
+- **Manual numbering converted / Mixed manual numbering detected** — if the source mixed numbering schemes within one role (a real and common case), the report calls this out. Treat it as a normalization decision worth confirming with the user.
+- **Sample Affected Paragraphs** — first N restyled per style, with prefix-stripping notes inline. Use these to spot-check that bulk_rules / pattern_rules hit the right targets.
 
 **Safety guarantees:**
 

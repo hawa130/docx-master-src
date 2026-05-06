@@ -95,7 +95,19 @@ function describe(p: ParsedParagraph): string {
   if (r.color && r.color !== "auto") parts.push(`#${r.color}`)
   if (pp.alignment) parts.push(capitalize(pp.alignment))
   if (pp.firstLineIndent || pp.firstLineIndentChars) parts.push("1stIndent")
-  if (pp.numId) parts.push("List")
+  // Structural label takes precedence over generic "List": after standardization,
+  // headings carry both numId AND outlineLevel (because the heading style binds
+  // numbering AND sets outline level for TOC). Showing "List" on a Heading is
+  // technically true but reads as wrong — surface "Heading-N" so the visual
+  // summary matches the agent's mental model. Plain list items (numId, no
+  // outline level) still get "List". Non-numbered headings (outline level
+  // without numId — e.g. abstract / acknowledgments under HeadingNoNum) also
+  // get "Heading-N" so structure is visible regardless of numbering.
+  if (pp.outlineLevel !== undefined) {
+    parts.push(`Heading-${pp.outlineLevel + 1}`)
+  } else if (pp.numId) {
+    parts.push("List")
+  }
   return parts.join(" ") || "(no formatting)"
 }
 
