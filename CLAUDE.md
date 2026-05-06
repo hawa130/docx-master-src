@@ -44,9 +44,9 @@ If a check grades the system's output against the same system's interpretation o
 
 Real verification compares against ground truth: human-readable side-by-side display (Style Resolution shows raw user text + agent-resolved fields for visual review), or output re-parsed against an independent invariant (apply_styles validates by re-reading the produced docx).
 
-### Recognize a recurring anti-pattern; codify it as a principle
+### Capture lessons here as you learn them
 
-When the same root cause shows up in two different shapes — here, "tooling pre-classifies for the agent and the agent stops verifying" surfaced once as a NL parser and once as a metadata hint — don't just fix the second instance. Promote it to a principle in CLAUDE.md / SKILL.md so the third proposal hits the wall. Two occurrences is the signal that the underlying gravity is going to keep pulling.
+When a fix or design decision teaches a principle the next maintainer should know, distill it as a brief rule above. Bar: would another maintainer save time reading it? — if no, commit history is enough. A root cause recurring in two different shapes is a strong signal a principle has earned a slot.
 
 ### SKILL.md is the agent's runtime context — keep it lean
 
