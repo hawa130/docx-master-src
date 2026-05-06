@@ -167,8 +167,38 @@ function renderNumbering(doc: LoadedDoc): string[] {
 
 function renderVisualSummary(doc: LoadedDoc): string[] {
   const lines = ["=== Visual Style Summary (deduplicated) ==="]
+  // For each fingerprint, look at the outlineLevel distribution among its
+  // paragraphs. When ≥80% share one outline level, surface it as a hint —
+  // a strong signal for heading-role classification. Display as e.g. [L0]
+  // beside the label so the agent doesn't have to inspect_range every
+  // candidate to discover existing outline structure.
+  const outlineHintByLabel = new Map<string, string>()
+  const paragraphsByLabel = new Map<string, number[]>()
+  for (const p of doc.paragraphs) {
+    if (!paragraphsByLabel.has(p.fingerprint)) paragraphsByLabel.set(p.fingerprint, [])
+    paragraphsByLabel.get(p.fingerprint)!.push(p.pPr.outlineLevel ?? -1)
+  }
+  for (const [label, levels] of paragraphsByLabel) {
+    const counts = new Map<number, number>()
+    for (const l of levels) counts.set(l, (counts.get(l) ?? 0) + 1)
+    const total = levels.length
+    let dominant: number | null = null
+    let dominantCount = 0
+    for (const [lvl, count] of counts) {
+      if (count > dominantCount) {
+        dominant = lvl
+        dominantCount = count
+      }
+    }
+    if (dominant !== null && dominant >= 0 && dominantCount / total >= 0.8) {
+      outlineHintByLabel.set(label, `[L${dominant}]`)
+    }
+  }
   for (const s of doc.summary) {
-    lines.push(`${s.label}: ${s.description.padEnd(36, " ")} ×${s.count}`)
+    const hint = outlineHintByLabel.get(s.label) ?? ""
+    const desc = s.description.padEnd(36, " ")
+    const count = `×${s.count}`
+    lines.push(hint ? `${s.label}: ${desc} ${count}  ${hint}` : `${s.label}: ${desc} ${count}`)
   }
   return lines
 }
