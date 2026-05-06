@@ -1,47 +1,60 @@
-import { defineConfig } from "tsdown"
+import { defineConfig, type UserConfig } from "tsdown"
 import { resolve } from "node:path"
 
-// Each skill's tools build into dist/<skill-name>/scripts/. Shared `src/core/`
-// modules are imported via the "@core/*" alias (also declared in tsconfig.json
-// for editor / type-check support); rolldown rewrites these at build time.
+// Multi-skill build. tsdown's `defineConfig` accepts an array of UserConfigs;
+// each entry below is one skill, built into its own dist/<name>/scripts/.
 //
-// To add a new skill: drop a new directory under src/skills/<name>/tools/ and
-// append its entries below. The shared core gets bundled into each skill's
-// scripts/_shared/ chunk independently, so skills are deliverable on their own.
+// Adding a skill: append another `skill(name, tools)` block. Adding a tool:
+// add a key to the existing block. The helper handles the path prefix and
+// shared options so per-skill blocks stay focused on what's actually skill-
+// specific (the script-name → source-file map).
 
-const SHARED_ALIAS = { "@core": resolve(import.meta.dirname, "src/core") }
+const ROOT = import.meta.dirname
+const SHARED_ALIAS = { "@core": resolve(ROOT, "src/core") }
 
-const docxNormalize = defineConfig({
-  entry: {
-    overview: "src/skills/docx-normalize/tools/overview.ts",
-    inspect_range: "src/skills/docx-normalize/tools/inspect-range.ts",
-    inspect_runs: "src/skills/docx-normalize/tools/inspect-runs.ts",
-    inspect_neighbors: "src/skills/docx-normalize/tools/inspect-neighbors.ts",
-    inspect_style: "src/skills/docx-normalize/tools/inspect-style.ts",
-    inspect_style_def: "src/skills/docx-normalize/tools/inspect-style-def.ts",
-    inspect_section: "src/skills/docx-normalize/tools/inspect-section.ts",
-    find_paragraphs: "src/skills/docx-normalize/tools/find-paragraphs.ts",
-    apply_styles: "src/skills/docx-normalize/tools/apply-styles-cli.ts",
-    restyle: "src/skills/docx-normalize/tools/restyle.ts",
-    migrate_numbering: "src/skills/docx-normalize/tools/migrate-numbering.ts",
-    import_template: "src/skills/docx-normalize/tools/import-template.ts",
-  },
-  alias: SHARED_ALIAS,
-  format: "esm",
-  platform: "node",
-  target: "node18",
-  outDir: "dist/docx-normalize/scripts",
-  outExtensions: () => ({ js: ".js" }),
-  clean: true,
-  dts: false,
-  shims: true,
-  sourcemap: false,
-  minify: false,
-  deps: { alwaysBundle: [/.*/] },
-  outputOptions: {
-    chunkFileNames: "_shared/[name].js",
-    hashCharacters: "base36",
-  },
-})
+function skill(name: string, tools: Record<string, string>): UserConfig {
+  return {
+    entry: Object.fromEntries(
+      Object.entries(tools).map(([scriptName, file]) => [
+        scriptName,
+        `src/skills/${name}/tools/${file}`,
+      ]),
+    ),
+    alias: SHARED_ALIAS,
+    format: "esm",
+    platform: "node",
+    target: "node18",
+    outDir: `dist/${name}/scripts`,
+    outExtensions: () => ({ js: ".js" }),
+    clean: true,
+    dts: false,
+    shims: true,
+    sourcemap: false,
+    minify: false,
+    deps: { alwaysBundle: [/.*/] },
+    outputOptions: {
+      chunkFileNames: "_shared/[name].js",
+      hashCharacters: "base36",
+    },
+  }
+}
 
-export default docxNormalize
+export default defineConfig([
+  skill("docx-normalize", {
+    overview: "overview.ts",
+    inspect_range: "inspect-range.ts",
+    inspect_runs: "inspect-runs.ts",
+    inspect_neighbors: "inspect-neighbors.ts",
+    inspect_style: "inspect-style.ts",
+    inspect_style_def: "inspect-style-def.ts",
+    inspect_section: "inspect-section.ts",
+    find_paragraphs: "find-paragraphs.ts",
+    apply_styles: "apply-styles-cli.ts",
+    restyle: "restyle.ts",
+    migrate_numbering: "migrate-numbering.ts",
+    import_template: "import-template.ts",
+  }),
+  // Future:
+  // skill("docx-cleanup", { accept_changes: "accept-changes-cli.ts", ... }),
+  // skill("docx-augment", { manage_captions: "manage-captions-cli.ts", ... }),
+])
