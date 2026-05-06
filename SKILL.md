@@ -122,9 +122,9 @@ Modes can mix within one `styles` array:
 
 For outliers (e.g. Heading1 appears 5 times, 4 of one pattern + 1 different), source from the majority. The same applies when two fingerprints play the same role — take the majority's values, route both to the same style. "Normalize" means routing inconsistent paragraphs to one consistent style, NOT replacing the author's choices with values you think look better.
 
-**What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel.
+**What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel (only when the source has it set — add via `overrides` if you need it on a heading whose source paragraph lacks it).
 
-**Does NOT extract** (add via `overrides` if needed): `outlineLevel` when the source has none, `numId` / `numLevel` (numbering is bound through `numbering.levels[].styleId`, not hardcoded per paragraph).
+**Does NOT extract**: `numId` / `numLevel` — numbering is bound through `numbering.levels[].styleId`, not hardcoded per paragraph.
 
 **Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
 
@@ -189,7 +189,7 @@ Call `apply_styles` with your decision in a JSON config.
                                            //   docx; basedOn ancestors auto-pulled,
                                            //   numId references migrated.
 
-  requirements: { id: "原话..." },         // optional. ANNOTATION ONLY — script records
+  requirements: { Heading1: "原话...", BodyText: "..." },  // optional. ANNOTATION ONLY — script records
                                            //   the user's natural-language spec next to
                                            //   the agent-resolved fields in the report
                                            //   for visual verification. Not parsed.
@@ -232,7 +232,7 @@ Iterate with `apply_styles --dry-run` first. The change report includes a per-st
 - Normalize inconsistent formatting to the majority pattern
 
 ### What This Skill Does NOT Do
-- Edit content (text, grammar, structure) — except removing manual numbering prefixes ("第1章 " / "1.1 " / "• ") when migrating to automatic numbering, since the numbering system regenerates them.
+- Edit content (text, grammar, structure) — except stripping manual numbering / bullet prefixes ("第1章 " / "1.1 " / "• ") when you configure `stripPrefixPatterns` on the matching numbering level. The script removes only what your patterns match; nothing is auto-stripped without configuration.
 - Restyle paragraphs inside data tables, or modify any table structure (cell sizes, borders, cell-level formatting).
 - Update the TOC itself — heading `outlineLevel` is set correctly, but the user must right-click → "Update Field" in Word after opening.
 - Modify field codes (`STYLEREF`, `TOC`, `REF`, `DATE`, ...) — preserved as-is.
