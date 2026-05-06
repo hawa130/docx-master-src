@@ -51,6 +51,21 @@ Detailed schema docs go to `references/` (loaded on demand, not always-on). The 
 
 Each tool has one focused job and is invoked when the agent specifically needs it. Don't add always-on enrichment fields to the default output (e.g. don't put neighbor info on every paragraph in `inspect_range` — that's what `inspect_neighbors` is for). The same applies for new features: prefer a new focused script over bolting onto an existing one.
 
+### Tools expose visible facts; agents make role judgments
+
+The agent classifies paragraphs by the same evidence a human reader has — font, size, weight, color, alignment, indent, numbering presence, position relative to images/tables, text content. Tools should expose these visible facts cleanly.
+
+Tools should NOT pre-digest hidden metadata into role classifications. Two patterns this killed in the past:
+
+- A regex parser that translated "小四宋体" into structured fields (`requirements-parser.ts`, removed). Looked like it was helping; actually let the agent stop reading the user's text carefully and silently mistranslated negation / synonyms.
+- An `[LN]` hint on the fingerprint summary that surfaced the source's `outlineLevel` metadata as a heading-role label. Looked like a strong signal; actually let the agent skip visual classification reasoning and propagated source-metadata errors (POI-generated docs, conversion artifacts, residual outlineLvls from abandoned Heading-style usage) straight into the output.
+
+The pattern in both cases: a "convenient" pre-classification that LLMs gladly accept as ground truth, bypassing their own judgment. The same judgment that catches errors when present.
+
+Hidden metadata (`outlineLevel`, `pStyle`, `numId`, abstractNum definitions) can still be exposed by tools — but as **raw data on demand**, surfaced when the agent asks (`inspect_range` shows outlineLevel, `inspect_style_def` walks the inheritance chain). On-demand exposure means the agent has already started reasoning and is using the metadata as one input. Pre-packaging it into a default summary means the tool is doing the reasoning for the agent.
+
+Litmus test for new features: **could a human reader of the document, without opening the XML, derive this information?** If yes, exposing it is fine. If no, it's hidden metadata; only expose on demand, never as a role hint.
+
 ### The script never does language judgment
 
 The agent (LLM) handles all semantic work: classifying paragraph roles, translating natural-language requirements into structured fields, deciding whether two fingerprints should merge. The scripts present facts: computed styles, element positions, fingerprints, what's adjacent. **Don't add Chinese typography parsing back** — there used to be a `requirements-parser.ts` that translated "小四宋体" into config fields; it was removed because regex parsing of natural language gives false confidence (it can't tell "不要加粗" from "加粗"). The `requirements` field is annotation-only.
