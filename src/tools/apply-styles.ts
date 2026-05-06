@@ -1,5 +1,5 @@
-import { readFileSync, unlinkSync, existsSync, copyFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { readFileSync, unlinkSync, existsSync, copyFileSync, mkdirSync } from "node:fs"
+import { dirname, resolve } from "node:path"
 import JSZip from "jszip"
 import { DOMParser } from "@xmldom/xmldom"
 import { DocxReader, serializeXml } from "../core/reader.ts"
@@ -184,7 +184,7 @@ interface FlagRecord {
  */
 interface StyleResolutionEntry {
   styleId: string
-  userSpec: string
+  userSpec: string | null
   resolved: Record<string, unknown>
 }
 
@@ -273,6 +273,7 @@ async function main() {
 async function applyStyles(source: string, output: string, config: ApplyConfig) {
   // 1. In dry-run: read source directly. Otherwise copy first, modify the copy.
   if (!config.dryRun) {
+    mkdirSync(dirname(output), { recursive: true })
     copyFileSync(source, output)
   }
 
@@ -294,7 +295,15 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   // parsed.paragraphs already has fingerprints? No — fingerprinter is run in load.ts only.
   // Run fingerprinter here:
   const { Fingerprinter } = await import("../core/fingerprint.ts")
-  new Fingerprinter().assign(parsed.paragraphs)
+  const fpResult = new Fingerprinter().assign(parsed.paragraphs)
+  // Build hash → letter map so bulk_rules can reference fingerprints by
+  // either the in-session letter (A, B, ...) or the content-derived hash
+  // (stable across runs / edits — survives doc changes that shuffle
+  // frequency-rank).
+  const hashToLetter = new Map<string, string>()
+  for (const s of fpResult.summary) {
+    hashToLetter.set(s.hash, s.label)
+  }
 
   // 3b. Import template styles (if configured). This injects styles directly
   // into stylesDoc — they participate in the final styles.xml without
@@ -348,16 +357,19 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
       }
     }
   }
+  // Record every injected style for the resolution report. Styles with a
+  // `requirements` entry get the user spec rendered next to the resolved
+  // fields; styles without one still get listed so the agent (and any
+  // reviewer) sees what actually got injected — easy to forget a self-
+  // declared style otherwise.
   const styleResolutions: StyleResolutionEntry[] = []
   const resolvedStyles = config.styles.map((def) => {
     const final = resolveStyleDef(def, parsed.paragraphs)
-    if (config.requirements?.[def.id]) {
-      styleResolutions.push({
-        styleId: def.id,
-        userSpec: config.requirements[def.id]!,
-        resolved: extractDisplayFields(final),
-      })
-    }
+    styleResolutions.push({
+      styleId: def.id,
+      userSpec: config.requirements?.[def.id] ?? null,
+      resolved: extractDisplayFields(final),
+    })
     return final
   })
   const injected: string[] = []
@@ -377,6 +389,27 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   if (config.numbering && config.numbering.levels.length > 0) {
     const declaredIds = new Set(config.styles.map((s) => s.id))
     for (const [i, lvl] of config.numbering.levels.entries()) {
+      // Required-field validation. Without this an undefined `text` /
+      // `format` crashes downstream with "Cannot read properties of
+      // undefined" instead of pointing at the offending field. The
+      // common confusion is using OOXML names (numFmt / lvlText) when
+      // the schema uses format / text — surface both names in the error.
+      if (typeof lvl.level !== "number") {
+        throw new Error(`numbering.levels[${i}]: missing required field "level" (number, 0-8)`)
+      }
+      if (typeof lvl.format !== "string" || !lvl.format) {
+        throw new Error(
+          `numbering.levels[${i}]: missing required field "format" (e.g. "decimal", "chineseCounting", "bullet"). Note: the field is "format", not "numFmt".`,
+        )
+      }
+      if (typeof lvl.text !== "string") {
+        throw new Error(
+          `numbering.levels[${i}]: missing required field "text" (lvlText pattern, e.g. "%1.", "%1.%2", "第%1章"). Note: the field is "text", not "lvlText".`,
+        )
+      }
+      if (typeof lvl.styleId !== "string" || !lvl.styleId) {
+        throw new Error(`numbering.levels[${i}]: missing required field "styleId" (paragraph style id this level binds to)`)
+      }
       if (!declaredIds.has(lvl.styleId)) {
         throw new Error(
           `numbering.levels[${i}]: styleId "${lvl.styleId}" is not declared in styles[].\n` +
@@ -442,14 +475,24 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   const declaredFingerprints = new Set(parsed.paragraphs.map((p) => p.fingerprint))
   for (const [i, b] of (config.bulk_rules ?? []).entries()) {
     checkStyleId(b.style, `bulk_rules[${i}]`)
-    if (!declaredFingerprints.has(b.fingerprint)) {
-      const all = [...declaredFingerprints].sort().join(", ")
+    // Accept either the letter label or the content hash. Resolve to the
+    // letter (which is what para.fingerprint stores) for the bulkMap key.
+    let letter: string | undefined
+    if (declaredFingerprints.has(b.fingerprint)) {
+      letter = b.fingerprint
+    } else if (hashToLetter.has(b.fingerprint)) {
+      letter = hashToLetter.get(b.fingerprint)!
+    }
+    if (!letter) {
+      const letters = [...declaredFingerprints].sort().join(", ")
+      const hashes = [...hashToLetter.keys()].sort().join(", ")
       throw new Error(
         `bulk_rules[${i}]: fingerprint "${b.fingerprint}" doesn't exist in this document.\n` +
-          `  Available fingerprints: [${all}]`,
+          `  Available letters: [${letters}]\n` +
+          `  Available hashes:  [${hashes}]`,
       )
     }
-    bulkMap.set(b.fingerprint, b.style)
+    bulkMap.set(letter, b.style)
   }
 
   const restyleStats = new Map<string, number>()
@@ -713,15 +756,21 @@ function processOneParagraph(
   stripConflictingDirectFormatting(pEl, targetStyle, ctx)
   ctx.restyleStats.set(targetStyle, (ctx.restyleStats.get(targetStyle) ?? 0) + 1)
 
-  // Record sample for the change report (cap per style to keep output bounded)
+  // Record sample for the change report (cap per style to keep output bounded).
+  // `thisSample` refers ONLY to the sample created for THIS paragraph; if the
+  // cap was already reached and we didn't push, it stays null. This prevents
+  // notes from later paragraphs leaking onto the last sample of the previous
+  // bunch — earlier code used existingSamples[length-1] which was wrong for
+  // every paragraph past the cap.
   const existingSamples = ctx.samples.get(targetStyle) ?? []
+  let thisSample: RestyleSample | null = null
   if (existingSamples.length < ctx.samplesPerStyleCap) {
     const via: RestyleSample["via"] = a
       ? "assignment"
       : matchedPattern
         ? "pattern"
         : "bulk"
-    const sample: RestyleSample = {
+    thisSample = {
       paraIndex: para.index,
       oldStyle: oldPStyle,
       newStyle: targetStyle,
@@ -730,11 +779,10 @@ function processOneParagraph(
       patternSource: matchedPattern?.rule.source,
       notes: [],
     }
-    existingSamples.push(sample)
+    existingSamples.push(thisSample)
     ctx.samples.set(targetStyle, existingSamples)
   }
 
-  const latestSample = existingSamples[existingSamples.length - 1]
   if (matchedPattern) {
     const key = matchedPattern.rule.source
     ctx.patternMatchStats.set(key, (ctx.patternMatchStats.get(key) ?? 0) + 1)
@@ -742,15 +790,11 @@ function processOneParagraph(
       const removed = removeRegexPrefix(pEl, matchedPattern.rule.regex)
       if (removed) {
         ctx.patternStripStats.set(key, (ctx.patternStripStats.get(key) ?? 0) + 1)
-        if (latestSample) latestSample.notes.push(`stripped pattern /${key}/`)
+        if (thisSample) thisSample.notes.push(`stripped pattern /${key}/`)
       }
     }
   }
 
-  // Manual numbering text stripping. Try each configured pattern in order;
-  // first match wins. Report which pattern was used so the change report can
-  // call out mixed authoring (e.g. some headings stripped via "%1.%2" and
-  // others via "%1." for the same style).
   const lvlPatterns = ctx.numLvlTextByStyle.get(targetStyle)
   if (lvlPatterns && lvlPatterns.length > 0) {
     for (const pat of lvlPatterns) {
@@ -759,9 +803,9 @@ function processOneParagraph(
           pat,
           (ctx.manualNumberingRemoved.get(pat) ?? 0) + 1,
         )
-        if (latestSample) {
-          latestSample.prefixStripped = pat
-          latestSample.notes.push(`stripped manual prefix "${pat}"`)
+        if (thisSample) {
+          thisSample.prefixStripped = pat
+          thisSample.notes.push(`stripped manual prefix "${pat}"`)
         }
         break
       }
@@ -1442,13 +1486,19 @@ function printReport(args: {
   }
   if (args.styleResolutions.length > 0) {
     lines.push("=== Style Resolution (verify by reading) ===")
-    lines.push("  The script does not parse natural language. Compare the user's")
-    lines.push("  spec against the agent-resolved fields below — any mismatch")
-    lines.push("  means the agent's translation needs adjustment.")
+    lines.push("  The script does not parse natural language. For styles with a")
+    lines.push("  user spec, compare it to the agent-resolved fields by eye —")
+    lines.push("  any mismatch means the agent's translation needs adjustment.")
+    lines.push("  Styles without a spec are still listed so the resolved fields")
+    lines.push("  are auditable.")
     lines.push("")
     for (const r of args.styleResolutions) {
       lines.push(`  ${r.styleId}`)
-      lines.push(`    User specified: "${r.userSpec}"`)
+      if (r.userSpec !== null) {
+        lines.push(`    User specified: "${r.userSpec}"`)
+      } else {
+        lines.push(`    User specified: (none — no requirements entry)`)
+      }
       lines.push(`    Agent resolved: ${formatResolvedFields(r.resolved)}`)
     }
     lines.push("")

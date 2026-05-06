@@ -1,7 +1,11 @@
+import { createHash } from "node:crypto"
 import type { ParsedParagraph } from "./types.ts"
 
 export interface FingerprintSummary {
+  /** Display label, sorted by frequency. Volatile across doc edits — fine for in-session interactive use. */
   label: string
+  /** 6-char content hash derived from the rawFingerprint. Stable across runs and edits — use this in persisted configs. */
+  hash: string
   description: string
   count: number
   rawFingerprint: string
@@ -10,6 +14,7 @@ export interface FingerprintSummary {
 export class Fingerprinter {
   assign(paragraphs: ParsedParagraph[]): {
     labels: Map<string, string>
+    hashes: Map<string, string>
     summary: FingerprintSummary[]
   } {
     const counts = new Map<string, number>()
@@ -27,14 +32,18 @@ export class Fingerprinter {
     })
 
     const labels = new Map<string, string>()
+    const hashes = new Map<string, string>()
     const summary: FingerprintSummary[] = []
     for (let i = 0; i < sorted.length; i++) {
       const [hash, count] = sorted[i]!
       const label = letterLabel(i)
+      const contentHash = shortHash(hash)
       labels.set(hash, label)
+      hashes.set(hash, contentHash)
       const sample = samples.get(hash)!
       summary.push({
         label,
+        hash: contentHash,
         description: describe(sample),
         count,
         rawFingerprint: hash,
@@ -46,7 +55,7 @@ export class Fingerprinter {
       p.fingerprint = labels.get(h) || "?"
     }
 
-    return { labels, summary }
+    return { labels, hashes, summary }
   }
 }
 
@@ -92,6 +101,16 @@ function describe(p: ParsedParagraph): string {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/**
+ * Content-derived stable identifier — first 6 hex chars of SHA-256 of the
+ * rawFingerprint string. Same visual fingerprint across docs / edits maps
+ * to the same hash, so configs that reference fingerprints by hash survive
+ * doc changes that would shuffle the frequency-sorted letter labels.
+ */
+function shortHash(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex").slice(0, 6)
 }
 
 function letterLabel(i: number): string {

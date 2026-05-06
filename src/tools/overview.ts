@@ -168,7 +168,10 @@ function renderNumbering(doc: LoadedDoc): string[] {
 function renderVisualSummary(doc: LoadedDoc): string[] {
   const lines = ["=== Visual Style Summary (deduplicated) ==="]
   for (const s of doc.summary) {
-    lines.push(`${s.label}: ${s.description.padEnd(36, " ")} ×${s.count}`)
+    // Letter is stable within this run; hash is content-derived and stable
+    // across runs / edits — use it in persisted configs to survive
+    // frequency-rank shuffles when paragraphs are added or removed.
+    lines.push(`${s.label} [${s.hash}]: ${s.description.padEnd(36, " ")} ×${s.count}`)
   }
   return lines
 }

@@ -152,7 +152,20 @@ When the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法
 
 If the manual scheme itself is inconsistent across the document — e.g. H1 has numbers in chapter 1 but not chapter 2, or H2 uses chapter-prefixed `"1.1"` in some chapters and per-chapter-restart `"1."` in others — auto-migration is also a normalization decision that may change author-intended semantics. Ask the user before applying rather than picking one scheme silently.
 
-Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. See `references/numbering-formats.md` for `numFmt` / `lvlText` syntax.
+Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. The config field names are `format` (the OOXML `numFmt` value — `decimal` / `chineseCounting` / `bullet` etc.) and `text` (the OOXML `lvlText` pattern — `"%1."` / `"%1.%2"` / `"第%1章"`); see `references/numbering-formats.md` for the value tables. Minimal example for three-level decimal headings:
+
+```jsonc
+"numbering": {
+  "levels": [
+    { "level": 0, "format": "decimal", "text": "%1.",     "styleId": "Heading1",
+      "stripPrefixPatterns": ["%1."] },
+    { "level": 1, "format": "decimal", "text": "%1.%2",   "styleId": "Heading2",
+      "stripPrefixPatterns": ["%1.%2", "%1."] },
+    { "level": 2, "format": "decimal", "text": "%1.%2.%3", "styleId": "Heading3",
+      "stripPrefixPatterns": ["%1.%2.%3", "%1.%2", "%1."] }
+  ]
+}
+```
 
 **Mixed manual prefix styles within one role:** authors often mix patterns at the same heading level — e.g. chapter 1's H2s are "1.1 ..." while chapter 2's are "1. ..." (restart per chapter). One regex can't normalize both. Use `stripPrefixPatterns: ["%1.%2", "%1."]` — patterns tried in order, first match wins; longer pattern must come first or `"%1."` will strip just "1." from "1.1 ..." leaving ".1 ...".
 
@@ -292,7 +305,8 @@ Footer: Arabic page number (restart from 1)
 ```
 
 **Conventions:**
-- `[A]`, `[B]` are visual fingerprint labels from the summary. The hash includes font, size, weight/italic, color, alignment, first-line-indent, AND whether the paragraph carries a numbering reference — so visually identical paragraphs split into different fingerprints (with "List" suffix) when one is auto-numbered and the other is plain body. `bulk_rules` can target list items independently.
+- `[A]`, `[B]` are letter labels (sorted by frequency in this run — volatile across edits). The summary also shows a 6-char content hash next to each letter (e.g. `A [c4f9]: ...`) — `bulk_rules.fingerprint` accepts either form. Use the letter for in-session iteration; use the hash in configs you intend to keep across doc revisions, since the hash stays stable when paragraphs are added/removed and frequency-rank shifts.
+- The fingerprint hash includes font, size, weight/italic, color, alignment, first-line-indent, AND whether the paragraph carries a numbering reference — so visually identical paragraphs split into different fingerprints (with "List" suffix) when one is auto-numbered and the other is plain body. `bulk_rules` can target list items independently.
 - Non-paragraph elements appear as `--- TYPE (details) ---`. Consecutive empty paragraphs are compressed: `--- empty ×N ---`.
 - Layout tables (single-cell content containers) are expanded inline under `--- LAYOUT TABLE ---` / `--- END LAYOUT TABLE ---` markers; data tables and form tables are summarized.
 - Text is truncated to ~40 chars; use `inspect_range` for full text.
