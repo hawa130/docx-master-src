@@ -52,7 +52,10 @@ All tools invoked via `node <script> <args>`, output to stdout.
 | `inspect_section` | `node scripts/inspect_section.js <file> <index>` | Page setup differences between sections (headers, footers, page numbering). |
 | `find_paragraphs` | `node scripts/find_paragraphs.js <file> --regex <pat> [--flags <flags>] [--limit N] [--fingerprint X]` | Cross-document text search. Use to discover content-defined roles (figure/table captions, references, keywords) and to validate `pattern_rules` regex coverage before applying. **First choice on the Targeted Edit path** — it locates exactly the paragraphs you want to change, without requiring a full overview. |
 | `apply_styles --dry-run` | `node scripts/apply_styles.js --dry-run <config.json>` | Iterate on a config without writing the output file. Returns the full change report including sample affected paragraphs and the Style Resolution annotation block. **Use between every config edit** — it's seconds per cycle. |
-| `apply_styles` | `node scripts/apply_styles.js <config.json>` | Final step. Outputs the reformatted document and a change report. |
+| `apply_styles` | `node scripts/apply_styles.js <config.json>` | Combined orchestrator. Accepts styles[] + numbering + template in one config and runs them in the correct order. Use on the Full Standardization path. |
+| `restyle` | `node scripts/restyle.js [--dry-run] <config.json>` | Narrow entry: paragraph restyle only — rejects `template` and `numbering`. Same config schema as `apply_styles` minus those blocks. **First choice on the Targeted Edit path** when the change is purely a style assignment. |
+| `migrate_numbering` | `node scripts/migrate_numbering.js [--dry-run] <config.json>` | Narrow entry: install / replace a numbering scheme. `styles[]` is optional — numbering levels can target heading styles already defined in the doc's `styles.xml` without redeclaration. Use to add or change heading numbering on a doc that's otherwise correctly styled. |
+| `import_template` | `node scripts/import_template.js [--dry-run] <config.json>` | Narrow entry: import named styles from a template doc. `styles[]` is optional. Use when you want to pull in a template's style system without simultaneously restyling — typical first step before chaining `restyle`. |
 
 ---
 
@@ -276,10 +279,13 @@ When the user wants a focused change to an already-formatted document while leav
    - **Reuse an existing styleId** (check via `inspect_style_def`) when possible — preserves whatever's already wired (TOC links, outline level, basedOn chain). Just override the fields the user wants changed.
    - **Define a new style** only when no existing one fits: `fromParagraph` extracts from a representative paragraph; or specify fields directly. See § Step 4 (Define the Style System) for extraction details.
 
-3. **Write a sparse `apply_styles` config.**
-   - `styles[]`: only the styles you're touching. **Don't redeclare untouched styles** — that's noise that risks accidental overrides.
-   - Mapping: prefer `pattern_rules` (content-based) or targeted `assignments` (specific paragraphs by index). Avoid broad `bulk_rules` unless a fingerprint cleanly captures your target — fingerprint changes feel cheap but can spread.
-   - Skip `numbering` and `template` blocks unless those are the change.
+3. **Write a sparse config.** Pick the narrowest tool that fits the change:
+   - **`restyle`** when the change is paragraph style assignment only — same config as `apply_styles` minus `template` / `numbering`. Most common Targeted Edit case.
+   - **`migrate_numbering`** when only adding / replacing a numbering scheme. `styles[]` can be empty if you're binding to heading styles already in the doc.
+   - **`import_template`** when only pulling in template styles. Often chained: `import_template` → `restyle` (apply the imported styles to paragraphs).
+   - Use the unified `apply_styles` when the change spans multiple operations.
+
+   In all cases: `styles[]` should be sparse. **Don't redeclare untouched styles** — that's noise that risks accidental overrides. Prefer `pattern_rules` (content-based) or targeted `assignments` (specific paragraphs by index). Avoid broad `bulk_rules` unless a fingerprint cleanly captures your target — fingerprint changes feel cheap but can spread.
 
 4. **Dry-run.** The change report should touch only paragraphs you intended. Untouched fingerprints appear under "implicit-keep" — that's correct behavior on this path, not a missing decision.
 
@@ -422,7 +428,10 @@ docx-normalize/
 │   ├── inspect_style_def.js          ← Named style definition details
 │   ├── inspect_section.js            ← Section page setup details
 │   ├── find_paragraphs.js            ← Regex search across paragraph text
-│   └── apply_styles.js               ← Execute formatting changes; supports --dry-run
+│   ├── apply_styles.js               ← Combined orchestrator (styles + numbering + template); --dry-run
+│   ├── restyle.js                    ← Narrow: paragraph restyle only (rejects numbering / template)
+│   ├── migrate_numbering.js          ← Narrow: install numbering, can target pre-existing styleIds
+│   └── import_template.js            ← Narrow: import named styles from a template doc
 └── references/
     ├── apply-styles-config.md        ← Full apply_styles config schema (read before composing your first config)
     ├── numbering-formats.md          ← Numbering format reference (read when handling numbered headings)

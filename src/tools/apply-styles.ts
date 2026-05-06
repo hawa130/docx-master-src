@@ -126,7 +126,7 @@ interface TemplateImportConfig {
   importNumbering?: boolean
 }
 
-interface ApplyConfig {
+export interface ApplyConfig {
   /**
    * Preview mode: run the entire pipeline in memory and print the report,
    * but skip writing the output file and skip post-write validation. Use
@@ -223,56 +223,7 @@ interface RestyleStat {
   count: number
 }
 
-async function main() {
-  const args = process.argv.slice(2)
-  const dryRun = args.includes("--dry-run")
-  const configPath = args.filter((a) => !a.startsWith("--"))[0]
-  if (!configPath) {
-    console.error("Usage: node scripts/apply_styles.js [--dry-run] <config.json>")
-    process.exit(1)
-  }
-  let config: ApplyConfig
-  try {
-    config = JSON.parse(readFileSync(configPath, "utf8"))
-  } catch (err) {
-    console.error(`Cannot read config: ${(err as Error).message}`)
-    process.exit(1)
-  }
-  if (dryRun) (config as ApplyConfig & { dryRun?: boolean }).dryRun = true
-
-  if (!config.source || !config.output) {
-    console.error("config.source and config.output are required")
-    process.exit(1)
-  }
-  const source = resolve(config.source)
-  const output = resolve(config.output)
-  if (!config.dryRun && source === output) {
-    console.error("output must differ from source")
-    process.exit(1)
-  }
-  if (!existsSync(source)) {
-    console.error(`source not found: ${source}`)
-    process.exit(1)
-  }
-  if (!Array.isArray(config.styles) || config.styles.length === 0) {
-    console.error("config.styles must be a non-empty array")
-    process.exit(1)
-  }
-
-  try {
-    await applyStyles(source, output, config)
-  } catch (err) {
-    if (existsSync(output)) {
-      try {
-        unlinkSync(output)
-      } catch {}
-    }
-    console.error(`Error: ${(err as Error).message}`)
-    process.exit(1)
-  }
-}
-
-async function applyStyles(source: string, output: string, config: ApplyConfig) {
+export async function applyStyles(source: string, output: string, config: ApplyConfig) {
   // 1. In dry-run: read source directly. Otherwise copy first, modify the copy.
   if (!config.dryRun) {
     mkdirSync(dirname(output), { recursive: true })
@@ -390,6 +341,19 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
   let numIdMap = new Map<string, string>() // styleId → numId
   if (config.numbering && config.numbering.levels.length > 0) {
     const declaredIds = new Set(config.styles.map((s) => s.id))
+    // Numbering levels can also bind to styles already present in the
+    // document's styles.xml without redeclaring them in config.styles[].
+    // This unlocks the "migrate numbering only" workflow — agent specifies
+    // numbering levels that target the doc's existing Heading1/2/3 without
+    // having to re-extract their definitions. Template-imported styles also
+    // landed in stylesDoc by this point, so they're valid numbering targets
+    // too.
+    const existingStyleIds = new Set<string>()
+    for (const s of getChildrenNS(stylesDoc.documentElement!, NS.w, "style")) {
+      const sid = wAttr(s, "styleId")
+      if (sid) existingStyleIds.add(sid)
+    }
+    const validNumberingTargets = new Set([...declaredIds, ...existingStyleIds])
     for (const [i, lvl] of config.numbering.levels.entries()) {
       // Required-field validation. Without this an undefined `lvlText` /
       // `numFmt` crashes downstream with "Cannot read properties of
@@ -410,10 +374,11 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
       if (typeof lvl.styleId !== "string" || !lvl.styleId) {
         throw new Error(`numbering.levels[${i}]: missing required field "styleId" (paragraph style id this level binds to)`)
       }
-      if (!declaredIds.has(lvl.styleId)) {
+      if (!validNumberingTargets.has(lvl.styleId)) {
         throw new Error(
-          `numbering.levels[${i}]: styleId "${lvl.styleId}" is not declared in styles[].\n` +
-            `  Declared: [${[...declaredIds].join(", ")}]`,
+          `numbering.levels[${i}]: styleId "${lvl.styleId}" doesn't exist.\n` +
+            `  Declared in styles[]: [${[...declaredIds].join(", ")}]\n` +
+            `  Existing in styles.xml: [${[...existingStyleIds].sort().join(", ")}]`,
         )
       }
       // sanity-check stripPrefixPatterns vs lvlText placeholder count: a
@@ -1525,5 +1490,3 @@ function printReport(args: {
   }
   console.log(lines.join("\n"))
 }
-
-main()
