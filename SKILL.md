@@ -17,12 +17,13 @@ Tools only present facts — computed styles, element positions, document struct
 
 ### Step 1: Understand the Goal
 
-Invoking the skill is itself a standardization request. Apply the full workflow by default; treat any user-supplied typography preferences ("正文宋体小四") or "附加要求 / 另外 / 顺便" phrasings as additions on top, not replacements. Genuine scope limits ("只改字体 / 保留手动编号") opt out specific steps — honor them. When the user's intent is genuinely ambiguous (narrow scope vs. preferences, role assignments, spec-vs-doc conflicts), ask one focused question rather than guess.
+Read the user's request and any attached files. The user may give you:
 
-The user may also provide:
+- **Just a docx** — apply full default standardization.
+- **Explicit text guidelines** ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距") — translate the natural language into structured `styles[i]` fields yourself. The script does NOT parse it. Pass the user's wording *verbatim* into `requirements: { <styleId>: "..." }`; the change report prints it side-by-side with your resolved fields for visual verification. See Step 4 for 字号/字体/颜色 mappings.
+- **Template / reference document** — pass via `template: { source, styles: [...] }`. The script clones the named styles' full definitions (with basedOn ancestors) into source's styles.xml and migrates referenced numIds. Run `overview` / `inspect_style_def` on the template first to choose which styleIds to import. The template's *style system* transfers; its *document structure* (chapter count, content, page setup) does not.
 
-- **Explicit text guidelines** ("一级标题三号黑体加粗, 正文小四宋体1.5倍行距"): translate the natural language into structured `styles[i]` fields yourself — the script does NOT parse it. Pass the user's original wording *verbatim* into `requirements: { styleId: "..." }`; the change report prints it side-by-side with your resolved fields for human verification. See Step 4 for 字号/字体/颜色 mappings.
-- **Template / reference document**: pass via `template: { source, styles: [...] }`. The script clones the named styles' full definitions (with basedOn ancestors) into source's styles.xml and migrates referenced numIds. Run `overview` / `inspect_style_def` on the template first to know which styleIds to import. The template's *style system* transfers; its *document structure* (chapter count, content, page setup) does not.
+**Scope reading**: invoking the skill is itself a request for full standardization. User-supplied typography preferences ("正文宋体小四") and "附加 / 另外 / 顺便 X" phrasings *add to* that default — they don't replace it. Only explicit narrow-scope phrasings like "只改字体" / "保留手动编号" opt out specific steps; honor those. When intent is genuinely ambiguous (narrow vs. preferences, role assignments, spec-vs-doc conflict), ask one focused question rather than guess.
 
 ### Step 2: Inspect the Document
 
@@ -87,7 +88,7 @@ Only drill into individual paragraphs (via `inspect_range` or `inspect_style`) w
 - `Reference` — bibliography entries ([1] ..., with hanging indent)
 - `Keywords` — keyword line (关键词：... / Keywords: ...)
 - `Abstract` — abstract body text (may differ from normal body)
-- `BodyEmphasis` — short uniformly-bold paragraphs that act as in-paragraph sub-titles or labels (no outline level, no auto-numbering, typically a short phrase). The style **must explicitly set `bold: true`** because smart-strip would otherwise drop the uniform bold during restyle.
+- `BodyEmphasis` — uniformly-bold body paragraphs acting as in-paragraph sub-titles or labels (no outline level, no auto-numbering; often short phrases but longer fully-bold paragraphs fit too). The style **must explicitly set `bold: true`** — when bold is uniform across the paragraph's runs, restyle strips it as redundant direct formatting, so the new style needs to carry it.
 
 **Fixed content (do not restyle — preserve as-is):**
 - Cover page elements (school name, field labels, date)
@@ -98,12 +99,11 @@ Only create roles that actually exist in the document. If you discover roles not
 
 ### Step 4: Define the Style System
 
-Per role, determine formatting parameters. Sources, in priority order: (1) user requirements, (2) template document, (3) values extracted from a representative paragraph in the document, (4) sensible defaults (last resort). Don't invent values when a representative paragraph exists.
+**Source of values** (priority order): (1) user requirements, (2) template document, (3) values extracted from a representative paragraph in the document, (4) sensible defaults (last resort). Don't invent values when a representative paragraph exists.
 
-The `styles` array supports two modes per entry:
+**Two modes per `styles` entry:**
 
-1. **`fromParagraph`** (preferred when extracting from the doc): pick the first occurrence of the dominant fingerprint for the role and set `fromParagraph: <index>`. The tool extracts the full computed rPr + pPr from that paragraph's *dominant text run* (longest non-numbering-prefix run, so `"1.1 研究方法"` extracts the title formatting, not the prefix's). Use `overrides` to add fields the source lacks (e.g. `outlineLevel`) or to apply user-requested specific values.
-
+1. **`fromParagraph`** (preferred when extracting from the doc): pick the first occurrence of the dominant fingerprint for the role and set `fromParagraph: <index>`. The tool extracts the full computed rPr + pPr from that paragraph's *dominant text run* (longest non-numbering-prefix run, so `"1.1 研究方法"` extracts the title formatting, not the prefix's). Use `overrides` to add fields the source lacks (e.g. `outlineLevel`) or apply user-requested specifics.
 2. **Manual mode**: specify fields directly — when no representative paragraph exists, when synthesizing a role, or when the user fully specified the style.
 
 Modes can mix within one `styles` array:
@@ -120,21 +120,19 @@ Modes can mix within one `styles` array:
 }
 ```
 
-For outliers (e.g. Heading1 appears 5 times, 4 of one pattern + 1 different), source from the majority. The same applies when two fingerprints play the same role — take the majority's values, route both to the same style. "Normalize" means routing inconsistent paragraphs to one consistent style, NOT replacing the author's choices with values you think look better.
+**Normalization rule:** for outliers (e.g. Heading1 appears 5 times, 4 of one pattern + 1 different), source from the majority. The same applies when two fingerprints play the same role — take the majority's values, route both fingerprints' paragraphs to one style. "Normalize" means routing inconsistent paragraphs to one consistent style, NOT replacing the author's choices with values you think look better.
 
 **What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel (only when the source has it set — add via `overrides` if you need it on a heading whose source paragraph lacks it).
 
-`font` is the source's ASCII/Latin font (often inherited from theme defaults like Arial / Times), separate from `fontEastAsia` which holds the CJK font. A paragraph rendering as Chinese can still extract `font: "Arial"` — that's the Latin font that would render Latin characters in the same paragraph.
+**Does NOT extract:** `numId` / `numLevel` — numbering is bound through `numbering.levels[].styleId`, not hardcoded per paragraph.
 
-**Does NOT extract**: `numId` / `numLevel` — numbering is bound through `numbering.levels[].styleId`, not hardcoded per paragraph.
+**`font` vs `fontEastAsia`:** `font` is the source's ASCII/Latin slot (often inherited from theme defaults like Arial / Times); `fontEastAsia` holds the CJK font. A paragraph rendering as Chinese can still extract `font: "Arial"` — that's the Latin font that would render Latin characters in the same paragraph. When the user names only a Chinese font ("正文宋体" / "标题黑体"), set `fontEastAsia` only and leave `font` (ASCII) unset so the source's Latin font is preserved. Set both fields only when the user explicitly says the same font should apply to Latin too.
 
 **Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
 
 **When the document already defines the style ID you want:** if its parameters match your target, reuse as-is. If they differ, override (the script updates the existing definition rather than creating a duplicate). But first verify the style is actually used for its intended role — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first. Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
 
-When the user names only a Chinese font ("正文宋体" / "标题黑体"), set `fontEastAsia` only and leave `font` (ASCII) unset so the source's Latin font (often Arial / Times) is preserved. Set both fields only when the user explicitly says the same font should apply to Latin too.
-
-When the user provides text requirements, parse Chinese font size names using this mapping:
+**Chinese font size mapping:**
 
 ```
 初号 = 42pt    小初 = 36pt
@@ -223,10 +221,11 @@ Key invariants:
 - Paragraph indexing is 1-based, matching `#NNN` labels in the skeleton. Layout-table paragraphs are indexed; data/form tables are not.
 - Paragraph mapping order (first match wins): `exclude > assignments > pattern_rules > bulk_rules > implicit-keep`.
 - Style-field priority (later wins): defaults → template-imported → fromParagraph → direct fields → overrides.
+- Restyle behavior: when a paragraph is restyled, run-level direct formatting that is *uniform across all runs* gets stripped (so the new style's defaults take effect). Direct formatting that *differs between runs* is preserved as intentional inline emphasis — bold lead phrase + non-bold body, colored numbering prefix + black title, etc. survive automatically.
 
 ### Step 8: Validate and Report
 
-Iterate with `apply_styles --dry-run` first. The change report includes a per-style sample of the first affected paragraphs and a Style Resolution block showing user spec vs. resolved fields side-by-side — read these to confirm routing is right before committing. Note: Style Resolution only lists styles that have a `requirements` entry. Styles without one don't appear there; if you want a style verified by spec-vs-resolved diff, give it a `requirements` value (even if it's a brief note).
+Iterate with `apply_styles --dry-run` first. The change report includes a per-style sample of the first affected paragraphs and a Style Resolution block listing every injected style — styles with a `requirements` entry show user spec next to resolved fields for side-by-side verification, styles without one show the resolved fields alone (still auditable). Read both before committing.
 
 **Safety guarantees:**
 
