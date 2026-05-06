@@ -124,6 +124,8 @@ For outliers (e.g. Heading1 appears 5 times, 4 of one pattern + 1 different), so
 
 **What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel (only when the source has it set — add via `overrides` if you need it on a heading whose source paragraph lacks it).
 
+`font` is the source's ASCII/Latin font (often inherited from theme defaults like Arial / Times), separate from `fontEastAsia` which holds the CJK font. A paragraph rendering as Chinese can still extract `font: "Arial"` — that's the Latin font that would render Latin characters in the same paragraph.
+
 **Does NOT extract**: `numId` / `numLevel` — numbering is bound through `numbering.levels[].styleId`, not hardcoded per paragraph.
 
 **Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
