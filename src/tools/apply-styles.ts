@@ -499,6 +499,7 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
 
   // 7. Walk document.xml in order and apply actions to each indexed paragraph
   const samples = new Map<string, RestyleSample[]>()
+  const implicitKeepByFingerprint = new Map<string, number>()
   const ctx: ApplyContext = {
     excludeSet,
     assignmentMap,
@@ -513,6 +514,7 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
     numLvlTextByStyle,
     samples,
     samplesPerStyleCap: 5,
+    implicitKeepByFingerprint,
     config,
   }
   applyToBody(documentDoc, ctx)
@@ -564,6 +566,7 @@ async function applyStyles(source: string, output: string, config: ApplyConfig) 
     output,
     dryRun: !!config.dryRun,
     samples: ctx.samples,
+    implicitKeepByFingerprint: ctx.implicitKeepByFingerprint,
     templateImport,
   })
 }
@@ -607,6 +610,9 @@ interface ApplyContext {
   samples: Map<string, RestyleSample[]>
   /** How many samples to keep per style. */
   samplesPerStyleCap: number
+  /** Paragraphs that matched no rule (no exclude, no assignment, no
+   * pattern_rule, no bulk_rule). Grouped by fingerprint for the report. */
+  implicitKeepByFingerprint: Map<string, number>
   config: ApplyConfig
 }
 
@@ -688,7 +694,18 @@ function processOneParagraph(
     ctx.flags.push({ paraIndex: para.index, reason })
     return
   }
-  if (action !== "restyle" || !targetStyle) return
+  if (action !== "restyle" || !targetStyle) {
+    // Paragraph fell through all rules — implicit keep. Track by fingerprint
+    // so the change report can show which fingerprints were not covered;
+    // makes "where did the rest go?" verification cheap.
+    if (!a) {
+      ctx.implicitKeepByFingerprint.set(
+        para.fingerprint,
+        (ctx.implicitKeepByFingerprint.get(para.fingerprint) ?? 0) + 1,
+      )
+    }
+    return
+  }
 
   // apply restyle
   const oldPStyle = para.styleId
@@ -1353,6 +1370,7 @@ function printReport(args: {
   output: string
   dryRun: boolean
   samples: Map<string, RestyleSample[]>
+  implicitKeepByFingerprint: Map<string, number>
   templateImport: { imported: string[]; numIdRemap: Map<string, string>; pulledAncestors: string[] } | null
 }) {
   const lines: string[] = []
@@ -1388,6 +1406,15 @@ function printReport(args: {
   lines.push(`Paragraphs restyled: ${totalRestyled}`)
   for (const [styleId, count] of args.restyleStats) {
     lines.push(`  ${styleId}: ${count} paragraphs`)
+  }
+  if (args.implicitKeepByFingerprint.size > 0) {
+    let totalImplicit = 0
+    for (const [, c] of args.implicitKeepByFingerprint) totalImplicit += c
+    const groups = [...args.implicitKeepByFingerprint.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([fp, n]) => `${fp}×${n}`)
+      .join(", ")
+    lines.push(`Paragraphs untouched (no rule matched): ${totalImplicit}  [${groups}]`)
   }
   lines.push("")
   if (args.manualNumberingRemoved.size > 0) {

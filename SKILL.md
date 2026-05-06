@@ -130,6 +130,8 @@ For outliers (e.g. Heading1 appears 5 times, 4 of one pattern + 1 different), so
 
 **When the document already defines the style ID you want:** if its parameters match your target, reuse as-is. If they differ, override (the script updates the existing definition rather than creating a duplicate). But first verify the style is actually used for its intended role — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first. Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
 
+When the user names only a Chinese font ("正文宋体" / "标题黑体"), set `fontEastAsia` only and leave `font` (ASCII) unset so the source's Latin font (often Arial / Times) is preserved. Set both fields only when the user explicitly says the same font should apply to Latin too.
+
 When the user provides text requirements, parse Chinese font size names using this mapping:
 
 ```
@@ -145,6 +147,8 @@ When the user provides text requirements, parse Chinese font size names using th
 ### Step 5: Define the Numbering Scheme
 
 When the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法"` / `"第N章 ..."`), migrate to automatic numbering — this is part of standardization. Skip only when the user explicitly opts out, the source already has real `numId` references you want to preserve (verify with `inspect_range` — typed-text prefixes look identical to auto-numbers but behave totally differently), or no numbered headings exist.
+
+If the manual scheme itself is inconsistent across the document — e.g. H1 has numbers in chapter 1 but not chapter 2, or H2 uses chapter-prefixed `"1.1"` in some chapters and per-chapter-restart `"1."` in others — auto-migration is also a normalization decision that may change author-intended semantics. Ask the user before applying rather than picking one scheme silently.
 
 Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. See `references/numbering-formats.md` for `numFmt` / `lvlText` syntax.
 
@@ -207,7 +211,7 @@ Key invariants:
 
 ### Step 8: Validate and Report
 
-Iterate with `apply_styles --dry-run` first. The change report includes a per-style sample of the first affected paragraphs and a Style Resolution block (when `requirements` is set) showing user spec vs. resolved fields side-by-side — read these to confirm routing is right before committing.
+Iterate with `apply_styles --dry-run` first. The change report includes a per-style sample of the first affected paragraphs and a Style Resolution block showing user spec vs. resolved fields side-by-side — read these to confirm routing is right before committing. Note: Style Resolution only lists styles that have a `requirements` entry. Styles without one don't appear there; if you want a style verified by spec-vs-resolved diff, give it a `requirements` value (even if it's a brief note).
 
 **Safety guarantees:**
 
