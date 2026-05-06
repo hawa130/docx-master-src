@@ -204,16 +204,14 @@ function formatResolvedFields(fields: Record<string, unknown>): string {
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 
-function extractDisplayFields(
-  def: Record<string, unknown>,
-): Record<string, unknown> {
+function extractDisplayFields(def: StyleConfigEntry): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   // fontEastAsia first when set: in Chinese docs the CJK font is what users
   // perceive as "the font", so leading with it avoids the "why is the body
   // Arial?" double-take when the agent reviews the resolution block. When
   // only `font` (Latin/ASCII) is set, fontEastAsia is absent and the order
   // collapses to the natural one anyway.
-  const interesting = [
+  const interesting: (keyof StyleConfigEntry)[] = [
     "fontEastAsia", "font", "size", "bold", "italic", "color",
     "alignment", "lineSpacing", "lineRule", "spaceBefore", "spaceAfter",
     "firstLineIndent", "hangingIndent", "outlineLevel",

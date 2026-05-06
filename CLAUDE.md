@@ -34,6 +34,7 @@ Skill tools import shared modules via the `@core/*` alias (declared in `tsconfig
 | Build TypeScript → dist/ (all skills) | `bun run build` |
 | Build + stage skill bundle + zip (single skill, or `--all`) | `bun run build:skill [<name>] [--all]` |
 | Watch | `bun run build:watch` |
+| Type-check (tsc, no emit) | `bun run typecheck` |
 
 No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `src/skills/<name>/` or shared `src/core/`, always rebuild and verify `dist/<name>/` reflects the change before claiming done.
 

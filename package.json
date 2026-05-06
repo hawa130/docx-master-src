@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "build:skill": "tsdown && bun run build-skill.ts"
+    "build:skill": "tsdown && bun run build-skill.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",

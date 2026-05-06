@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext"],
+    // Environment setup & latest features.
+    // DOM is needed for the Document / Element type globals used throughout
+    // src/core/ — @xmldom/xmldom returns DOM-compatible objects and the code
+    // types them by structure. We never run in a browser, so the runtime
+    // globals from this lib are inert; we only consume the type definitions.
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
