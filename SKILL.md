@@ -132,17 +132,7 @@ Modes can mix within one `styles` array:
 
 **When the document already defines the style ID you want:** if its parameters match your target, reuse as-is. If they differ, override (the script updates the existing definition rather than creating a duplicate). But first verify the style is actually used for its intended role — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first. Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
 
-**Chinese font size mapping:**
-
-```
-初号 = 42pt    小初 = 36pt
-一号 = 26pt    小一 = 24pt
-二号 = 22pt    小二 = 18pt
-三号 = 16pt    小三 = 15pt
-四号 = 14pt    小四 = 12pt
-五号 = 10.5pt  小五 = 9pt
-六号 = 7.5pt   小六 = 6.5pt
-```
+**Chinese font size names** (初号/一号/.../小六): see `references/chinese-font-sizes.md` for the pt mapping when the user specifies sizes in Chinese terms.
 
 ### Step 5: Define the Numbering Scheme
 
@@ -326,6 +316,8 @@ docx-normalize/
 │   ├── find_paragraphs.js            ← Regex search across paragraph text
 │   └── apply_styles.js               ← Execute formatting changes; supports --dry-run
 └── references/
-    └── numbering-formats.md          ← Numbering format reference (read when handling numbered headings)
+    ├── apply-styles-config.md        ← Full apply_styles config schema (read before composing your first config)
+    ├── numbering-formats.md          ← Numbering format reference (read when handling numbered headings)
+    └── chinese-font-sizes.md         ← 初号/一号/.../小六 → pt mapping (read when user specifies Chinese font sizes)
 ```
 
