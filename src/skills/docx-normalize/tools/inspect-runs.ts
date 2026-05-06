@@ -11,16 +11,16 @@
  * where the leading bold phrase is a separate run from the non-bold body.
  * For that, you need this tool.
  */
-import { loadDocx } from "../core/load.ts"
-import { NS } from "../core/types.ts"
+import { loadDocx } from "@core/load.ts"
+import { NS } from "@core/types.ts"
 import {
   firstChildNS,
   getChildren,
   getChildrenNS,
   textContent,
   wAttr,
-} from "../core/xml-utils.ts"
-import { summarizeTable } from "../core/table-classifier.ts"
+} from "@core/xml-utils.ts"
+import { summarizeTable } from "@core/table-classifier.ts"
 
 interface RunInfo {
   index: number

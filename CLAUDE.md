@@ -1,30 +1,42 @@
 # Working in this repo
 
-This repo builds the `docx-normalize` Claude skill — scripts that classify paragraph roles in a Word document and inject named styles. `SKILL.md` is the agent-facing contract; this file is for working *on* the project.
+This repo builds a family of Word (.docx) automation skills. The first one shipped is `docx-normalize` (paragraph classification + named-style injection); planned siblings are `docx-cleanup` (accept changes, strip metadata) and `docx-augment` (insert captions, manage cross-references). Each skill ships as its own bundle. Per-skill `SKILL.md` files are the agent-facing contracts; this file is for working *on* the project.
 
 **Keep this file in sync.** Tool names, build commands, file paths, and the lessons below are referenced concretely. When any of them changes, update here in the same commit — stale references mislead future maintainers and the next agent reviewing the design.
 
 ## Layout
 
 ```
-src/core/        shared parsing / style / fingerprint / template-import logic
-src/tools/       one CLI entry per tool (each maps to a dist script)
-references/     agent-facing reference docs (progressive disclosure from SKILL.md)
-SKILL.md        the skill spec the agent reads at runtime
-test/fixtures/  sample .docx files for manual testing
-dist/           build output; dist/docx-normalize/ is the staged skill bundle
-build-skill.ts  packages the staged dir into the .skill zip
+src/core/                          shared across all skills:
+                                     parsing / style / fingerprint / template-import
+src/skills/<name>/                 one directory per skill, fully self-contained:
+src/skills/<name>/SKILL.md           the skill spec the agent reads at runtime
+src/skills/<name>/references/        on-demand reference docs (progressive disclosure)
+src/skills/<name>/tools/             TS source for the skill's CLI scripts
+test/fixtures/                     sample .docx files for manual testing
+dist/<name>/                       staged skill bundle (SKILL.md + references/ + scripts/)
+dist/<name>.zip                    zipped bundle ready to publish
+build-skill.ts                     packages staged dirs into .skill zips
 ```
+
+Skill tools import shared modules via the `@core/*` alias (declared in `tsconfig.json` paths and `tsdown.config.ts` alias). Don't use relative `../../../core/...` paths.
 
 ## Commands
 
 | Task | Command |
 |---|---|
-| Build TypeScript → dist/ | `bun run build` |
-| Build + stage skill bundle + zip | `bun run build:skill` |
+| Build TypeScript → dist/ (all skills) | `bun run build` |
+| Build + stage skill bundle + zip (single skill, or `--all`) | `bun run build:skill [<name>] [--all]` |
 | Watch | `bun run build:watch` |
 
-No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `src/` or `SKILL.md`, always `bun run build:skill` and verify `dist/docx-normalize/` reflects the change before claiming done.
+No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `src/skills/<name>/` or shared `src/core/`, always rebuild and verify `dist/<name>/` reflects the change before claiming done.
+
+## Adding a new skill
+
+1. `mkdir -p src/skills/<name>/{tools,references}` and write `src/skills/<name>/SKILL.md`
+2. Add the skill's tool entries to `tsdown.config.ts` (each entry maps a script name → its `tools/<file>.ts`)
+3. Tools import shared modules via `@core/...` and skill-internal modules via relative paths
+4. `bun run build:skill <name>` produces `dist/<name>/` and `dist/<name>.zip`
 
 ## Design principles
 

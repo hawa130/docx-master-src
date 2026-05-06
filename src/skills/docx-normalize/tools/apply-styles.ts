@@ -2,16 +2,16 @@ import { readFileSync, unlinkSync, existsSync, copyFileSync, mkdirSync } from "n
 import { dirname, resolve } from "node:path"
 import JSZip from "jszip"
 import { DOMParser } from "@xmldom/xmldom"
-import { DocxReader, serializeXml } from "../core/reader.ts"
-import { importTemplateStyles } from "../core/template-import.ts"
-import { StyleResolver } from "../core/style-resolver.ts"
-import { DocumentParser } from "../core/document-parser.ts"
-import { summarizeTable } from "../core/table-classifier.ts"
+import { DocxReader, serializeXml } from "@core/reader.ts"
+import { importTemplateStyles } from "@core/template-import.ts"
+import { StyleResolver } from "@core/style-resolver.ts"
+import { DocumentParser } from "@core/document-parser.ts"
+import { summarizeTable } from "@core/table-classifier.ts"
 import {
   NS,
   type DocumentElement,
   type ParsedParagraph,
-} from "../core/types.ts"
+} from "@core/types.ts"
 import {
   firstChildNS,
   getChildren,
@@ -19,7 +19,7 @@ import {
   textContent,
   wAttr,
   wVal,
-} from "../core/xml-utils.ts"
+} from "@core/xml-utils.ts"
 
 interface StyleConfigEntry {
   id: string
@@ -252,7 +252,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   const parsed = parser.parse()
   // parsed.paragraphs already has fingerprints? No — fingerprinter is run in load.ts only.
   // Run fingerprinter here:
-  const { Fingerprinter } = await import("../core/fingerprint.ts")
+  const { Fingerprinter } = await import("@core/fingerprint.ts")
   const fpResult = new Fingerprinter().assign(parsed.paragraphs)
   // Build hash → letter map so bulk_rules can reference fingerprints by
   // either the in-session letter (A, B, ...) or the content-derived hash

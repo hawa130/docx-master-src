@@ -1,6 +1,6 @@
-import { loadDocx, parseNumbering } from "../core/load.ts"
-import type { DocumentElement, ParsedParagraph, SectionInfo } from "../core/types.ts"
-import type { LoadedDoc } from "../core/load.ts"
+import { loadDocx, parseNumbering } from "@core/load.ts"
+import type { DocumentElement, ParsedParagraph, SectionInfo } from "@core/types.ts"
+import type { LoadedDoc } from "@core/load.ts"
 
 async function main() {
   const file = process.argv[2]

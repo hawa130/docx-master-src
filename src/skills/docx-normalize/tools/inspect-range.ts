@@ -1,5 +1,5 @@
-import { loadDocx } from "../core/load.ts"
-import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "../core/types.ts"
+import { loadDocx } from "@core/load.ts"
+import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "@core/types.ts"
 
 async function main() {
   const file = process.argv[2]

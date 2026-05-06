@@ -14,6 +14,10 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
+    "paths": {
+      "@core/*": ["./src/core/*"]
+    },
+
     // Best practices
     "strict": true,
     "skipLibCheck": true,
