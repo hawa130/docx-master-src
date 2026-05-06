@@ -97,36 +97,18 @@ For most fingerprints, the mapping is obvious from format + context:
 
 Only drill into individual paragraphs (via `inspect_range` or `inspect_style`) when a fingerprint is ambiguous — e.g. the same visual format is used for both table captions and figure captions. Common roles:
 
-**Structural roles:**
-- `Title` — document title (usually appears once, cover page)
-- `Heading1` / `Heading2` / `Heading3` — section headings at different levels
-- `HeadingNoNum` — unnumbered section headings (摘要, Abstract, 参考文献, 致谢, 附录)
-- `BodyText` — main body paragraphs
-- `FirstParagraph` — first paragraph after a heading (when styled differently from the rest of body)
+**Structural:** `Title`, `Heading1` / `Heading2` / `Heading3`, `BodyText`. Two less-obvious ones:
+- `HeadingNoNum` — unnumbered top-level sections (摘要, Abstract, 参考文献, 致谢, 附录) that share Heading1's visual style but have no chapter number.
+- `FirstParagraph` — first paragraph after a heading when styled differently from body (often no first-line indent).
 
-**Caption/label roles:**
-- `FigureCaption` — caption below an image (图 X-X ...)
-- `TableCaption` — caption above a table (表 X-X ...)
-- `TableFootnote` — notes below a table (注：..., 数据来源：...)
-- `EquationCaption` — equation number, usually right-aligned (X-X)
+**Caption / label:** `FigureCaption` (below image), `TableCaption` (above table), `TableFootnote` (注/数据来源 lines below a table), `EquationCaption` (right-aligned number).
 
-**List roles:**
-- `ListBullet` — unordered list items
-- `ListNumber` — ordered list items
-- `ListContinue` — continuation paragraph within a list item
+**Lists:** `ListBullet`, `ListNumber`, `ListContinue` (continuation paragraph within a list item).
 
-**Special roles:**
-- `Code` — code blocks (monospace font, possibly shaded background)
-- `Quote` — block quotations (indented, possibly different font)
-- `Reference` — bibliography entries ([1] ..., with hanging indent)
-- `Keywords` — keyword line (关键词：... / Keywords: ...)
-- `Abstract` — abstract body text (may differ from normal body)
-- `BodyEmphasis` — uniformly-bold body paragraphs acting as in-paragraph sub-titles or labels (no outline level, no auto-numbering; often short phrases but longer fully-bold paragraphs fit too). The style **must explicitly set `bold: true`** — when bold is uniform across the paragraph's runs, restyle strips it as redundant direct formatting, so the new style needs to carry it.
+**Special:** `Code`, `Quote`, `Reference` ([1] entries with hanging indent), `Keywords`, `Abstract`. Plus one with a tool-specific gotcha:
+- `BodyEmphasis` — uniformly-bold body paragraphs acting as in-paragraph sub-titles or labels (no outline level, no auto-numbering). The style **must explicitly set `bold: true`** — when bold is uniform across the paragraph's runs, restyle strips it as redundant direct formatting, so the new style needs to carry it.
 
-**Fixed content (do not restyle — preserve as-is):**
-- Cover page elements (school name, field labels, date)
-- Header/footer content
-- Table of contents (auto-generated)
+**Fixed content (do not restyle — preserve as-is):** cover page elements (school name, field labels, date), header/footer content, table of contents (auto-generated).
 
 Only create roles that actually exist in the document. If you discover roles not listed here (e.g. `Theorem` in math papers), create them.
 
@@ -364,76 +346,11 @@ If a request *can* be expressed via `apply_styles` config, do that instead. The 
 - **Appendix numbering** often restarts with a different scheme (附录A / A.1 / A.2) — may need a second `numbering` entry.
 - **Layout vs data tables**: the overview tool classifies these — layout tables (single-cell content containers) are inlined into the skeleton; data/form tables are summarized. Verify the classification when inspecting unfamiliar table-heavy documents.
 
-## Document Skeleton Format
+## Reading the Overview Output
 
-`overview` outputs metadata, page setup, theme, style definitions, numbering schemes, visual style summary, and a document skeleton:
+`overview` prints visual style summary + document skeleton inline; the format is self-explanatory once you see it. Four conventions worth knowing in advance, since they aren't visible from the output alone:
 
-```
-=== Visual Style Summary (deduplicated) ===
-A: 宋体 22pt Bold Center      ×1
-B: 宋体 16pt Bold              ×6
-C: 宋体 14pt Bold              ×18
-D: 宋体 12pt 1stIndent          ×89
-...
-
-=== Document Skeleton ===
---- Section 1 (para #1-#11) ---
-Header: (none)
-Footer: (none)
-
-  #001 [A]  "某某大学"
-  #002 [A]  "本科毕业设计（论文）"
-  ...
-
---- Section 2 (para #12-#28) ---
-Header: "某某大学本科毕业论文"
-Footer: Roman numeral page number
-
-  #012 [B]  "摘  要"
-  #013 [D]  "（摘要内容）"
-
---- Section 3 (para #29-#68) ---
-Footer: Arabic page number (restart from 1)
-
-  #029 [B]  "第1章  绪论"
-  #030 [C]  "1.1  研究背景及意义"
-  #031 [D]  "本文针对某某问题展开研究..."
-  ...
-  #049 [E]  "表 3-1 不同方法的性能对比"
-  --- TABLE (5×4) headers:["方法","Precision","Recall","F1"] ---
-  #050 [F]  "注：加粗数据表示最优结果"
-  --- IMAGE (14cm × 8cm) ---
-  #062 [E]  "图 3-2 实验结果对比"
-  #081 --- empty ×3 ---
-```
-
-**Conventions:**
-- `[A]`, `[B]` are letter labels (sorted by frequency in this run — volatile across edits). The summary also shows a 6-char content hash next to each letter (e.g. `A [c4f9]: ...`) — `bulk_rules.fingerprint` accepts either form. Use the letter for in-session iteration; use the hash in configs you intend to keep across doc revisions, since the hash stays stable when paragraphs are added/removed and frequency-rank shifts.
-- The fingerprint hash includes font, size, weight/italic, color, alignment, first-line-indent, AND whether the paragraph carries a numbering reference — so visually identical paragraphs split into different fingerprints (with "List" suffix) when one is auto-numbered and the other is plain body. `bulk_rules` can target list items independently.
-- Non-paragraph elements appear as `--- TYPE (details) ---`. Consecutive empty paragraphs are compressed: `--- empty ×N ---`.
-- Layout tables (single-cell content containers) are expanded inline under `--- LAYOUT TABLE ---` / `--- END LAYOUT TABLE ---` markers; data tables and form tables are summarized.
-- Text is truncated to ~40 chars; use `inspect_range` for full text.
-
-## File Structure
-
-```
-docx-normalize/
-├── SKILL.md
-├── scripts/
-│   ├── overview.js                   ← Document overview and skeleton
-│   ├── inspect_range.js              ← Detailed paragraph range view
-│   ├── inspect_runs.js               ← Per-run rPr dump + run-level diversity summary
-│   ├── inspect_neighbors.js          ← Adjacent elements (image/table/para/break) ±radius
-│   ├── inspect_style.js              ← Visual fingerprint occurrences
-│   ├── inspect_style_def.js          ← Named style definition details
-│   ├── inspect_section.js            ← Section page setup details
-│   ├── find_paragraphs.js            ← Regex search across paragraph text
-│   ├── apply_styles.js               ← Combined orchestrator (styles + numbering + template); --dry-run
-│   ├── restyle.js                    ← Narrow: paragraph restyle only (rejects numbering / template)
-│   ├── migrate_numbering.js          ← Narrow: install numbering, can target pre-existing styleIds
-│   └── import_template.js            ← Narrow: import named styles from a template doc
-└── references/
-    ├── apply-styles-config.md        ← Full apply_styles config schema (read before composing your first config)
-    ├── numbering-formats.md          ← Numbering format reference (read when handling numbered headings)
-    └── chinese-font-sizes.md         ← 初号/一号/.../小六 → pt mapping (read when user specifies Chinese font sizes)
-```
+- **Letter vs hash labels.** `[A]`, `[B]` are sorted by frequency in this run (volatile across edits); the summary also shows a 6-char content hash next to each letter (`A [c4f9]: ...`). `bulk_rules.fingerprint` accepts either — use letters for in-session iteration, hashes in configs you intend to keep across doc revisions (hashes are stable when paragraphs are added/removed and frequency-rank shifts).
+- **Numbered ≠ unnumbered fingerprints.** The fingerprint hash includes whether a paragraph carries a numbering reference, so visually identical paragraphs split into separate fingerprints (suffix "List") when one is auto-numbered and the other isn't. `bulk_rules` can target them independently.
+- **Layout vs data tables.** Layout tables (single-cell content containers) are inlined into the skeleton between `--- LAYOUT TABLE ---` markers; data and form tables are summarized as a single non-paragraph block. Verify the classification when inspecting unfamiliar table-heavy documents.
+- **Empty paragraphs and truncation.** Consecutive empty paragraphs are compressed (`--- empty ×N ---`); paragraph text is truncated to ~40 chars in the skeleton — use `inspect_range` for the full text.
