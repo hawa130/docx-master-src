@@ -185,14 +185,14 @@ When the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法
 
 If the manual scheme itself is inconsistent across the document — e.g. H1 has numbers in chapter 1 but not chapter 2, or H2 uses chapter-prefixed `"1.1"` in some chapters and per-chapter-restart `"1."` in others — auto-migration is also a normalization decision that may change author-intended semantics. Ask the user before applying rather than picking one scheme silently.
 
-Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. Field names mirror OOXML: `numFmt` (e.g. `decimal` / `chineseCounting` / `bullet`) and `lvlText` (the rendered prefix pattern, e.g. `"%1."` / `"%1.%2"` / `"第%1章"`); see `references/numbering-formats.md` for value tables. Minimal example for three-level decimal headings:
+Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. Field names mirror OOXML: `numFmt` (e.g. `decimal` / `chineseCounting` / `bullet`), `lvlText` (the rendered prefix pattern, e.g. `"%1."` / `"%1.%2"` / `"第%1章"`), and `suff` controls the gap between the marker and the paragraph text — `"space"` when the marker ends in a digit or character (`1. Title`, `第一章 研究方法`, `1.1 概述`), `"nothing"` when the trailing punctuation already separates them (`一、研究方法`, `（一）背景`), `"tab"` only for wide-list layouts. Specify `suff` explicitly per level; the engine infers it from trailing spaces in `lvlText` when omitted, but that's a tolerant fallback rather than the intended path. See `references/numbering-formats.md` for full value tables and ready-made templates. Minimal example for three-level decimal headings:
 
 ```jsonc
 "numbering": {
   "levels": [
-    { "level": 0, "numFmt": "decimal", "lvlText": "%1.",     "styleId": "Heading1" },
-    { "level": 1, "numFmt": "decimal", "lvlText": "%1.%2",   "styleId": "Heading2" },
-    { "level": 2, "numFmt": "decimal", "lvlText": "%1.%2.%3", "styleId": "Heading3" }
+    { "level": 0, "numFmt": "decimal", "lvlText": "%1.",     "suff": "space", "styleId": "Heading1" },
+    { "level": 1, "numFmt": "decimal", "lvlText": "%1.%2",   "suff": "space", "styleId": "Heading2" },
+    { "level": 2, "numFmt": "decimal", "lvlText": "%1.%2.%3", "suff": "space", "styleId": "Heading3" }
   ]
 }
 ```

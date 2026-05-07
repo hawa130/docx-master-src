@@ -114,16 +114,22 @@ numbering: {
                                          //   order, longest first). Use when the source
                                          //   mixes styles — some H2 written as "1.1 ...",
                                          //   others as "1. ...". Defaults to [lvlText].
-      suff: "nothing",                   // optional. "tab" | "space" | "nothing". Inserted
-                                         //   between the auto-generated marker and the
-                                         //   paragraph text. When omitted, inferred from
-                                         //   trailing whitespace in `lvlText`: 0 spaces →
-                                         //   "nothing", 1 space → "space", 2+ → "tab".
-                                         //   The inferred trailing whitespace is stripped
-                                         //   from the emitted lvlText. Word's spec default
-                                         //   is "tab"; we don't fall back to it because
-                                         //   it renders an ugly gap unsuitable for CJK
-                                         //   conventions like "一、研究方案".
+      suff: "nothing",                   // "tab" | "space" | "nothing". Inserted between
+                                         //   the auto-generated marker and the paragraph
+                                         //   text. **Specify per level** — `"space"` when
+                                         //   the marker ends in a digit / character
+                                         //   (`1. Title`, `第一章 …`), `"nothing"` when
+                                         //   trailing punctuation already separates
+                                         //   (`一、…`, `（一）…`). Word's spec default is
+                                         //   "tab", which renders an ugly gap unsuitable
+                                         //   for CJK; we don't fall back to it.
+                                         // If omitted, suff is inferred from trailing
+                                         //   whitespace in `lvlText` (0 → "nothing",
+                                         //   1 → "space", 2+ → "tab") and that whitespace
+                                         //   is stripped from the emitted lvlText. The
+                                         //   inference is a tolerant fallback for
+                                         //   imprecise input — explicit `suff` is the
+                                         //   intended path.
       numRPr: {                          // optional. rPr applied to the auto-generated
         color: "3370FF",                 //   number marker only — independent of the
         bold:  false,                    //   title text. Use to keep designs like
