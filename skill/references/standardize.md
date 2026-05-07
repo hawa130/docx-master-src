@@ -306,6 +306,34 @@ If a request *can* be expressed via `apply_styles` config, do that instead. The 
 
 ---
 
+## Path: Extend the style system (prep for content fill)
+
+When the user is going to fill a template with content, but the template's existing styles don't cover what the content needs, run `standardize` first to install the missing pieces. Then hand off to `edit`.
+
+Trigger from the planning step (see SKILL.md Core Principle): content survey shows H3 / H4 but the template defines only H1 / H2 — or content has lists but the template has no list-bound styles — or content has captions / quotes / code but no matching style exists.
+
+What to install:
+
+- **Heading levels**: declare new `Heading3` / `Heading4` styleIds in `styles[]`, with `basedOn` chained to the existing Heading2 (so font / paragraph defaults inherit). Pick fonts and sizes that step down sensibly from the existing levels — don't invent a wholly new visual scheme.
+- **Multi-level numbering**: extend the existing scheme (or install a new one) in `numbering.levels[]` so each new Heading has its level binding. `numbering-formats.md` has ready-made templates for academic / technical / governmental / legal multi-level shapes.
+- **List-bound styles**: if content has bulleted or ordered lists, declare a list-bound style and bind a single-level numbering scheme to it.
+- **Other body styles**: caption, quote, code — add as needed.
+
+Don't auto-decide which Heading levels or list shapes to install. If the user's intent allows multiple reasonable options (flatten H4 to H3 vs install a fourth level; bullet styling style vs reuse ordered), ask before proceeding.
+
+After install, dry-run to confirm the Style Resolution block looks right, apply, and the template is ready for `edit` content placement.
+
+### Auto-converting manual numbering to real auto-numbering
+
+When the source content already has manually-typed prefixes (`1.` / `1.1` / `（1）` / `第N章`) that should become auto-numbering, `standardize` strips them during restyle:
+
+- Define `numbering.levels[i].stripPrefixPatterns` matching the manual shapes (use `%1`, `%2` placeholders aligned with the level).
+- Or use `pattern_rules` with `stripMatch: true` to identify + restyle paragraphs by regex.
+
+This is the cleanest path when you need to migrate a doc that's already populated. See `numbering-formats.md` for placeholder semantics.
+
+---
+
 ## Reading the Overview Output
 
 `overview` prints visual style summary + document skeleton inline; the format is self-explanatory once you see it. Four conventions worth knowing in advance, since they aren't visible from the output alone:

@@ -51,13 +51,22 @@ Always inspect before composing edits.
 ### Blocks (in `with` / `content`)
 
 ```json
-{ "type": "paragraph", "text": "...", "styleId"?, "format"?, "runFormat"?, "numbering"? }
+{ "type": "paragraph", "text": "...", "styleId"?, "paraFormat"?, "runFormat"?, "numbering"? }
 { "type": "image", "src": "path", "widthPt": N, "heightPt": N, "alt"? }
 { "type": "page-break" }
 { "type": "horizontal-rule" }
 ```
 
 `text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required — the tool does not infer from the file.
+
+#### Express structure semantically, not in text
+
+If content has hierarchy or list shape, bind it via `styleId` and `numbering` — never type the markers in `text`:
+
+- List items → `{ "type": "paragraph", "numbering": { "numId": "5", "level": 0 }, "text": "..." }`. **Not** `"text": "1. ..."`.
+- Sub-headings → `{ "type": "paragraph", "styleId": "Heading3", "text": "..." }`. **Not** `"text": "（1）..."` with a bold runFormat.
+
+If the styleId or numId you need doesn't exist in the document, that's a `standardize` task before this `edit` runs (see SKILL.md Core Principle and the Filling a template section below). Don't fall back to typing prefixes — the result fails to typeset as a real list / heading and Word loses outline navigation, TOC binding, and accept-changes granularity.
 
 #### Quote handling
 
@@ -77,7 +86,32 @@ Mirrors the standardize style schema — what you'd put inside a style definitio
 
 ## Filling a template
 
-Form templates pair a **label paragraph** (heading-ish style) with **empty body paragraph(s)** styled for prose. Fill the empty body slot — `replace` it and let inheritance pick up the body style. Replacing the label inherits the label's heading style onto your prose, which renders wrong. When a template has no empty slot after a label, `insert-after` the label with an explicit `styleId` from the doc's body style (find via `inspect_style_def` or `overview`).
+Plan first — see SKILL.md Core Principle. The plan-survey-execute loop for fill tasks:
+
+**Step 1: Survey the content** to be inserted. Hierarchy depth (how many heading levels)? Lists (ordered, bulleted, nested)? Inline emphasis? Tables / images / code? If the content is markdown, read its AST shape, not just the text.
+
+**Step 2: Survey the template's expressiveness** via `overview`. Note:
+
+- Defined styles: how many Heading levels? Body styles? List-bound styles (any pStyle with attached `<w:numPr>`)? Caption / Quote / Code styles?
+- Defined numbering schemes: how many levels does each cover? Are any pre-bound to heading styles?
+- Empty body slots inside cells: what's their pStyle, and is it actually styled for prose? Some templates leave bold or other surprising direct formatting on the empty rows.
+
+**Step 3: Compare**. If the template covers what the content needs, proceed. If it doesn't, **stop and run `standardize` first** to install the missing pieces. Examples that should trigger standardize:
+
+- Content has H3 / H4 but template defines only H1 / H2 → inject Heading3 / Heading4 styles + extend numbering to match.
+- Content has bullet lists but template has only ordered numbering → install a bullet-bound style.
+- Empty slot inherits unintended formatting (bold for prose, weird spacing) → either override at the source via standardize, or compensate per-Block — the trade-off is yours, ask the user when it matters.
+
+If you face a genuine choice — flatten H4 to H3 vs install Heading4? install bullet style vs reuse ordered? — ask one focused question. Don't pick a default silently.
+
+**Step 4: Execute edit ops**. With the style toolbox now complete:
+
+- Find the empty body slot for prose content (`text: ""` with a body-style pStyle, often `Normal` / `Body Text` / `a3`).
+- For list items, use `numbering: { numId, level }` on the Block — don't type `1.` / `（1）` in `text`.
+- For sub-headings within content, use `styleId: "Heading3"` — don't approximate with bold + bigger font.
+- Match-Destination-Formatting picks up the slot's pPr by default. `inspect_range` the slot first to confirm its formatting is what you want; override per-Block when it isn't.
+
+Anti-pattern: replacing the **label paragraph** ("选题来源：") instead of the **empty body slot** that follows it. The label's heading style inherits onto your prose and renders wrong.
 
 ## Edge cases
 

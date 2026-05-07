@@ -89,7 +89,7 @@ const ParagraphBlockSchema = z.strictObject({
   type: z.literal("paragraph"),
   text: RichTextSchema,
   styleId: z.optional(NonEmptyString),
-  format: z.optional(ParagraphFormatSchema),
+  paraFormat: z.optional(ParagraphFormatSchema),
   runFormat: z.optional(RunFormatSchema),
   numbering: z.optional(NumberingRefSchema),
 })

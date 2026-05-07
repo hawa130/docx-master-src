@@ -11,7 +11,18 @@ Mutates Word (.docx) OOXML directly: classify paragraph roles, inject named styl
 
 **You are the analyst. The tools are your instruments.**
 
-Tools only present facts — computed styles, element positions, document structure. They never classify or judge. All semantic reasoning is yours: deciding what role a paragraph plays, what style to name it, whether two similar formats should merge or stay separate, how to handle edge cases.
+Tools present facts — computed styles, element positions, document structure. They never classify or judge. Semantic reasoning is yours.
+
+**Plan before executing.** For any task involving new or restructured content, the right first step is the survey-then-plan loop, not "start writing edit ops":
+
+1. **Survey the content** to be expressed: hierarchy depth (H1 / H2 / H3 / H4?), list usage (ordered, bulleted, nested?), inline emphasis, tables, images, code, captions.
+2. **Survey the document's expressiveness**: which Heading / Body / List / Caption styles exist? What numbering schemes are defined and how many levels do they cover?
+3. **Compare**. If the document supports less than the content needs (missing Heading levels, no list-bound style, no code style), `standardize` to install the missing pieces *before* any `edit`. Express structure semantically — `numbering` bindings and Heading styleIds — never by typing `1.` / `（1）` / `第N章` as text.
+4. **Then `edit`** to fill, referencing the now-installed styleIds and numbering.
+
+Skipping the planning step produces output that fills slots but typesets badly: literal numbering instead of auto-numbered lists, every paragraph falling to Normal, no real hierarchy.
+
+**Ask on ambiguity.** When planning surfaces a choice that materially affects the output and the user hasn't specified — flatten H4 to H3 vs install Heading4? use existing list style for both ordered and bulleted, or install a separate bullet scheme? infer captions from images, or leave images uncaptioned? — ask one focused question. Don't pick a default and proceed silently.
 
 ## Commands
 
@@ -29,13 +40,16 @@ The split between `standardize` and `edit`: standardize works on **roles** (ever
 
 ### Composing scopes
 
-The commands above are **scopes of mutation, not exclusive paths**. Real tasks often span more than one — compose by intent. Three concrete shapes:
+Commands are **scopes of mutation, not exclusive paths**. The composition is decided by the planning step (Core Principle), not by pattern-matching the user's words. Common shapes:
 
-- **Messy template + content to fill**: `standardize` first to install a clean style system, then `edit` to insert content. Filling a dirty template directly with `edit` propagates the mess (Match-Destination-Formatting inherits whatever's there, including bad styles).
-- **Audit then fix**: `audit` (read-only) produces a violation list; `standardize` applies the fixes. Don't auto-fix without permission.
-- **Standardize then touch up**: bulk role-based reshape via `standardize`, then a few `edit` ops for paragraphs the rules missed or for content insertion the spec implied.
+- **Content fits the template** (existing styles cover the content's hierarchy and lists): `edit` only.
+- **Content needs structure the template lacks** (deeper headings, list-bound styles, captions, code style): `standardize` installs the gap → `edit` fills. Don't improvise hierarchy by typing markers in `text` — bind to a real numbering scheme or a real Heading styleId.
+- **Manual numbering already in source content** that should become real auto-numbering: `standardize` with `pattern_rules` + `numbering.levels[].stripPrefixPatterns` strips the manual prefix during restyle.
+- **Messy template** (broken or bloated styles, hidden chrome, style-name collisions): `standardize` first to clean up, regardless of whether content fill follows.
+- **Audit then fix**: `audit` produces a violation list; `standardize` applies fixes. Don't auto-fix without permission.
+- **Spot fix on a clean doc**: `edit` only.
 
-Markdown content as input has no adapter yet — agent translates MD → Block JSON manually. Tables, footnotes, math, and cross-references in MD have no clean docx mapping in Phase 1; degrade or surface to the user.
+Markdown content as input has no adapter yet — agent translates MD → Block JSON manually. Tables, footnotes, math, and cross-references in MD have no clean docx mapping in Phase 1; surface the limitation to the user rather than silently degrading.
 
 ## Tool Reference
 

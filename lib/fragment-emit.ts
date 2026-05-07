@@ -252,7 +252,7 @@ function emitParagraphBlock(
 ): Element {
   const p = ownerDoc.createElementNS(w, "w:p")
   const needsPPr =
-    block.styleId !== undefined || block.format !== undefined || block.numbering !== undefined
+    block.styleId !== undefined || block.paraFormat !== undefined || block.numbering !== undefined
   if (needsPPr) {
     const pPr = ensurePPr(p, ownerDoc)
     if (block.styleId) {
@@ -270,8 +270,8 @@ function emitParagraphBlock(
       numPr.appendChild(numId)
       pPr.appendChild(numPr)
     }
-    if (block.format) {
-      for (const c of buildPPrChildren(block.format, ownerDoc)) pPr.appendChild(c)
+    if (block.paraFormat) {
+      for (const c of buildPPrChildren(block.paraFormat, ownerDoc)) pPr.appendChild(c)
     }
   }
   for (const r of emitRichText(block.text, ownerDoc, block.runFormat)) p.appendChild(r)
