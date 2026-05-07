@@ -94,6 +94,7 @@ LLMs are bad at byte-level work; scripts must guarantee these and never bend the
 - Cross-run formatting preservation (smart-strip's uniform-vs-mixed rule)
 - Character-indent semantics — `firstLineChars` round-trips as `"Nchar"`, fixed twips as `"Npt"`
 - Dominant-run selection in `fromParagraph` skips numbering-prefix-only runs
+- Leading-prefix strip accumulates across consecutive `<w:t>` runs — Word splits hand-edited paragraphs mid-prefix (e.g. `<w:t>五</w:t><w:t>、Title</w:t>`), and a per-run regex test silently misses these
 - numId migration on template import uses fresh IDs to avoid collision
 - The original file is never modified; `apply_styles` always writes a fresh copy and validates before keeping it
 

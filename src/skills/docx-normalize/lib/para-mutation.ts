@@ -309,25 +309,38 @@ function rPrChildSignature(el: Element, name: string): string {
 }
 
 /**
- * Replace a leading match in the paragraph's first non-empty w:t with the
- * regex stripped. Returns true on a hit. Touches only the first non-empty
- * w:t — if the prefix straddles runs (rare for manual numbering), the
- * trailing portion is left in the next run.
+ * Replace a leading match in the paragraph's leading text with the regex
+ * stripped. Returns true on a hit. Accumulates text from consecutive w:t
+ * runs so that prefixes split across runs (e.g. "五" + "、Title", which
+ * Word emits when a paragraph was hand-edited) still match. Removed
+ * characters are distributed across the runs they came from; subsequent
+ * runs are emptied as needed and the first remaining run keeps the tail.
  */
 function stripLeadingMatch(pEl: Element, re: RegExp): boolean {
   const w = NS.w
+  const tEls: Element[] = []
+  let combined = ""
   for (const run of getChildrenNS(pEl, w, "r")) {
     const tEl = firstChildNS(run, w, "t")
     if (!tEl) continue
-    const txt = textContent(tEl)
-    if (re.test(txt)) {
-      const replaced = txt.replace(re, "")
-      while (tEl.firstChild) tEl.removeChild(tEl.firstChild)
-      tEl.appendChild(tEl.ownerDocument!.createTextNode(replaced))
-      tEl.setAttribute("xml:space", "preserve")
-      return true
+    tEls.push(tEl)
+    combined += textContent(tEl)
+    const m = combined.match(re)
+    if (!m) continue
+    let remaining = m[0].length
+    for (const t of tEls) {
+      const txt = textContent(t)
+      while (t.firstChild) t.removeChild(t.firstChild)
+      if (remaining >= txt.length) {
+        remaining -= txt.length
+        t.appendChild(t.ownerDocument!.createTextNode(""))
+      } else {
+        t.appendChild(t.ownerDocument!.createTextNode(txt.slice(remaining)))
+        remaining = 0
+      }
+      t.setAttribute("xml:space", "preserve")
     }
-    if (txt.trim().length > 0) break
+    return true
   }
   return false
 }
