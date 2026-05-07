@@ -1,13 +1,14 @@
 import { defineConfig } from "tsdown"
 import { resolve } from "node:path"
 
-// Single-skill build. The `docx-master` skill source lives at
-// `src/docx-master/`; tsdown bundles each entry under `tools/` into
-// `dist/docx-master/scripts/<name>.js`. Cross-cutting OOXML primitives are
-// imported via the `@core/*` alias.
+// Single-skill build. The `docx-master` skill source lives at top-level
+// `skill/`; tsdown bundles each entry under `skill/tools/` into
+// `dist/docx-master/scripts/<name>.js`. All non-tool TypeScript — OOXML
+// primitives, skill engine, config schema, CLI scaffolding — lives in
+// top-level `lib/` and is reachable via the `@lib/*` alias.
 //
 // Adding a tool: add a `<scriptName>: "<file>.ts"` entry to `tools` below.
-// Tool source files live under `src/docx-master/tools/`.
+// Tool source files live under `skill/tools/`.
 
 const ROOT = import.meta.dirname
 
@@ -32,10 +33,10 @@ export default defineConfig({
   entry: Object.fromEntries(
     Object.entries(tools).map(([scriptName, file]) => [
       scriptName,
-      `src/docx-master/tools/${file}`,
+      `skill/tools/${file}`,
     ]),
   ),
-  alias: { "@core": resolve(ROOT, "src/core") },
+  alias: { "@lib": resolve(ROOT, "lib") },
   format: "esm",
   platform: "node",
   target: "node18",

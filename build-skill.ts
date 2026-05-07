@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Stage SKILL.md + references/ from `src/docx-master/` alongside tsdown's
+ * Stage SKILL.md + references/ from top-level `skill/` alongside tsdown's
  * scripts/ output, then zip into `dist/docx-master.zip`.
  *
  * Run AFTER `tsdown` (which produces `dist/docx-master/scripts/`) — the
@@ -20,7 +20,7 @@ import JSZip from "jszip"
 
 const ROOT = import.meta.dirname
 const SKILL_NAME = "docx-master"
-const SKILL_SRC = join(ROOT, "src", SKILL_NAME)
+const SKILL_SRC = join(ROOT, "skill")
 const STAGE_DIR = join(ROOT, "dist", SKILL_NAME)
 const ZIP_PATH = join(ROOT, "dist", `${SKILL_NAME}.zip`)
 const SCRIPTS_DIR = join(STAGE_DIR, "scripts")

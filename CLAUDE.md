@@ -7,25 +7,33 @@ This repo builds **one** Word (.docx) automation skill, `docx-master`. Standardi
 ## Layout
 
 ```
-src/core/                          cross-cutting OOXML primitives:
-                                     parsing / style / fingerprint /
-                                     template-import / display formatters.
-                                     Used by every tool via the `@core/*` alias.
-src/docx-master/                   the skill source — single bundle.
-src/docx-master/SKILL.md             agent-facing contract (router + invariants)
-src/docx-master/references/          on-demand reference docs (progressive disclosure)
-src/docx-master/tools/               TS source for CLIs the agent invokes directly
+skill/                             the publishable skill bundle source.
+skill/SKILL.md                       agent-facing contract (router + invariants)
+skill/references/                    on-demand reference docs (progressive disclosure)
+skill/tools/                         TS source for CLIs the agent invokes directly
                                        (each file = one entry in tsdown.config.ts)
-src/docx-master/lib/                 skill-internal modules (CLI scaffolding,
-                                       config schema, mutation engines —
-                                       imported, never built as a script entry)
+lib/                               every non-tool TypeScript module — OOXML
+                                     primitives (xml-utils, reader, load,
+                                     style-resolver, fingerprint, ...), skill
+                                     engine (apply-styles orchestrator,
+                                     mutation primitives), config schema (zod),
+                                     CLI scaffolding. Reachable via the
+                                     `@lib/*` alias. Imported by tools, never
+                                     built as a script entry.
+                                     Two type files split by concern:
+                                       - `lib/types.ts` for OOXML / parser
+                                         types (NS, ParsedParagraph, ...)
+                                       - `lib/config-types.ts` for
+                                         config-derived + internal data
+                                         shapes (ApplyConfig, ApplyContext,
+                                         ...)
 test/fixtures/                     sample .docx files for manual testing
 dist/docx-master/                  staged skill bundle (SKILL.md + references/ + scripts/)
 dist/docx-master.zip               zipped bundle ready to publish
 build-skill.ts                     packages staged dir into the .skill zip
 ```
 
-Tools import OOXML primitives via the `@core/*` alias (declared in `tsconfig.json` paths and `tsdown.config.ts` alias). Don't use relative `../../core/...` paths. The `tools/` directory is exclusively for files built as agent-callable CLIs; anything imported but never invoked goes in `lib/`.
+Tools and `lib/` modules import internal code via the `@lib/*` alias (declared in `tsconfig.json` paths and `tsdown.config.ts` alias). Don't use relative `../../lib/...` paths. The `skill/tools/` directory is exclusively for files built as agent-callable CLIs; anything imported but never invoked goes in `lib/`.
 
 ## Commands
 
@@ -36,18 +44,18 @@ Tools import OOXML primitives via the `@core/*` alias (declared in `tsconfig.jso
 | Watch | `bun run build:watch` |
 | Type-check (tsc, no emit) | `bun run typecheck` |
 
-No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `src/docx-master/` or shared `src/core/`, always rebuild and verify `dist/docx-master/` reflects the change before claiming done.
+No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/docx-master/` reflects the change before claiming done.
 
 ## Adding a tool
 
-1. Create `src/docx-master/tools/<file>.ts`. Use `@core/...` for OOXML primitives and `../lib/...` for skill-internal helpers (config schema, CLI scaffolding).
+1. Create `skill/tools/<file>.ts`. Use `@lib/...` for everything — OOXML primitives, skill engine helpers, config schema, CLI scaffolding all live under one alias.
 2. Add a `<scriptName>: "<file>.ts"` entry to the `tools` map in `tsdown.config.ts`.
 3. If the tool is a sub-command surface the agent should route to, add a row to the SKILL.md tool table.
 4. `bun run build:skill` produces `dist/docx-master/` and `dist/docx-master.zip`.
 
 ## Periodic audits via `skill-creator`
 
-After a multi-commit feature push or before a release, spawn a subagent that invokes the `skill-creator` skill to audit the bundle. Pattern: `Agent` tool with `general-purpose` subagent; prompt asks it to invoke `skill-creator` and audit `src/docx-master/` + `dist/docx-master/`, **read-only** (no file edits). The framework's checklists (Anatomy of a Skill / Progressive Disclosure / Writing Patterns / Description Optimization) catch stale `references/` content, anti-pattern leakage in docs, and checklist items that human review skims past — especially in directories that get edited rarely and accumulate wrong-tooling examples or outdated regex catalogs. Evaluate findings critically (skill-creator can over-suggest); act on real ones, defer or decline the rest.
+After a multi-commit feature push or before a release, spawn a subagent that invokes the `skill-creator` skill to audit the bundle. Pattern: `Agent` tool with `general-purpose` subagent; prompt asks it to invoke `skill-creator` and audit `skill/` + `dist/docx-master/`, **read-only** (no file edits). The framework's checklists (Anatomy of a Skill / Progressive Disclosure / Writing Patterns / Description Optimization) catch stale `references/` content, anti-pattern leakage in docs, and checklist items that human review skims past — especially in directories that get edited rarely and accumulate wrong-tooling examples or outdated regex catalogs. Evaluate findings critically (skill-creator can over-suggest); act on real ones, defer or decline the rest.
 
 ## Design principles
 

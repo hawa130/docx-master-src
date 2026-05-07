@@ -1,4 +1,4 @@
-import { runCli } from "../lib/cli-helpers.ts"
+import { runCli } from "@lib/cli-helpers.ts"
 
 /**
  * Narrow entry point for installing / replacing a multi-level auto-numbering

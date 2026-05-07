@@ -1,5 +1,5 @@
 import type * as z from "zod/mini"
-import type { ParsedParagraph } from "@core/types.ts"
+import type { ParsedParagraph } from "@lib/types.ts"
 import type {
   ApplyConfigSchema,
   AssignmentSchema,

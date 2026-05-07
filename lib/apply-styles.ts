@@ -1,15 +1,15 @@
 import { unlinkSync, existsSync, copyFileSync, mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
-import { DocxReader, serializeXml } from "@core/reader.ts"
-import { importTemplateStyles, type ImportResult } from "@core/template-import.ts"
+import { DocxReader, serializeXml } from "@lib/reader.ts"
+import { importTemplateStyles, type ImportResult } from "@lib/template-import.ts"
 import {
   StyleResolver,
   applyThemeFontOverrides,
-} from "@core/style-resolver.ts"
-import { DocumentParser } from "@core/document-parser.ts"
-import { Fingerprinter } from "@core/fingerprint.ts"
-import { NS } from "@core/types.ts"
-import { firstChildNS, getChildrenNS, wAttr } from "@core/xml-utils.ts"
+} from "@lib/style-resolver.ts"
+import { DocumentParser } from "@lib/document-parser.ts"
+import { Fingerprinter } from "@lib/fingerprint.ts"
+import { NS } from "@lib/types.ts"
+import { firstChildNS, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import {
   blankNumberingDoc,
   blankStylesDoc,
@@ -37,7 +37,7 @@ import type {
   FlagRecord,
   RestyleSample,
   StyleResolutionEntry,
-} from "./types.ts"
+} from "./config-types.ts"
 
 export async function applyStyles(source: string, output: string, config: ApplyConfig) {
   // 0. Default styles[] to [] when omitted. Pure template-import and

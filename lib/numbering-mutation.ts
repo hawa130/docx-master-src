@@ -1,11 +1,11 @@
-import { NS } from "@core/types.ts"
+import { NS } from "@lib/types.ts"
 import {
   firstChildNS,
   getChildren,
   getChildrenNS,
   wAttr,
-} from "@core/xml-utils.ts"
-import type { NumberingConfig } from "./types.ts"
+} from "@lib/xml-utils.ts"
+import type { NumberingConfig } from "./config-types.ts"
 
 /* ------------- numbering.xml manipulation ------------- */
 

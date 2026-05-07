@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs"
 import JSZip from "jszip"
 import { DOMParser } from "@xmldom/xmldom"
-import type { DocxReader } from "@core/reader.ts"
-import { NS } from "@core/types.ts"
+import type { DocxReader } from "@lib/reader.ts"
+import { NS } from "@lib/types.ts"
 
 /* ------------- bootstrap blank docs ------------- */
 

@@ -1,4 +1,4 @@
-import { runCli } from "../lib/cli-helpers.ts"
+import { runCli } from "@lib/cli-helpers.ts"
 
 /**
  * CLI entry for `apply_styles` — the unified standardization orchestrator.

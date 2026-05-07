@@ -1,10 +1,10 @@
-import type { ImportResult } from "@core/template-import.ts"
+import type { ImportResult } from "@lib/template-import.ts"
 import type {
   FlagRecord,
   RestyleSample,
   StyleConfigEntry,
   StyleResolutionEntry,
-} from "./types.ts"
+} from "./config-types.ts"
 
 /* ------------- display helpers ------------- */
 

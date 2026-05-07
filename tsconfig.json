@@ -19,7 +19,7 @@
     "noEmit": true,
 
     "paths": {
-      "@core/*": ["./src/core/*"]
+      "@lib/*": ["./lib/*"]
     },
 
     // Best practices

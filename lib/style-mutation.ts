@@ -1,11 +1,11 @@
-import { NS, type ParsedParagraph } from "@core/types.ts"
+import { NS, type ParsedParagraph } from "@lib/types.ts"
 import {
   firstChildNS,
   getChildren,
   getChildrenNS,
   wAttr,
-} from "@core/xml-utils.ts"
-import type { StyleConfigEntry } from "./types.ts"
+} from "@lib/xml-utils.ts"
+import type { StyleConfigEntry } from "./config-types.ts"
 
 /* ------------- fromParagraph resolution ------------- */
 
