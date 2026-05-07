@@ -60,11 +60,7 @@ Hidden metadata can still be exposed — but as **raw data on demand**, when the
 
 ### Examples illustrate, they're not triggers
 
-When SKILL.md (or any agent-facing doc) presents an "user intent → path / tool / option" mapping, the LLM's natural failure mode is to pattern-match keywords instead of reasoning about intent. The same surface phrase often lands in different branches depending on what the user actually wants — "把字体改成宋体" can be a per-role override, a whole-document default, or a design-layer theme change, and none of those are deducible from the word "宋体" alone.
-
-**Write concept-first.** Lead with the operational meaning of each branch ("the user is expressing X-shaped intent"), then mark example phrasings as illustrative — explicitly say *illustrative phrasings* or *e.g.*, never present them as triggers. Avoid table forms whose columns read as `If user says | Pick this`; they collapse the agent's reasoning into a lookup. Avoid the literal words *Triggers* / *Keywords* in section headers — they signal "stop thinking, start matching."
-
-This is the same anti-pattern as "Tools expose visible facts; agents make role judgments," applied to the doc itself: SKILL.md must not pre-classify intent on the agent's behalf any more than tools should pre-classify roles.
+When SKILL.md presents "intent → path / tool / option" mappings, the LLM pattern-matches keywords instead of understanding intent — the same surface phrase routinely lands in different branches depending on what the user actually wants. Write concept-first and mark example phrasings as illustrative. Avoid lookup-table forms (`If user says | Pick this`) and the literal words *Triggers* / *Keywords* — both signal "stop thinking, start matching." Same anti-pattern as "Tools expose visible facts; agents make role judgments," applied to the doc itself.
 
 ### Verification must check against intent, not interpretation
 
