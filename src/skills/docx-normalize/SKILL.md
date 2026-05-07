@@ -122,15 +122,22 @@ Only create roles that actually exist in the document. If you discover roles not
 1. **`fromParagraph`** (preferred when extracting from the doc): pick the first occurrence of the dominant fingerprint for the role and set `fromParagraph: <index>`. The tool extracts the full computed rPr + pPr from that paragraph's *dominant text run* (longest non-numbering-prefix run, so `"1.1 研究方法"` extracts the title formatting, not the prefix's). Use `overrides` to add fields the source lacks (e.g. `outlineLevel`) or apply user-requested specifics.
 2. **Manual mode**: specify fields directly — when no representative paragraph exists, when synthesizing a role, or when the user fully specified the style.
 
-Modes can mix within one `styles` array:
+Modes can mix within one `styles` array. **Prefer overriding existing styles by their actual styleId** when the source has an equivalent role — see "When the document already defines..." below. Only create new styles when no existing one fits.
 
-```json
+```jsonc
 {
   "styles": [
-    { "id": "BodyText", "name": "正文", "fromParagraph": 60 },
-    { "id": "Heading2", "name": "二级标题", "fromParagraph": 19,
+    // Override existing — `a` is this source's Normal-equivalent (POI default).
+    // Discover via `inspect_style_def` first; styleId varies per source.
+    { "id": "a", "name": "Normal", "fontEastAsia": "宋体", "size": 12 },
+
+    // Reuse Word built-in styleId for new roles. `name` uses the canonical
+    // English built-in name (Word applies its own UI localization).
+    { "id": "Heading2", "name": "heading 2", "fromParagraph": 19,
       "overrides": { "outlineLevel": 1 } },
-    { "id": "Caption",  "name": "图表注", "font": "宋体", "size": 10.5,
+
+    // Custom-named role — `name` doesn't alias any built-in identity.
+    { "id": "Caption",  "name": "Caption", "font": "宋体", "size": 10.5,
       "alignment": "center", "lineSpacing": 1.5 }
   ]
 }
@@ -146,7 +153,11 @@ Modes can mix within one `styles` array:
 
 **Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
 
-**When the document already defines the style ID you want:** if its parameters match your target, reuse as-is. If they differ, override (the script updates the existing definition rather than creating a duplicate). Override is **non-destructive on unmanaged properties**: if you don't specify `basedOn`, the existing `basedOn` is preserved; the existing pPr's numbering binding (`numPr`) and other unmanaged children (`keepNext`, `pBdr`, `adjustRightInd`, etc.) survive untouched. Only the fields you specify are written. Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first. Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
+**Override existing styles before creating new ones.** Run `inspect_style_def` to discover what the source already has — POI / WPS / school templates often play the role of Normal / Heading 1 / etc. under short auto-generated styleIds (`a`, `a1`, `2`, `10`, ...). Override by their exact styleId: upsertStyle mutates in place, preserving everything you didn't specify (basedOn, default="1", numPr, link, etc.). This is the safest path because it avoids the most common rendering trap — name collision (see below). Override is **non-destructive on unmanaged properties**: if you don't specify `basedOn`, the existing `basedOn` is preserved. Only the fields you specify are written. Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first.
+
+**`name` must not alias any existing style's identity.** Word treats `<w:name>` as the built-in style identity marker, including locale aliases ("Normal" ≡ "正文" ≡ "標準"; "Heading 1" ≡ "标题 1"; "Body Text" ≡ "正文文本"). When two different styleIds claim the same identity, Word silently drops the second style's `rPr` at render time — your fonts vanish, scripts see no error, dry-run reports look correct. Two safe approaches: (a) **override existing by its styleId** so no new name enters the doc; (b) when creating new, use the **canonical English built-in name** matching the styleId — `name: "Body Text"` for `id: "BodyText"`, `name: "heading 1"` for `id: "Heading1"`, `name: "Caption"` for `id: "Caption"`. Word applies its own UI localization for display. Using a localization that doesn't match the styleId (e.g., `id: "BodyText"` with `name: "正文"` — that's Normal's localization, not BodyText's) is wrong AND collision-prone. The engine catches direct string-equal collisions at preflight; locale-alias collisions are not auto-detected and rely on this rule.
+
+Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) for new styles when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
 
 **Chinese font size names** (初号/一号/.../小六): see `references/chinese-font-sizes.md` for the pt mapping when the user specifies sizes in Chinese terms.
 

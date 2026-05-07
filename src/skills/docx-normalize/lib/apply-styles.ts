@@ -9,7 +9,7 @@ import {
 import { DocumentParser } from "@core/document-parser.ts"
 import { Fingerprinter } from "@core/fingerprint.ts"
 import { NS } from "@core/types.ts"
-import { getChildrenNS, wAttr } from "@core/xml-utils.ts"
+import { firstChildNS, getChildrenNS, wAttr } from "@core/xml-utils.ts"
 import {
   blankNumberingDoc,
   blankStylesDoc,
@@ -159,6 +159,51 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     })
     return final
   })
+  // Preflight: detect <w:name> collisions with the source's existing styles.
+  // Word treats `<w:name>` as the built-in style identity marker, with
+  // locale-alias equivalence ("Normal" ≡ "正文" ≡ "標準"). When two
+  // different styleIds claim the same identity (directly or via alias), Word
+  // silently drops the new style's rPr at render — full chain (agent →
+  // script → dry-run report) looks correct, only Word disagrees with no
+  // error anywhere. Catch via canonical-name comparison: each name is mapped
+  // to a canonical key, then equal canonical keys with different styleIds
+  // are flagged. The alias table covers the common en-US ↔ zh-CN pairs
+  // (which is most real Chinese-academic doc traffic for this skill);
+  // unknown locales fall back to string equality.
+  const canonicalNameKey = makeCanonicalNameKey()
+  const sourceCanonicalToStyleId = new Map<string, string>()
+  const sourceCanonicalToOriginalName = new Map<string, string>()
+  for (const styleEl of getChildrenNS(stylesDoc.documentElement!, NS.w, "style")) {
+    const sid = wAttr(styleEl, "styleId")
+    const nameEl = firstChildNS(styleEl, NS.w, "name")
+    const nm = nameEl ? wAttr(nameEl, "val") : null
+    if (sid && nm) {
+      const key = canonicalNameKey(nm)
+      sourceCanonicalToStyleId.set(key, sid)
+      sourceCanonicalToOriginalName.set(key, nm)
+    }
+  }
+  for (const def of resolvedStyles) {
+    const key = canonicalNameKey(def.name)
+    const collidingId = sourceCanonicalToStyleId.get(key)
+    if (collidingId && collidingId !== def.id) {
+      const existingName = sourceCanonicalToOriginalName.get(key)!
+      const aliasNote = existingName !== def.name
+        ? ` (locale alias of existing "${existingName}")`
+        : ""
+      throw new Error(
+        `name "${def.name}"${aliasNote} is already used by styleId="${collidingId}" in the source.\n` +
+          `  Word treats matching names (and their locale aliases) as the same built-in identity\n` +
+          `  and silently drops the new style's rPr at render time — the style would have no effect\n` +
+          `  even though dry-run looks correct. Either:\n` +
+          `    (a) override the existing style — set styles[].id="${collidingId}" instead of "${def.id}".\n` +
+          `        upsertStyle mutates in place, preserves the doc's wiring, and avoids the collision.\n` +
+          `    (b) use a non-aliasing name — typically the styleId's canonical English built-in name\n` +
+          `        (e.g., "Body Text" for id="BodyText", "heading 1" for id="Heading1", "Caption" for id="Caption").`,
+      )
+    }
+  }
+
   const injected: string[] = []
   const updated: string[] = []
   const derivedFrom = new Map<string, number>() // styleId → fromParagraph index (for report)
@@ -490,4 +535,57 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     unstrippedByStyle: ctx.unstrippedByStyle,
     templateImport,
   })
+}
+
+/**
+ * Build a function that maps a style display name to a locale-independent
+ * canonical key. Word's built-in styles have one English name and one
+ * localized name per UI language; both forms render to the same internal
+ * identity, so two styleIds claiming "Normal" and "正文" respectively
+ * collide just as if they both claimed "Normal".
+ *
+ * The pair list below covers the en-US ↔ zh-CN aliases for the built-in
+ * styles agents typically inject (Normal, headings, Title, Body Text, list
+ * styles, captions, headers/footers, TOC entries). Unknown names fall
+ * through to themselves — string equality still catches direct collisions
+ * outside the listed pairs. Add other locale pairs (zh-TW, ja, ko) when a
+ * real-doc collision surfaces; this is OOXML-spec data, not natural-
+ * language enumeration.
+ */
+function makeCanonicalNameKey(): (name: string) => string {
+  // English form is the canonical key for each pair. Pairs are stored
+  // both directions in a single Map for O(1) lookup either way.
+  const aliasPairs: Array<readonly [string, string]> = [
+    ["Normal", "正文"],
+    ["heading 1", "标题 1"],
+    ["heading 2", "标题 2"],
+    ["heading 3", "标题 3"],
+    ["heading 4", "标题 4"],
+    ["heading 5", "标题 5"],
+    ["heading 6", "标题 6"],
+    ["heading 7", "标题 7"],
+    ["heading 8", "标题 8"],
+    ["heading 9", "标题 9"],
+    ["Title", "标题"],
+    ["Subtitle", "副标题"],
+    ["Body Text", "正文文本"],
+    ["Caption", "题注"],
+    ["Quote", "引用"],
+    ["List Bullet", "列表项目符号"],
+    ["List Number", "列表编号"],
+    ["Header", "页眉"],
+    ["Footer", "页脚"],
+    ["TOC 1", "目录 1"],
+    ["TOC 2", "目录 2"],
+    ["TOC 3", "目录 3"],
+    ["Default Paragraph Font", "默认段落字体"],
+    ["Normal Table", "普通表格"],
+    ["No List", "无列表"],
+  ]
+  const toCanonical = new Map<string, string>()
+  for (const [eng, zh] of aliasPairs) {
+    toCanonical.set(eng, eng)
+    toCanonical.set(zh, eng)
+  }
+  return (name: string) => toCanonical.get(name) ?? name
 }
