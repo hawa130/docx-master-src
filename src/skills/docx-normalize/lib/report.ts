@@ -15,13 +15,13 @@ import type {
  */
 export function extractDisplayFields(def: StyleConfigEntry): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  // fontEastAsia first when set: in Chinese docs the CJK font is what users
+  // fontCJK first when set: in Chinese docs the CJK font is what users
   // perceive as "the font", so leading with it avoids the "why is the body
   // Arial?" double-take when the agent reviews the resolution block. When
-  // only `font` (Latin/ASCII) is set, fontEastAsia is absent and the order
-  // collapses to the natural one anyway.
+  // only fontLatin is set, fontCJK is absent and the order collapses to
+  // the natural one anyway.
   const interesting: (keyof StyleConfigEntry)[] = [
-    "fontEastAsia", "font", "size", "bold", "italic", "color",
+    "fontCJK", "fontLatin", "size", "bold", "italic", "color",
     "alignment", "lineSpacing", "lineRule", "spaceBefore", "spaceAfter",
     "firstLineIndent", "hangingIndent", "outlineLevel",
   ]
@@ -58,6 +58,7 @@ export function printReport(args: {
   samples: Map<string, RestyleSample[]>
   implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
   unstrippedByStyle: Map<string, { count: number; samples: string[] }>
+  numberingBindings: Array<{ styleId: string; level: number; lvlText: string }>
   templateImport: ImportResult | null
 }) {
   const lines: string[] = []
@@ -131,6 +132,18 @@ export function printReport(args: {
     }
   }
   lines.push("")
+  // Auto-numbering bindings: which lvlText each numbered style will gain at
+  // render. We don't compute the actual rendered numbers (would require
+  // walking H1/H2/H3 counters across the whole doc); the agent gets the
+  // structural binding instead, which is enough to confirm "Heading2 → '%1.%2'"
+  // is what they intended without doing the arithmetic.
+  if (args.numberingBindings.length > 0) {
+    lines.push("Auto-numbering bindings (will prepend at render):")
+    for (const b of args.numberingBindings) {
+      lines.push(`  ${b.styleId} → "${b.lvlText}" (level ${b.level})`)
+    }
+    lines.push("")
+  }
   if (args.manualNumberingRemoved.size > 0) {
     lines.push("Manual numbering converted:")
     for (const [pat, count] of args.manualNumberingRemoved) {

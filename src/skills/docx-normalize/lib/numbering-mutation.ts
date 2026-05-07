@@ -69,13 +69,13 @@ function buildLvlRPr(
 ): Element | null {
   const w = NS.w
   const rPr = doc.createElementNS(w, "w:rPr")
-  if (spec.font || spec.fontEastAsia) {
+  if (spec.fontLatin || spec.fontCJK) {
     const rFonts = doc.createElementNS(w, "w:rFonts")
-    if (spec.font) {
-      rFonts.setAttributeNS(w, "w:ascii", spec.font)
-      rFonts.setAttributeNS(w, "w:hAnsi", spec.font)
+    if (spec.fontLatin) {
+      rFonts.setAttributeNS(w, "w:ascii", spec.fontLatin)
+      rFonts.setAttributeNS(w, "w:hAnsi", spec.fontLatin)
     }
-    if (spec.fontEastAsia) rFonts.setAttributeNS(w, "w:eastAsia", spec.fontEastAsia)
+    if (spec.fontCJK) rFonts.setAttributeNS(w, "w:eastAsia", spec.fontCJK)
     rPr.appendChild(rFonts)
   }
   if (spec.size !== undefined) {

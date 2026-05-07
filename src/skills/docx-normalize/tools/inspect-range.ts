@@ -49,10 +49,12 @@ function renderPara(p: ParsedParagraph): string[] {
 
 function formatRPr(r: ComputedRunStyle): string {
   const parts: string[] = []
-  const font = r.fontEastAsia || r.fontAscii || r.fontHAnsi
-  if (font) parts.push(`font: "${font}"`)
-  if (r.fontEastAsia && r.fontAscii && r.fontEastAsia !== r.fontAscii)
-    parts.push(`fontAscii: "${r.fontAscii}"`)
+  // Output field names match the apply_styles config schema (fontCJK /
+  // fontLatin), so an agent reading inspect_range can drop names directly
+  // into config without translation.
+  if (r.fontEastAsia) parts.push(`fontCJK: "${r.fontEastAsia}"`)
+  const latin = r.fontAscii ?? r.fontHAnsi
+  if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: "${latin}"`)
   if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
   if (r.bold !== undefined) parts.push(`bold: ${r.bold}`)
   if (r.italic !== undefined) parts.push(`italic: ${r.italic}`)

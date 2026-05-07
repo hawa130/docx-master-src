@@ -71,8 +71,9 @@ async function main() {
 
 function formatStyleProps(r: ComputedRunStyle, pp: ComputedParaStyle): string {
   const parts: string[] = []
-  const font = r.fontEastAsia || r.fontAscii || r.fontHAnsi
-  if (font) parts.push(`font: ${font}`)
+  if (r.fontEastAsia) parts.push(`fontCJK: ${r.fontEastAsia}`)
+  const latin = r.fontAscii ?? r.fontHAnsi
+  if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: ${latin}`)
   if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
   if (r.bold !== undefined) parts.push(`bold: ${r.bold}`)
   if (r.italic !== undefined) parts.push(`italic: ${r.italic}`)

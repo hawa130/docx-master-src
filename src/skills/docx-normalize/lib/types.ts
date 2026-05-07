@@ -6,8 +6,14 @@ export interface StyleConfigEntry {
   id: string
   name: string
   basedOn?: string
-  font?: string
-  fontEastAsia?: string
+  /** Latin / Western text font (writes to OOXML rFonts/@ascii AND @hAnsi —
+   * we keep both attrs at the same value because typical fonts cover both
+   * ASCII and high-ANSI ranges together). */
+  fontLatin?: string
+  /** CJK font (writes to OOXML rFonts/@eastAsia). The most common field in
+   * Chinese-academic configs — when the user says "正文宋体", this is what
+   * they mean. */
+  fontCJK?: string
   size?: number // pt
   bold?: boolean
   italic?: boolean
@@ -47,8 +53,8 @@ export interface NumberingConfig {
      * Use to keep designs where headings have e.g. blue numbering + black title.
      */
     numRPr?: {
-      font?: string
-      fontEastAsia?: string
+      fontLatin?: string
+      fontCJK?: string
       size?: number
       bold?: boolean
       italic?: boolean

@@ -48,10 +48,9 @@ async function main() {
 function formatRPr(p: ParsedParagraph): string {
   const r = p.rPr
   const parts: string[] = []
-  const font = r.fontAscii || r.fontHAnsi
-  if (font) parts.push(`font: "${font}"`)
-  if (r.fontEastAsia && r.fontEastAsia !== font)
-    parts.push(`fontEastAsia: "${r.fontEastAsia}"`)
+  if (r.fontEastAsia) parts.push(`fontCJK: "${r.fontEastAsia}"`)
+  const latin = r.fontAscii ?? r.fontHAnsi
+  if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: "${latin}"`)
   if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
   if (r.bold) parts.push(`bold: true`)
   if (r.italic) parts.push(`italic: true`)

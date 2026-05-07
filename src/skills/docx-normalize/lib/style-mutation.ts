@@ -46,9 +46,9 @@ function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
   const r = p.rPr
   const pp = p.pPr
   const out: Partial<StyleConfigEntry> = {}
-  const font = r.fontAscii ?? r.fontHAnsi
-  if (font) out.font = font
-  if (r.fontEastAsia && r.fontEastAsia !== font) out.fontEastAsia = r.fontEastAsia
+  const latin = r.fontAscii ?? r.fontHAnsi
+  if (latin) out.fontLatin = latin
+  if (r.fontEastAsia && r.fontEastAsia !== latin) out.fontCJK = r.fontEastAsia
   if (r.size !== undefined) out.size = r.size / 2
   if (r.bold) out.bold = true
   if (r.italic) out.italic = true
@@ -234,10 +234,10 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     }
   }
   const rPrAdditions: Element[] = []
-  if (def.font || def.fontEastAsia) {
+  if (def.fontLatin || def.fontCJK) {
     const rFonts = stylesDoc.createElementNS(w, "w:rFonts")
-    const ascii = def.font ?? def.fontEastAsia ?? ""
-    const ea = def.fontEastAsia ?? def.font ?? ""
+    const ascii = def.fontLatin ?? def.fontCJK ?? ""
+    const ea = def.fontCJK ?? def.fontLatin ?? ""
     if (ascii) {
       rFonts.setAttributeNS(w, "w:ascii", ascii)
       rFonts.setAttributeNS(w, "w:hAnsi", ascii)

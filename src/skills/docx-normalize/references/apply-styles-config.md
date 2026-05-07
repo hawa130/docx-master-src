@@ -63,8 +63,10 @@ your first config; SKILL.md only carries a top-level summary.
   id:              "Caption",  // REQUIRED.
   name:            "图表注",    // REQUIRED.
   basedOn:         "Normal",   // optional. Default "Normal".
-  font:            "黑体",     // optional. Latin/ASCII font.
-  fontEastAsia:    "黑体",     // optional. CJK font. Default: same as font.
+  fontLatin:       "Arial",    // optional. Latin / Western text font (writes
+                               //   to OOXML w:ascii AND w:hAnsi).
+  fontCJK:         "黑体",     // optional. CJK font (w:eastAsia). Most common
+                               //   field in Chinese-academic configs.
   size:            10.5,       // optional. pt (not half-pt).
   bold:            false,      // optional. Default false.
   italic:          false,      // optional. Default false.
@@ -205,7 +207,7 @@ For each entry's final field values, layered low → high (later wins):
 1. Defaults.
 2. `template` imported style (if same ID).
 3. `styles[i].fromParagraph` extracted values.
-4. `styles[i]` direct fields (font / size / bold / ...).
+4. `styles[i]` direct fields (fontLatin / fontCJK / size / bold / ...).
 5. `styles[i].overrides` — deliberate per-style escape.
 
 `requirements` is annotation only and does not participate in resolution.

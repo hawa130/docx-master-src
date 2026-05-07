@@ -129,7 +129,7 @@ Modes can mix within one `styles` array. **Prefer overriding existing styles by 
   "styles": [
     // Override existing — `a` is this source's Normal-equivalent (POI default).
     // Discover via `inspect_style_def` first; styleId varies per source.
-    { "id": "a", "name": "Normal", "fontEastAsia": "宋体", "size": 12 },
+    { "id": "a", "name": "Normal", "fontCJK": "宋体", "size": 12 },
 
     // Reuse Word built-in styleId for new roles. `name` uses the canonical
     // English built-in name (Word applies its own UI localization).
@@ -137,7 +137,7 @@ Modes can mix within one `styles` array. **Prefer overriding existing styles by 
       "overrides": { "outlineLevel": 1 } },
 
     // Custom-named role — `name` doesn't alias any built-in identity.
-    { "id": "Caption",  "name": "Caption", "font": "宋体", "size": 10.5,
+    { "id": "Caption",  "name": "Caption", "fontCJK": "宋体", "size": 10.5,
       "alignment": "center", "lineSpacing": 1.5 }
   ]
 }
@@ -145,17 +145,23 @@ Modes can mix within one `styles` array. **Prefer overriding existing styles by 
 
 **Normalization rule:** for outliers (e.g. Heading1 appears 5 times, 4 of one pattern + 1 different), source from the majority. The same applies when two fingerprints play the same role — take the majority's values, route both fingerprints' paragraphs to one style. "Normalize" means routing inconsistent paragraphs to one consistent style, NOT replacing the author's choices with values you think look better.
 
-**What `fromParagraph` extracts:** font, fontEastAsia (only if different from font), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel (only when the source has it set — add via `overrides` if you need it on a heading whose source paragraph lacks it).
+**What `fromParagraph` extracts:** fontLatin, fontCJK (only if different from fontLatin), size, bold/italic (only if true), color (only if not auto), alignment, spaceBefore, spaceAfter, lineSpacing (with original lineRule preserved), firstLineIndent, hangingIndent, outlineLevel (only when the source has it set — add via `overrides` if you need it on a heading whose source paragraph lacks it).
 
 **Does NOT extract:** `numId` / `numLevel` — numbering is bound through `numbering.levels[].styleId`, not hardcoded per paragraph.
 
-**`font` vs `fontEastAsia`:** `font` is the source's ASCII/Latin slot (often inherited from theme defaults like Arial / Times); `fontEastAsia` holds the CJK font. A paragraph rendering as Chinese can still extract `font: "Arial"` — that's the Latin font that would render Latin characters in the same paragraph. When the user names only a Chinese font ("正文宋体" / "标题黑体"), set `fontEastAsia` only and leave `font` (ASCII) unset so the source's Latin font is preserved. Set both fields only when the user explicitly says the same font should apply to Latin too.
+**`fontLatin` vs `fontCJK`:** `fontLatin` is the Latin / Western text slot (writes to OOXML `w:ascii` and `w:hAnsi`); `fontCJK` is the East-Asian slot (`w:eastAsia`). A paragraph rendering as Chinese still has a Latin font that would render any Latin characters in the same paragraph — `fromParagraph` extracts both when they differ. When the user names only a CJK font ("正文宋体" / "标题黑体"), set `fontCJK` and leave `fontLatin` unset so the source's Latin font is preserved. Set both only when the user explicitly says the same font should apply to Latin too. (`inspect_range` and friends use the same field names — `fontCJK` / `fontLatin` — so what you read out of inspect is what you paste into the config.)
 
 **Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
 
 **Override existing styles before creating new ones.** Run `inspect_style_def` to discover what the source already has — POI / WPS / school templates often play the role of Normal / Heading 1 / etc. under short auto-generated styleIds (`a`, `a1`, `2`, `10`, ...). Override by their exact styleId: upsertStyle mutates in place, preserving everything you didn't specify (basedOn, default="1", numPr, link, etc.). This is the safest path because it avoids the most common rendering trap — name collision (see below). Override is **non-destructive on unmanaged properties**: if you don't specify `basedOn`, the existing `basedOn` is preserved. Only the fields you specify are written. Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first.
 
-**`name` must not alias any existing style's identity.** Word treats `<w:name>` as the built-in style identity marker, including locale aliases ("Normal" ≡ "正文" ≡ "標準"; "Heading 1" ≡ "标题 1"; "Body Text" ≡ "正文文本"). When two different styleIds claim the same identity, Word silently drops the second style's `rPr` at render time — your fonts vanish, scripts see no error, dry-run reports look correct. Two safe approaches: (a) **override existing by its styleId** so no new name enters the doc; (b) when creating new, use the **canonical English built-in name** matching the styleId — `name: "Body Text"` for `id: "BodyText"`, `name: "heading 1"` for `id: "Heading1"`, `name: "Caption"` for `id: "Caption"`. Word applies its own UI localization for display. Using a localization that doesn't match the styleId (e.g., `id: "BodyText"` with `name: "正文"` — that's Normal's localization, not BodyText's) is wrong AND collision-prone. The engine catches direct string-equal collisions at preflight; locale-alias collisions are not auto-detected and rely on this rule.
+**`name` must not alias any existing style's identity.** Word treats `<w:name>` as the built-in style identity marker, including locale aliases ("Normal" ≡ "正文" ≡ "標準"; "Heading 1" ≡ "标题 1"; "Body Text" ≡ "正文文本"). When two different styleIds claim the same identity, Word silently drops the second style's `rPr` at render time — your fonts vanish, scripts see no error, dry-run reports look correct. Two safe approaches:
+
+- **Override existing by its styleId** so no new name enters the doc.
+- **When creating new with a built-in styleId** (`Heading1`, `BodyText`, `Caption`, ...), use the canonical English built-in name matching the styleId — `name: "Body Text"` for `id: "BodyText"`, `name: "heading 1"` for `id: "Heading1"`, `name: "Caption"` for `id: "Caption"`. Word applies its own UI localization for display.
+- **When creating new with a custom styleId** (e.g. `BodyEmphasis`, `MyCallout`), the simplest safe rule is `name = id` (e.g. `name: "BodyEmphasis"`). Any name that doesn't match a built-in style's English name or its locale aliases works; matching the styleId is the easiest way to satisfy that without checking the alias table.
+
+Using a localization that doesn't match the styleId (e.g., `id: "BodyText"` with `name: "正文"` — that's Normal's localization, not BodyText's) is wrong AND collision-prone. The engine catches direct string-equal collisions plus the major en/zh-CN aliases at preflight; other locales rely on this rule.
 
 Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) for new styles when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
 
@@ -163,7 +169,7 @@ Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) for new
 
 **Three layers for setting fonts. Decide by understanding what the user is expressing — the example phrases below are illustrations, not keyword triggers.**
 
-- **Per-role override** (`styles[]` entries with `fontEastAsia` / `font` / `overrides`). Use when the user is talking about *specific roles* and you can name which ones. Effect: targeted, only the styled paragraphs change. Illustrative phrasings: "标题黑体, 正文宋体", "图注小五号", "Heading2 字号改小一号", "参考文献保持原样".
+- **Per-role override** (`styles[]` entries with `fontCJK` / `fontLatin` / `overrides`). Use when the user is talking about *specific roles* and you can name which ones. Effect: targeted, only the styled paragraphs change. Illustrative phrasings: "标题黑体, 正文宋体", "图注小五号", "Heading2 字号改小一号", "参考文献保持原样".
 
 - **Whole-doc default** (declare a `Normal` entry in `styles[]`; other styles' `basedOn: "Normal"` chain inherits from it). Use when the user is expressing a uniform default for everything that doesn't have a more specific role decided — no role distinction in their phrasing. Effect: wide; covers most pStyle-bound paragraphs via the cascade. Illustrative phrasings: "整篇统一用 Times New Roman", "全文宋体小四" without further role specification.
 
@@ -206,7 +212,7 @@ The dry-run report also flags the well-handled mixed-pattern case as "Mixed manu
 Before calling `apply_styles`, self-check:
 
 1. **Style values have sources** — every parameter came from user spec, template, or `inspect_style` extraction. None were invented.
-2. **Heading styles have `outlineLevel`** — required for TOC / nav / outline view.
+2. **Heading styles have `outlineLevel`** — required for TOC / nav / outline view. Word's built-in `Title` style has no `outlineLevel` by default; only set one if the user's template treats Title as part of the heading hierarchy (e.g., a thesis where Title is H0 above H1 chapters).
 3. **Numbering migrated** when source has typed heading prefixes (per Step 5). `stripPrefixPatterns` covers mixed variants within a role.
 4. **Every fingerprint has a decision** — restyle / keep / exclude / flag. No fingerprint left unaccounted for. *(This coverage rule applies to Full Standardization only — Targeted Edit and Audit paths do not require it.)*
 

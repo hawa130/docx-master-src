@@ -516,6 +516,16 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   }
 
   // 9. Print report
+  // Auto-numbering bindings the agent should see surfaced — for each level
+  // we pass styleId + level + lvlText so the report can show "Heading2 →
+  // '%1.%2' (level 1)" without the agent needing to mentally cross-reference
+  // numbering.levels[] against restyleStats.
+  const numberingBindings = (config.numbering?.levels ?? []).map((lvl) => ({
+    styleId: lvl.styleId,
+    level: lvl.level,
+    lvlText: lvl.lvlText,
+  }))
+
   printReport({
     source,
     injected,
@@ -533,6 +543,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     samples: ctx.samples,
     implicitKeepByFingerprint: ctx.implicitKeepByFingerprint,
     unstrippedByStyle: ctx.unstrippedByStyle,
+    numberingBindings,
     templateImport,
   })
 }
