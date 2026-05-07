@@ -46,6 +46,10 @@ No automated tests — run scripts against `test/fixtures/*.docx` manually after
 4. **`tools/` is exclusively for files that get built as agent-callable CLIs.** Anything that's only imported (CLI scaffolding, formatters) goes in `lib/` so the build entry list and the agent's mental model of "tools" stay aligned.
 5. `bun run build:skill <name>` produces `dist/<name>/` and `dist/<name>.zip`
 
+## Periodic audits via `skill-creator`
+
+After a multi-commit feature push or before a release, spawn a subagent that invokes the `skill-creator` skill to audit a specific skill bundle. Pattern: `Agent` tool with `general-purpose` subagent; prompt asks it to invoke `skill-creator` and audit `src/skills/<name>/` + `dist/<name>/`, **read-only** (no file edits). The framework's checklists (Anatomy of a Skill / Progressive Disclosure / Writing Patterns / Description Optimization) catch stale `references/` content, anti-pattern leakage in docs, and checklist items that human review skims past — especially in directories that get edited rarely and accumulate wrong-tooling examples or outdated regex catalogs. Evaluate findings critically (skill-creator can over-suggest); act on real ones, defer or decline the rest.
+
 ## Design principles
 
 ### Tools expose visible facts; agents make role judgments
