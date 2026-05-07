@@ -1,0 +1,279 @@
+/**
+ * Locator → concrete <w:p> Element references.
+ *
+ * The resolver collapses every Locator kind into the same `ResolvedTarget`
+ * shape (paragraphs[] + container). Op execution downstream is locator-
+ * agnostic — the only place locator semantics live is here.
+ *
+ * Container uniformity rule: `paragraph` and `range` locators only reach
+ * indexed paragraphs (body + layout-table cells, per DocumentParser). A
+ * `range` whose endpoints sit in different containers (one in body, one in a
+ * cell) is rejected — replace/insert/delete across structural boundaries
+ * has no clean OOXML semantics. Data/form table cells are unindexed and
+ * thus only reachable via a `cell` locator.
+ */
+
+import type { ParsedParagraph } from "@lib/types.ts"
+import { NS } from "@lib/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent, wVal } from "@lib/xml-utils.ts"
+import { summarizeTable } from "@lib/table-classifier.ts"
+import { assertNever, type Locator, type ResolvedTarget } from "./edit-types.ts"
+
+/* ------------- indexed walk ------------- */
+
+interface IndexedPara {
+  /** 1-based, matches DocumentParser. */
+  index: number
+  element: Element
+  /** Body element or <w:tc>. */
+  container: Element
+}
+
+/** Walk the document in DocumentParser order and return every indexed
+ * paragraph with its element + container. Skips paragraphs inside data/form
+ * tables (they're unindexed; reachable only via cell locator). */
+export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
+  const out: IndexedPara[] = []
+  const root = documentDoc.documentElement
+  if (!root) return out
+  const body = firstChildNS(root, NS.w, "body")
+  if (!body) return out
+  let nextIndex = 1
+  const recur = (parent: Element): void => {
+    for (const child of getChildren(parent)) {
+      if (child.namespaceURI !== NS.w) continue
+      if (child.localName === "p") {
+        out.push({ index: nextIndex++, element: child, container: parent })
+      } else if (child.localName === "tbl") {
+        const summary = summarizeTable(child)
+        if (summary.classification === "layout") {
+          for (const tr of getChildrenNS(child, NS.w, "tr")) {
+            for (const tc of getChildrenNS(tr, NS.w, "tc")) {
+              recur(tc)
+            }
+          }
+        }
+        // data/form: leave untouched — unindexed.
+      }
+    }
+  }
+  recur(body)
+  return out
+}
+
+/* ------------- table walk (for cell locator) ------------- */
+
+interface TableRef {
+  /** 0-based top-level table position (document order). Includes layout, data,
+   * form alike — cell locator addresses any table by raw position so the
+   * agent can target data/form tables that paragraph indices skip. */
+  tableIndex: number
+  element: Element
+}
+
+export function walkTopLevelTables(documentDoc: Document): TableRef[] {
+  const out: TableRef[] = []
+  const root = documentDoc.documentElement
+  if (!root) return out
+  const body = firstChildNS(root, NS.w, "body")
+  if (!body) return out
+  let i = 0
+  for (const child of getChildren(body)) {
+    if (child.namespaceURI === NS.w && child.localName === "tbl") {
+      out.push({ tableIndex: i++, element: child })
+    }
+  }
+  return out
+}
+
+/* ------------- resolver context ------------- */
+
+export interface ResolverContext {
+  documentDoc: Document
+  body: Element
+  indexed: IndexedPara[]
+  indexByElement: Map<Element, number>
+  tables: TableRef[]
+  /** parsedDoc.paragraphs aligned with `indexed[i].index`. Resolver consults
+   * this for outline level (heading locator) and styleId. */
+  parsed: ParsedParagraph[]
+}
+
+export function buildResolverContext(
+  documentDoc: Document,
+  parsed: ParsedParagraph[],
+): ResolverContext {
+  const root = documentDoc.documentElement
+  if (!root) throw new Error("document has no root element")
+  const body = firstChildNS(root, NS.w, "body")
+  if (!body) throw new Error("document has no body")
+  const indexed = walkIndexedParagraphs(documentDoc)
+  const indexByElement = new Map<Element, number>()
+  for (const p of indexed) indexByElement.set(p.element, p.index)
+  return {
+    documentDoc,
+    body,
+    indexed,
+    indexByElement,
+    tables: walkTopLevelTables(documentDoc),
+    parsed,
+  }
+}
+
+/* ------------- resolve ------------- */
+
+export function resolveLocator(loc: Locator, ctx: ResolverContext): ResolvedTarget {
+  switch (loc.type) {
+    case "paragraph":
+      return resolveParagraph(loc.index, ctx)
+    case "range":
+      return resolveRange(loc.from, loc.to, ctx)
+    case "cell":
+      return resolveCell(loc.table, loc.row, loc.col, ctx)
+    case "heading":
+      return resolveHeading(loc.text, loc.level, ctx)
+    case "whole-body":
+      return resolveWholeBody(ctx)
+    default:
+      return assertNever(loc)
+  }
+}
+
+function resolveParagraph(index: number, ctx: ResolverContext): ResolvedTarget {
+  const hit = ctx.indexed[index - 1]
+  if (!hit || hit.index !== index) {
+    const max = ctx.indexed.length
+    throw new Error(
+      `paragraph #${index} not found. Document has ${max} indexed paragraph(s) (range: #1${max ? `–#${max}` : ""}).` +
+        ` Paragraphs inside data/form tables are unindexed and only reachable via a cell locator.`,
+    )
+  }
+  return { paragraphs: [hit.element], container: hit.container }
+}
+
+function resolveRange(from: number, to: number, ctx: ResolverContext): ResolvedTarget {
+  const fromHit = ctx.indexed[from - 1]
+  const toHit = ctx.indexed[to - 1]
+  if (!fromHit || fromHit.index !== from) {
+    throw new Error(`range.from: paragraph #${from} not found (max #${ctx.indexed.length}).`)
+  }
+  if (!toHit || toHit.index !== to) {
+    throw new Error(`range.to: paragraph #${to} not found (max #${ctx.indexed.length}).`)
+  }
+  if (fromHit.container !== toHit.container) {
+    throw new Error(
+      `range #${from}–#${to} crosses a structural boundary (one endpoint in body, the other inside a layout-table cell). ` +
+        `Splitting cross-boundary ranges has no clean OOXML semantics; split into two separate edits.`,
+    )
+  }
+  const paragraphs: Element[] = []
+  for (let i = from - 1; i <= to - 1; i++) {
+    const p = ctx.indexed[i]!
+    if (p.container !== fromHit.container) {
+      throw new Error(
+        `range #${from}–#${to}: paragraph #${p.index} sits in a different container — range cannot span structural boundaries.`,
+      )
+    }
+    paragraphs.push(p.element)
+  }
+  return { paragraphs, container: fromHit.container }
+}
+
+function resolveCell(
+  table: number,
+  row: number,
+  col: number,
+  ctx: ResolverContext,
+): ResolvedTarget {
+  if (table < 0 || table >= ctx.tables.length) {
+    throw new Error(
+      `cell.table: index ${table} out of range. Document has ${ctx.tables.length} top-level table(s).`,
+    )
+  }
+  const tbl = ctx.tables[table]!.element
+  const rows = getChildrenNS(tbl, NS.w, "tr")
+  if (row < 0 || row >= rows.length) {
+    throw new Error(
+      `cell.row: index ${row} out of range. Table ${table} has ${rows.length} row(s).`,
+    )
+  }
+  const cells = getChildrenNS(rows[row]!, NS.w, "tc")
+  if (col < 0 || col >= cells.length) {
+    throw new Error(
+      `cell.col: index ${col} out of range. Table ${table} row ${row} has ${cells.length} cell(s).`,
+    )
+  }
+  const tc = cells[col]!
+  const paragraphs = getChildrenNS(tc, NS.w, "p")
+  return { paragraphs, container: tc }
+}
+
+function resolveHeading(
+  text: string,
+  level: number | undefined,
+  ctx: ResolverContext,
+): ResolvedTarget {
+  const target = text.trim()
+  // Compare against rendered text trimmed; outlineLevel from parsed pPr (which
+  // already factors in the styleId cascade). Returns the FIRST hit — agents
+  // wanting a specific occurrence should switch to a paragraph locator after
+  // running find_paragraphs / overview to disambiguate.
+  for (const p of ctx.parsed) {
+    if (p.text.trim() !== target) continue
+    if (level !== undefined && p.pPr.outlineLevel !== level) continue
+    if (level === undefined && p.pPr.outlineLevel === undefined) continue // require it to be a heading at all
+    const hit = ctx.indexed[p.index - 1]
+    if (!hit) continue
+    return { paragraphs: [hit.element], container: hit.container }
+  }
+  const lvlPart = level !== undefined ? ` at outline level ${level}` : ""
+  throw new Error(
+    `heading "${text}"${lvlPart} not found. Use find_paragraphs to locate by regex, ` +
+      `then refer by paragraph index instead.`,
+  )
+}
+
+function resolveWholeBody(ctx: ResolverContext): ResolvedTarget {
+  const paragraphs: Element[] = []
+  for (const child of getChildren(ctx.body)) {
+    if (child.namespaceURI === NS.w && child.localName === "p") paragraphs.push(child)
+  }
+  return { paragraphs, container: ctx.body }
+}
+
+/* ------------- helpers usable downstream ------------- */
+
+/** Read the styleId of a paragraph element (for blocker logging / heading
+ * disambiguation). Returns "Normal" when no explicit pStyle is set. */
+export function paragraphStyleId(pEl: Element): string {
+  const pPr = firstChildNS(pEl, NS.w, "pPr")
+  const pStyle = pPr ? firstChildNS(pPr, NS.w, "pStyle") : null
+  return (pStyle && wVal(pStyle)) || "Normal"
+}
+
+/** Plain-text content of a paragraph (concatenates <w:t> textContent across
+ * all runs). Used by blockers / debug logging. */
+export function paragraphText(pEl: Element): string {
+  let out = ""
+  for (const r of getChildrenNS(pEl, NS.w, "r")) {
+    for (const c of getChildren(r)) {
+      if (c.namespaceURI === NS.w && c.localName === "t") out += textContent(c)
+    }
+  }
+  return out
+}
+
+/** Read the trailing sectPr at body level (if any). Used for "append to
+ * body" semantics so we don't insert after the section descriptor. */
+export function trailingBodySectPr(body: Element): Element | null {
+  // body may end with a <w:sectPr> sibling; if absent, the last paragraph's
+  // pPr.sectPr serves the role and stays where it is (we don't move it).
+  const children = getChildren(body)
+  for (let i = children.length - 1; i >= 0; i--) {
+    const c = children[i]!
+    if (c.namespaceURI !== NS.w) continue
+    if (c.localName === "sectPr") return c
+    if (c.localName === "p" || c.localName === "tbl") return null
+  }
+  return null
+}

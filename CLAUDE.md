@@ -1,6 +1,6 @@
 # Working in this repo
 
-This repo builds **one** Word (.docx) automation skill, `docx-master`. Standardization (the original `docx-normalize` capability — paragraph classification, named-style injection, numbering migration, template import) is currently the only sub-command surface; future sub-commands (surgical edit, content authoring) will add to the same SKILL.md as routed entries. The agent-facing contract is `skill/SKILL.md`; this file is for working *on* the project.
+This repo builds **one** Word (.docx) automation skill, `docx-master`. Two writing sub-commands ship today — `standardize` (role-based whole-doc reshape: paragraph classification, named-style injection, numbering migration, template import) and `edit` (location-based surgical edits: replace/insert/delete paragraphs, table-cell content, image embedding, optional Word tracked changes) — plus the read-only `audit`. Future sub-commands (content authoring adapters, batch fragment imports) will add to the same SKILL.md as routed entries. The agent-facing contract is `skill/SKILL.md`; this file is for working *on* the project.
 
 **Keep this file in sync.** Tool names, build commands, file paths, and the lessons below are referenced concretely. When any of them changes, update here in the same commit — stale references mislead future maintainers and the next agent reviewing the design.
 
@@ -109,7 +109,12 @@ LLMs are bad at byte-level work; scripts must guarantee these and never bend the
 - Dominant-run selection in `fromParagraph` skips numbering-prefix-only runs
 - Leading-prefix strip accumulates across consecutive `<w:t>` runs; Word splits hand-edited paragraphs mid-prefix, so per-run regex testing silently misses some
 - numId migration on template import uses fresh IDs to avoid collision
-- The original file is never modified; `apply_styles` always writes a fresh copy and validates before keeping it
+- The original file is never modified; every applying CLI writes a fresh copy and validates before keeping it
+- **Edit side**: locators resolve to Element refs *before* any mutation, so subsequent ops survive DOM rearrangement; stale-element rejection guards against an op targeting a paragraph an earlier op removed
+- **Edit side**: blocker scan refuses edits inside existing `<w:ins>` / `<w:del>` / `<w:fldChar>` regions / `<w:sdt>` controls — fields and revisions don't survive ad-hoc paragraph rewriting
+- **Edit side**: track-changes mode snapshots previous `<w:rPr>` / `<w:pPr>` *before* mutating the live element, so `<w:rPrChange>` / `<w:pPrChange>` carry the genuine prior state (cloning after mutation would record the new state as the snapshot)
+- **Edit side**: insertions into the body land before any trailing `<w:sectPr>` so the section descriptor stays last; cell-container insertions append plainly
+- **Image asset path**: each image registration touches three coordinated parts (`word/media/`, `[Content_Types].xml`, `word/_rels/document.xml.rels`); all three are staged before write so a failure leaves no half-registered asset
 
 When changing any of these, verify against `test/fixtures/` and inspect the output zip.
 

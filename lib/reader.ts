@@ -35,10 +35,15 @@ export class DocxReader {
   }
 
   /**
-   * Copy zip to outputPath, replacing the listed entries with new XML strings.
-   * Replacement values are full XML documents serialized to string.
+   * Copy zip to outputPath, replacing the listed entries. Values are either
+   * XML/text strings (most cases) or binary `Uint8Array` (image assets).
+   * JSZip handles both shapes natively. Adding a *new* archive entry uses
+   * the same call: `replacements.set("word/media/image1.png", bytes)`.
    */
-  async copyAndModify(outputPath: string, replacements: Map<string, string>): Promise<void> {
+  async copyAndModify(
+    outputPath: string,
+    replacements: Map<string, string | Uint8Array>,
+  ): Promise<void> {
     // load fresh zip from original buffer to avoid mutating the open one
     const original = readFileSync(this.filePath)
     const out = await JSZip.loadAsync(original)

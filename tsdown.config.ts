@@ -21,12 +21,16 @@ const tools: Record<string, string> = {
   inspect_style: "inspect-style.ts",
   inspect_style_def: "inspect-style-def.ts",
   inspect_section: "inspect-section.ts",
+  inspect_table: "inspect-table.ts",
+  inspect_blockers: "inspect-blockers.ts",
   find_paragraphs: "find-paragraphs.ts",
-  // normalize sub-command
+  // standardize sub-command
   apply_styles: "apply-styles.ts",
   restyle: "restyle.ts",
   migrate_numbering: "migrate-numbering.ts",
   import_template: "import-template.ts",
+  // edit sub-command
+  apply_edits: "apply-edits.ts",
 }
 
 export default defineConfig({
