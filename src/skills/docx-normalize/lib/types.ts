@@ -260,4 +260,11 @@ export interface ApplyContext {
    * the paragraph has visible text — empty paragraphs are likely intentional
    * spacers, non-empty are coverage signal. */
   implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
+  /** styleId → (canonical shape → count) for paragraphs assigned to a
+   * numbered style whose typed prefix matched a known shape but was NOT
+   * covered by the level's stripPrefixPatterns. Surfaces as a "double-
+   * numbering" warning in the change report — agent's config didn't cover
+   * a shape the doc actually contains, so the auto-number AND the manual
+   * prefix would both render. */
+  unstrippedShapesByStyle: Map<string, Map<string, number>>
 }

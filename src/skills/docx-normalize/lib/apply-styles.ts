@@ -173,6 +173,36 @@ export async function applyStyles(source: string, output: string, config: ApplyC
 
   // 5. Inject numbering
   if (config.numbering && config.numbering.levels.length > 0) {
+    // Schema-strict: reject unknown fields with a helpful "did you mean" hint
+    // for the most common misplacement. Without this, an agent that puts
+    // `stripPrefixPatterns` at the top level (a natural shape — "broadcast
+    // these across all levels") gets silently ignored: the field doesn't
+    // exist, the per-level patterns fall back to [lvlText], and only some of
+    // the doc's typed prefixes get stripped. Agent sees a normal-looking
+    // dry-run report and ships broken numbering.
+    const KNOWN_NUMBERING_KEYS = new Set(["levels"])
+    for (const k of Object.keys(config.numbering)) {
+      if (KNOWN_NUMBERING_KEYS.has(k)) continue
+      const hint = k === "stripPrefixPatterns"
+        ? ` — stripPrefixPatterns belongs INSIDE each level (numbering.levels[i].stripPrefixPatterns), not at the top of numbering.`
+        : ""
+      throw new Error(
+        `numbering: unknown field "${k}".${hint} Supported top-level fields: [${[...KNOWN_NUMBERING_KEYS].join(", ")}].`,
+      )
+    }
+    const KNOWN_LEVEL_KEYS = new Set([
+      "level", "numFmt", "lvlText", "styleId", "start",
+      "stripPrefixPatterns", "numRPr",
+    ])
+    for (const [i, lvl] of config.numbering.levels.entries()) {
+      for (const k of Object.keys(lvl)) {
+        if (KNOWN_LEVEL_KEYS.has(k)) continue
+        throw new Error(
+          `numbering.levels[${i}]: unknown field "${k}". Supported: [${[...KNOWN_LEVEL_KEYS].sort().join(", ")}].`,
+        )
+      }
+    }
+
     const declaredIds = new Set(config.styles.map((s) => s.id))
     // Numbering levels can also bind to styles already present in the
     // document's styles.xml without redeclaring them in config.styles[].
@@ -383,6 +413,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     string,
     { empty: number; nonEmpty: number; nonEmptySamples: string[] }
   >()
+  const unstrippedShapesByStyle = new Map<string, Map<string, number>>()
   const ctx: ApplyContext = {
     excludeSet,
     assignmentMap,
@@ -399,6 +430,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     samples,
     samplesPerStyleCap: 5,
     implicitKeepByFingerprint,
+    unstrippedShapesByStyle,
   }
   applyToBody(documentDoc, ctx)
 
@@ -455,6 +487,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     dryRun: !!config.dryRun,
     samples: ctx.samples,
     implicitKeepByFingerprint: ctx.implicitKeepByFingerprint,
+    unstrippedShapesByStyle: ctx.unstrippedShapesByStyle,
     templateImport,
   })
 }

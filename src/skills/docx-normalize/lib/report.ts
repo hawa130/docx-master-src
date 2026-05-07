@@ -57,6 +57,7 @@ export function printReport(args: {
   dryRun: boolean
   samples: Map<string, RestyleSample[]>
   implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
+  unstrippedShapesByStyle: Map<string, Map<string, number>>
   templateImport: ImportResult | null
 }) {
   const lines: string[] = []
@@ -158,6 +159,33 @@ export function printReport(args: {
     }
     lines.push(
       "  Normalization unified these to one scheme — worth confirming with the user before final write.",
+    )
+    lines.push("")
+  }
+  // Loud-fail on uncovered typed-prefix shapes: paragraphs assigned to a
+  // numbered style whose leading text matched a known prefix shape that the
+  // level's stripPrefixPatterns didn't cover. This is the "agent thought
+  // they handled it but missed half the doc" case — auto-numbering will fire
+  // AND the manual prefix will stay, producing "1. 1. Heading text" output.
+  // Surface here, not silently in the existing Mixed-detected section,
+  // because that section only fires when patterns ALREADY hit two shapes;
+  // it can't see what's still uncovered.
+  if (args.unstrippedShapesByStyle.size > 0) {
+    lines.push(
+      "Uncovered manual prefixes (will double-number — auto-number AND keep manual prefix):",
+    )
+    for (const [styleId, shapeMap] of args.unstrippedShapesByStyle) {
+      const breakdown = [...shapeMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([shape, n]) => `"${shape}"×${n}`)
+        .join(", ")
+      lines.push(`  ${styleId}: ${breakdown}`)
+    }
+    lines.push(
+      "  → Add the missing shape(s) to the style's numbering.levels[i].stripPrefixPatterns",
+    )
+    lines.push(
+      "    (longer patterns first, e.g. [\"%1.%2\", \"%1.\"]).",
     )
     lines.push("")
   }
