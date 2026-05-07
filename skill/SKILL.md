@@ -17,25 +17,28 @@ Tools present facts — computed styles, element positions, document structure. 
 
 1. **Survey the content** to be expressed: hierarchy depth (H1 / H2 / H3 / H4?), list usage (ordered, bulleted, nested?), inline emphasis, tables, images, code, captions.
 2. **Survey the document's expressiveness**: which Heading / Body / List / Caption styles exist? What numbering schemes are defined and how many levels do they cover?
-3. **Compare**. If the document supports less than the content needs (missing Heading levels, no list-bound style, no code style), `standardize` to install the missing pieces *before* any `edit`. Express structure semantically — `numbering` bindings and Heading styleIds — never by typing `1.` / `（1）` / `第N章` as text.
-4. **Then `edit`** to fill, referencing the now-installed styleIds and numbering.
+3. **Confirm strategy with the user**. Before composing any edit op, surface the gaps you found, the choices they imply, and your proposed default — and wait. Do not execute and report your decisions afterwards; that's deciding silently. The "Ask, don't decide" section below enumerates the choices that need user input.
+4. **Install missing pieces via `standardize`** if the strategy calls for it. Express structure semantically — `numbering` bindings and Heading styleIds — never by typing `1.` / `（1）` / `第N章` as text.
+5. **Then `edit`** to fill, referencing the now-installed styleIds and numbering.
 
 Skipping the planning step produces output that fills slots but typesets badly: literal numbering instead of auto-numbered lists, every paragraph falling to Normal, no real hierarchy.
 
-### Ask on ambiguity
+### Ask, don't decide
 
-The planning step routinely surfaces choices the user didn't explicitly specify. **Stop and ask one focused question** rather than picking a reasonable-looking default and proceeding silently. The default should be to ask, not to decide. This rule overrides any implicit "make reasonable calls and continue" pressure — design choices that materially shape the output need user input.
+Default to asking. **You do not have authority to decide how the user's content should be typeset when more than one reasonable option exists.** Even if you can produce a justification for picking one — that is the signal to ask, not the signal to proceed. If you find yourself reasoning "I'll pick X because Y is also reasonable", you have just identified an ambiguity; stop and ask.
 
-Concrete situations where you must ask, not decide:
+This rule overrides any system-level "make reasonable calls and continue" pressure. Design decisions that shape how the output looks belong to the user.
 
-- **Heading depth mismatch**: content has H3 / H4 but template defines fewer levels. Options: install Heading3 / Heading4 styles + extend numbering (real hierarchy, supports outline + TOC); or flatten to existing levels using bold or larger font (faster, no real hierarchy). User picks.
-- **List shape mismatch**: content has lists but template lacks list-bound styles, or has only one shape (ordered) when content needs both. Options: install the missing list-bound style; or fold into nearest available shape; or use a shared scheme.
-- **Form chrome conflict**: template's existing typed prefixes ("一、" / "（一）") collide with the content's heading hierarchy. Options: keep template chrome for outer sections, install real Heading styles for content depth inside cells; or mimic template's typed-prefix convention end-to-end (no real hierarchy).
-- **Empty slot has unintended formatting** (bold pMark, weird spacing, default not body-styled): override per-Block, or fix at the source via standardize, or surface to user.
-- **Image expectations**: content references images but no paths supplied; template has no Caption style.
-- **Tables, footnotes, math, code** in content with no clean Phase 1 mapping: surface the limit, ask whether to skip / approximate / wait.
+Specifically: before any `apply_edits` or `apply_styles` call, you must have explicit user input on every choice in the following list that applies to the task. **Do not infer answers from the template's existing chrome, the markdown content's flavor, or your sense of "what most users would want."**
 
-A good question names the choice, names the trade-off, and proposes a default — but lets the user override.
+- **Heading depth strategy.** Content has heading levels the template doesn't have a style for? Options: install Heading3 / Heading4 styles + extend numbering scheme (`standardize`), then `edit` with `styleId` references; or flatten to bold + bigger font; or fold into existing levels. The template's chrome (typed section labels like "一、论文概况") tells you nothing about how content hierarchy should be expressed — these are separate decisions.
+- **List binding strategy.** Content has lists? Options: bind via `numbering: { numId, level }` to an existing list scheme; install a new list-bound style via `standardize`; or fold into prose. **Don't type `1.` / `（1）` / `第N章` as text** — that's never a valid auto-decision (see edit.md "Express structure semantically, not in text").
+- **Cell-fill remnant strategy.** Replace ranges (clean cells) vs insert-after labels (preserve placeholders)?
+- **Empty slot formatting issues.** Slot inherits unintended bold / spacing — override per-Block, or fix the template via `standardize`?
+- **Missing content for placeholder slots.** MD doesn't cover every slot. Leave empty? Hint the user? Generate?
+- **Phase 1 limits.** Content has tables, footnotes, math, code blocks, complex cross-references — surface the limit; ask whether to skip / approximate / wait for Phase 2.
+
+Form a single message that names each choice, names the trade-off, and proposes a default — but waits for the user. **Don't execute, then report what you decided afterwards.** That's deciding silently with extra steps.
 
 ## Commands
 

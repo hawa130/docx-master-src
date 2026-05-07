@@ -70,14 +70,16 @@ If the styleId or numId you need doesn't exist in the document, the **right move
 
 When in doubt — should I install Heading3, or fold sub-headings into bold? — **ask the user**, per SKILL.md "Ask on ambiguity". Don't decide silently.
 
-#### Form chrome vs content structure
+#### Form chrome is not a hierarchy strategy
 
-Many templates (开题报告、申请表、合同稿) carry their own typed prefixes — "一、论文概况", "（一）选题意义", "1. 研究目标" — as scaffolding for the form itself. These are template chrome. They are **not** an instruction to express your content's hierarchy the same way.
+Many templates carry typed prefixes — "一、论文概况", "（一）选题意义" — as scaffolding for the form itself. These are **template chrome**. They tell you nothing about how to express your content's hierarchy.
 
-- **Template chrome (outer section labels)**: leave alone. They came with the template; preserve them as text in the source paragraph.
-- **Your content's hierarchy (inside the form cells)**: express via real `styleId` and `numbering` — even if the template surrounds it with typed prefixes. Mixing is fine: the form's "（一）选题意义" label stays as typed text; the H3 / H4 sub-structure under it goes into Heading3 / Heading4 styles.
+The trap: agent sees "the template uses typed prefixes" → agent reasons "so my content's sub-headings should also use typed prefixes" → agent types `1. 理论意义` / `（1）模型压缩方向` as text. **This is wrong every time.** Template chrome and content hierarchy are independent decisions:
 
-If template chrome and content hierarchy genuinely conflict (the typed prefix scheme matches what your content needs and a real heading hierarchy would feel redundant), this is an **ambiguity** — ask the user before picking.
+- Template chrome (outer section labels that came with the template): leave as text. Don't try to convert them to Heading styles unless explicitly asked.
+- Your content's hierarchy (sub-headings, lists, anything from the markdown): express semantically via `styleId` + `numbering`. If the template lacks the styles you need, `standardize` to install them.
+
+When the choice between these strategies is genuinely user-discretionary — e.g., the user might want a fast form-style fill, or might want full semantic typesetting — **ask** (per SKILL.md "Ask, don't decide"). Do not infer the answer from the template's chrome convention.
 
 #### Quote handling
 
