@@ -222,6 +222,26 @@ export async function applyStyles(source: string, output: string, config: ApplyC
           )
         }
       }
+      // %N is positional (1-indexed): %1 → level 0, %2 → level 1, ...
+      // A level whose lvlText omits its own counter (%(level+1)) renders
+      // every item with a higher level's number — e.g. lvlText "（%1）" on
+      // level 1 makes all sub-items under chapter 二 show "（二）" because
+      // %1 is H1's counter, not H2's. Validation passes, dry-run is silent
+      // (stripPrefixPatterns matches digits/CJK identically for any %N), so
+      // the bug only surfaces when Word renders. Statically detectable here.
+      const ownPlaceholder = `%${lvl.level + 1}`
+      if (!lvl.lvlText.includes(ownPlaceholder)) {
+        const referenced = lvl.lvlText.match(/%\d/g) ?? []
+        const refDesc = referenced.length
+          ? `only references ${referenced.map((p) => `${p} (level ${Number(p[1]) - 1})`).join(", ")}`
+          : "references no counter"
+        console.error(
+          `Warning: numbering.levels[${i}].lvlText "${lvl.lvlText}" does not reference its own counter ${ownPlaceholder} — ${refDesc}.\n` +
+            `  All level-${lvl.level} items will display the same number, restarting only when a higher level changes.\n` +
+            `  %N is positional (1-indexed): %1 → level 0, %2 → level 1, ... — so level ${lvl.level} needs ${ownPlaceholder} to render its own counter.\n` +
+            `  Did you mean lvlText: "${lvl.lvlText.replace(/%\d/, ownPlaceholder)}"?`,
+        )
+      }
     }
     const newNumId = injectNumbering(numberingDoc, config.numbering)
     for (const lvl of config.numbering.levels) {
