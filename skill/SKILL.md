@@ -1,6 +1,6 @@
 ---
 name: docx-master
-description: "Automate Word (.docx) formatting work: classify paragraph roles, inject named styles, migrate manual heading numbers (1./1.1/第N章) to multi-level auto-numbering, import template styles, apply targeted single-style edits, audit a document against a typography spec. Use whenever the user wants to format, restyle, normalize, standardize, or audit a Word document — including phrasings like '排版', '格式', '套模板', '按学校 / 期刊格式', '标题字号不对', '统一一下样式', '加个图注样式', '其他不动只改 X', applying thesis/paper specs, aligning to a template, fixing inconsistent formatting. Do NOT use for: PDFs, spreadsheets, or plain-text / Markdown source files (unless the task is specifically to *output* a docx)."
+description: "Standardize, restyle, or audit a Word (.docx) document via direct OOXML mutation. Standardize: classify paragraph roles, inject named styles, migrate manual heading numbers (1./1.1/第N章) to multi-level auto-numbering, import template styles, apply targeted single-style edits. Audit: read-only conformance check against a typography spec, no file written. Use whenever the user wants to format, restyle, normalize, standardize, or audit a Word document — illustrative phrasings: '排版', '格式', '套模板', '按学校 / 期刊格式', '标题字号不对', '统一一下样式', '加个图注样式', '其他不动只改 X', '看看合不合学校规范', applying thesis/paper specs, aligning to a template, fixing inconsistent formatting. Do NOT use for: PDFs, spreadsheets, or plain-text / Markdown source files (unless the task is specifically to *output* a docx)."
 ---
 
 # docx-master
