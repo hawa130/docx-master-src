@@ -1,14 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Stage SKILL.md + references/ from src/skills/<name>/ into dist/<name>/
- * alongside tsdown's scripts/, then zip into dist/<name>.zip.
+ * Stage SKILL.md + references/ from `src/docx-master/` alongside tsdown's
+ * scripts/ output, then zip into `dist/docx-master.zip`.
  *
- * Multi-skill aware: pass a skill name as the first arg, or omit to build the
- * single skill present under src/skills/. With multiple skills present,
- * --all builds them in sequence.
- *
- * Run AFTER `tsdown` (which produces dist/<skill>/scripts/) — `bun run
- * build:skill` chains both.
+ * Run AFTER `tsdown` (which produces `dist/docx-master/scripts/`) — the
+ * `bun run build:skill` script chains both.
  */
 import {
   cpSync,
@@ -23,96 +19,47 @@ import { join, relative } from "node:path"
 import JSZip from "jszip"
 
 const ROOT = import.meta.dirname
-const SKILLS_DIR = join(ROOT, "src", "skills")
-const DIST_DIR = join(ROOT, "dist")
+const SKILL_NAME = "docx-master"
+const SKILL_SRC = join(ROOT, "src", SKILL_NAME)
+const STAGE_DIR = join(ROOT, "dist", SKILL_NAME)
+const ZIP_PATH = join(ROOT, "dist", `${SKILL_NAME}.zip`)
+const SCRIPTS_DIR = join(STAGE_DIR, "scripts")
 
-const args = process.argv.slice(2)
-const wantAll = args.includes("--all")
-const explicitName = args.find((a) => !a.startsWith("--"))
-
-const allSkills = listSkills(SKILLS_DIR)
-if (allSkills.length === 0) {
-  console.error(`no skills found under ${relative(ROOT, SKILLS_DIR)}/`)
-  process.exit(1)
-}
-
-let toBuild: string[]
-if (wantAll) {
-  toBuild = allSkills
-} else if (explicitName) {
-  if (!allSkills.includes(explicitName)) {
-    console.error(
-      `skill "${explicitName}" not found under ${relative(ROOT, SKILLS_DIR)}/.\n` +
-        `  available: [${allSkills.join(", ")}]`,
-    )
-    process.exit(1)
-  }
-  toBuild = [explicitName]
-} else if (allSkills.length === 1) {
-  toBuild = allSkills
-} else {
+if (!existsSync(SCRIPTS_DIR)) {
   console.error(
-    `multiple skills present — pick one or pass --all.\n` +
-      `  available: [${allSkills.join(", ")}]\n` +
-      `  usage: bun run build-skill.ts <name>  |  bun run build-skill.ts --all`,
+    `${relative(ROOT, SCRIPTS_DIR)}/ not found — run \`bun run build\` (tsdown) before build-skill.`,
   )
   process.exit(1)
 }
 
-for (const skill of toBuild) {
-  await buildOne(skill)
+// 1. Copy SKILL.md
+const skillMdSrc = join(SKILL_SRC, "SKILL.md")
+if (!existsSync(skillMdSrc)) {
+  throw new Error(`missing SKILL.md at ${relative(ROOT, skillMdSrc)}`)
+}
+cpSync(skillMdSrc, join(STAGE_DIR, "SKILL.md"))
+
+// 2. Copy references/ (replacing any prior staged copy)
+const refsSrc = join(SKILL_SRC, "references")
+const refsDst = join(STAGE_DIR, "references")
+rmSync(refsDst, { recursive: true, force: true })
+if (existsSync(refsSrc)) {
+  cpSync(refsSrc, refsDst, { recursive: true })
 }
 
-async function buildOne(skillName: string) {
-  const skillSrc = join(SKILLS_DIR, skillName)
-  const stageDir = join(DIST_DIR, skillName)
-  const zipPath = join(DIST_DIR, `${skillName}.zip`)
-  const scriptsDir = join(stageDir, "scripts")
+// 3. Zip the staged dir
+await zipDir(STAGE_DIR, ZIP_PATH, SKILL_NAME)
 
-  if (!existsSync(scriptsDir)) {
-    console.error(
-      `${relative(ROOT, scriptsDir)}/ not found — run \`bun run build\` (tsdown) before build-skill.`,
-    )
-    process.exit(1)
-  }
-
-  // 1. Copy SKILL.md and references/ from the source skill dir
-  const skillMdSrc = join(skillSrc, "SKILL.md")
-  if (!existsSync(skillMdSrc)) {
-    throw new Error(`missing SKILL.md at ${relative(ROOT, skillMdSrc)}`)
-  }
-  cpSync(skillMdSrc, join(stageDir, "SKILL.md"))
-
-  const refsSrc = join(skillSrc, "references")
-  const refsDst = join(stageDir, "references")
-  rmSync(refsDst, { recursive: true, force: true })
-  if (existsSync(refsSrc)) {
-    cpSync(refsSrc, refsDst, { recursive: true })
-  }
-
-  // 2. Zip the staged dir
-  await zipDir(stageDir, zipPath, skillName)
-
-  // 3. Report
-  const zipSize = statSync(zipPath).size
-  console.log(`✓ Skill bundle:  ${relative(ROOT, stageDir)}/`)
-  console.log(`✓ Skill archive: ${relative(ROOT, zipPath)} (${formatBytes(zipSize)})`)
-  console.log("")
-  console.log("Contents:")
-  listTree(stageDir, "  ")
-  console.log("")
-}
+// 4. Report
+const zipSize = statSync(ZIP_PATH).size
+console.log(`✓ Skill bundle:  ${relative(ROOT, STAGE_DIR)}/`)
+console.log(`✓ Skill archive: ${relative(ROOT, ZIP_PATH)} (${formatBytes(zipSize)})`)
+console.log("")
+console.log("Contents:")
+listTree(STAGE_DIR, "  ")
+console.log("")
 
 /* ---------- helpers ---------- */
-
-function listSkills(dir: string): string[] {
-  if (!existsSync(dir)) return []
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .filter((e) => existsSync(join(dir, e.name, "SKILL.md")))
-    .map((e) => e.name)
-    .sort()
-}
 
 async function zipDir(srcDir: string, outPath: string, archiveRoot: string) {
   const zip = new JSZip()

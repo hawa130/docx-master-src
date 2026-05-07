@@ -1,5 +1,5 @@
 ---
-name: docx-normalize
+name: docx-master
 description: "Automate Word (.docx) formatting work: classify paragraph roles, inject named styles, migrate manual heading numbers (1./1.1/第N章) to multi-level auto-numbering, import template styles, apply targeted single-style edits, audit a document against a typography spec. Use whenever the user wants to format, restyle, normalize, standardize, or audit a Word document — including phrasings like '排版', '格式', '套模板', '按学校 / 期刊格式', '标题字号不对', '统一一下样式', '加个图注样式', '其他不动只改 X', applying thesis/paper specs, aligning to a template, fixing inconsistent formatting. Do NOT use for: PDFs, spreadsheets, or plain-text / Markdown source files (unless the task is specifically to *output* a docx)."
 ---
 
@@ -262,7 +262,7 @@ Call `apply_styles` with your decision in a JSON config.
 }
 ```
 
-Full schema in `references/apply-styles-config.md` — read once before composing your first config.
+Full schema in `references/config-schema.md` — read once before composing your first config.
 
 Key invariants:
 - **Paths resolve against current working directory.** `source` and `output` are passed through `path.resolve()` against cwd; absolute paths are passed through unchanged. If you may have changed directories during the session, use absolute paths to avoid surprises.
