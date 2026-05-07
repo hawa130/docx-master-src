@@ -23,7 +23,7 @@ const tools: Record<string, string> = {
   inspect_section: "inspect-section.ts",
   find_paragraphs: "find-paragraphs.ts",
   // normalize sub-command
-  apply_styles: "apply-styles-cli.ts",
+  apply_styles: "apply-styles.ts",
   restyle: "restyle.ts",
   migrate_numbering: "migrate-numbering.ts",
   import_template: "import-template.ts",
