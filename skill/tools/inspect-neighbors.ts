@@ -68,13 +68,9 @@ async function main() {
     if (paraInList < 0) {
       const paragraphs = doc.paragraphs
       const max = paragraphs.length
-      const range =
-        max > 0
-          ? `#${paragraphs[0]!.index}–#${paragraphs[max - 1]!.index}`
-          : "(none)"
+      const range = max > 0 ? `#${paragraphs[0]!.index}–#${paragraphs[max - 1]!.index}` : "(none)"
       const closest = paragraphs.reduce(
-        (best, p) =>
-          Math.abs(p.index - targetIdx) < Math.abs(best.index - targetIdx) ? p : best,
+        (best, p) => (Math.abs(p.index - targetIdx) < Math.abs(best.index - targetIdx) ? p : best),
         paragraphs[0]!,
       )
       console.error(
@@ -97,8 +93,7 @@ function renderReport(doc: LoadedDoc, anchorIdx: number, radius: number): string
   const items = doc.neighborItems
   const paraByIdx = new Map(doc.paragraphs.map((p) => [p.index, p]))
   const anchor = items[anchorIdx]!
-  const anchorPara =
-    anchor.kind === "paragraph" ? paraByIdx.get(anchor.paraIndex) : null
+  const anchorPara = anchor.kind === "paragraph" ? paraByIdx.get(anchor.paraIndex) : null
 
   const lines: string[] = []
   lines.push(
@@ -107,10 +102,7 @@ function renderReport(doc: LoadedDoc, anchorIdx: number, radius: number): string
     }`,
   )
   if (anchorPara) {
-    const txt =
-      anchorPara.text.length > 80
-        ? anchorPara.text.slice(0, 77) + "…"
-        : anchorPara.text
+    const txt = anchorPara.text.length > 80 ? anchorPara.text.slice(0, 77) + "…" : anchorPara.text
     lines.push(`  anchor: [${anchorPara.fingerprint}] ${JSON.stringify(txt)}`)
   }
   lines.push("")
@@ -152,9 +144,7 @@ function formatItem(
 ): string {
   switch (item.kind) {
     case "paragraph": {
-      const p = paraByIdx.get(item.paraIndex) as
-        | { fingerprint: string; text: string }
-        | undefined
+      const p = paraByIdx.get(item.paraIndex) as { fingerprint: string; text: string } | undefined
       const fp = p?.fingerprint ?? "?"
       const tag = item.isEmpty ? " (empty)" : ""
       const txt = p

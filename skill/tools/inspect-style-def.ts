@@ -1,5 +1,5 @@
 import { loadDocx, parseNumbering } from "@lib/load.ts"
-import type { ComputedParaStyle, ComputedRunStyle, StyleDefinition } from "@lib/types.ts"
+import type { ComputedParaStyle, ComputedRunStyle } from "@lib/types.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -40,7 +40,8 @@ async function main() {
       const numDef = numDefs.find((n) => n.numId === def.pPr.numId)
       if (numDef && def.pPr.numLevel !== undefined) {
         const lvl = numDef.levels.find((l) => l.level === def.pPr.numLevel)
-        if (lvl) numBindingNote = `numId=${def.pPr.numId}, level=${lvl.level} (format: "${lvl.text}")`
+        if (lvl)
+          numBindingNote = `numId=${def.pPr.numId}, level=${lvl.level} (format: "${lvl.text}")`
       } else if (numDef) {
         numBindingNote = `numId=${def.pPr.numId}`
       }
@@ -84,7 +85,8 @@ function formatStyleProps(r: ComputedRunStyle, pp: ComputedParaStyle): string {
   if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
   if (pp.lineSpacing !== undefined) {
     const rule = pp.lineRule || "auto"
-    if (rule === "auto") parts.push(`lineSpacing: ${parseFloat((pp.lineSpacing / 240).toFixed(2))}×`)
+    if (rule === "auto")
+      parts.push(`lineSpacing: ${parseFloat((pp.lineSpacing / 240).toFixed(2))}×`)
     else parts.push(`lineSpacing: ${pp.lineSpacing / 20}pt ${rule}`)
   }
   if (pp.firstLineIndentChars !== undefined)
@@ -93,8 +95,7 @@ function formatStyleProps(r: ComputedRunStyle, pp: ComputedParaStyle): string {
     parts.push(`firstLineIndent: ${pp.firstLineIndent / 20}pt`)
   if (pp.hangingIndentChars !== undefined)
     parts.push(`hangingIndent: ${pp.hangingIndentChars / 100}char`)
-  else if (pp.hangingIndent !== undefined)
-    parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
+  else if (pp.hangingIndent !== undefined) parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
   if (pp.indentLeft !== undefined) parts.push(`indentLeft: ${pp.indentLeft / 20}pt`)
   if (pp.numId) parts.push(`numId: ${pp.numId}`)
   if (parts.length === 0) return "{ }"

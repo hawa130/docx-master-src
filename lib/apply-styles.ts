@@ -2,10 +2,7 @@ import { unlinkSync, existsSync, copyFileSync, mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { DocxReader, serializeXml } from "@lib/reader.ts"
 import { importTemplateStyles, type ImportResult } from "@lib/template-import.ts"
-import {
-  StyleResolver,
-  applyThemeFontOverrides,
-} from "@lib/style-resolver.ts"
+import { StyleResolver, applyThemeFontOverrides } from "@lib/style-resolver.ts"
 import { DocumentParser } from "@lib/document-parser.ts"
 import { Fingerprinter } from "@lib/fingerprint.ts"
 import { NS } from "@lib/types.ts"
@@ -18,17 +15,9 @@ import {
   validateOutput,
 } from "./docx-plumbing.ts"
 import { applyToBody } from "./para-mutation.ts"
-import {
-  attachNumberingToStyle,
-  injectNumbering,
-  resolveSuff,
-} from "./numbering-mutation.ts"
+import { attachNumberingToStyle, injectNumbering, resolveSuff } from "./numbering-mutation.ts"
 import { extractDisplayFields, printReport } from "./report.ts"
-import {
-  reorderAgentTouchedStylesFirst,
-  resolveStyleDef,
-  upsertStyle,
-} from "./style-mutation.ts"
+import { reorderAgentTouchedStylesFirst, resolveStyleDef, upsertStyle } from "./style-mutation.ts"
 import type {
   ApplyConfig,
   ApplyContext,
@@ -54,11 +43,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
 
   // 2. Open whichever path we'll be reading from (source or output copy).
   const reader = await DocxReader.open(config.dryRun ? source : output)
-  const stylesDoc =
-    (await reader.readXml("word/styles.xml")) ??
-    blankStylesDoc()
-  const numberingDoc =
-    (await reader.readXml("word/numbering.xml")) ?? blankNumberingDoc()
+  const stylesDoc = (await reader.readXml("word/styles.xml")) ?? blankStylesDoc()
+  const numberingDoc = (await reader.readXml("word/numbering.xml")) ?? blankNumberingDoc()
   const documentDoc = await reader.readXml("word/document.xml")
   if (!documentDoc) throw new Error("word/document.xml not found")
   const themeDoc = await reader.readXml("word/theme/theme1.xml")
@@ -112,13 +98,9 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     if (!existsSync(tplPath)) {
       throw new Error(`template not found: ${tplPath}`)
     }
-    templateImport = await importTemplateStyles(
-      tplPath,
-      tplCfg.styles,
-      stylesDoc,
-      numberingDoc,
-      { importNumbering: tplCfg.importNumbering },
-    )
+    templateImport = await importTemplateStyles(tplPath, tplCfg.styles, stylesDoc, numberingDoc, {
+      importNumbering: tplCfg.importNumbering,
+    })
     // If template numbering was imported, ensureNumberingContentType /
     // ensureNumberingRelationship below picks it up via numIdRemap.size > 0.
   }
@@ -180,9 +162,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     const collidingId = sourceCanonicalToStyleId.get(key)
     if (collidingId && collidingId !== def.id) {
       const existingName = sourceCanonicalToOriginalName.get(key)!
-      const aliasNote = existingName !== def.name
-        ? ` (locale alias of existing "${existingName}")`
-        : ""
+      const aliasNote =
+        existingName !== def.name ? ` (locale alias of existing "${existingName}")` : ""
       throw new Error(
         `name "${def.name}"${aliasNote} is already used by styleId="${collidingId}" in the source.\n` +
           `  Word treats matching names (and their locale aliases) as the same built-in identity\n` +
@@ -279,9 +260,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   const checkParaIndex = (idx: number, where: string): void => {
     if (validIndices.has(idx)) return
     const max = parsed.paragraphs.length
-    const range = max > 0
-      ? `#${parsed.paragraphs[0]!.index}–#${parsed.paragraphs[max - 1]!.index}`
-      : "(none)"
+    const range =
+      max > 0 ? `#${parsed.paragraphs[0]!.index}–#${parsed.paragraphs[max - 1]!.index}` : "(none)"
     throw new Error(
       `${where}: paragraph #${idx} not found. Document has ${max} indexed paragraphs (${range}). Paragraphs inside data/form tables are not indexed.`,
     )
@@ -345,6 +325,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     } catch (err) {
       throw new Error(
         `pattern_rules[${i}].regex "${p.regex}" is invalid: ${(err as Error).message}`,
+        { cause: err },
       )
     }
     patternRules.push({
@@ -361,9 +342,10 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   const numLvlTextByStyle = new Map<string, string[]>()
   if (config.numbering) {
     for (const lvl of config.numbering.levels) {
-      const patterns = lvl.stripPrefixPatterns && lvl.stripPrefixPatterns.length > 0
-        ? lvl.stripPrefixPatterns
-        : [lvl.lvlText]
+      const patterns =
+        lvl.stripPrefixPatterns && lvl.stripPrefixPatterns.length > 0
+          ? lvl.stripPrefixPatterns
+          : [lvl.lvlText]
       numLvlTextByStyle.set(lvl.styleId, patterns)
     }
   }
@@ -413,8 +395,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // Make sure numbering.xml is referenced from [Content_Types].xml when
   // newly created — covers both injectNumbering and template numbering
   // migration paths.
-  const numberingTouched =
-    !!config.numbering || !!templateImport?.numIdRemap.size
+  const numberingTouched = !!config.numbering || !!templateImport?.numIdRemap.size
   if (numberingTouched) {
     await ensureNumberingContentType(reader, replacements)
     await ensureNumberingRelationship(reader, replacements)

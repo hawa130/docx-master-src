@@ -13,13 +13,7 @@
  */
 import { loadDocx } from "@lib/load.ts"
 import { NS } from "@lib/types.ts"
-import {
-  firstChildNS,
-  getChildren,
-  getChildrenNS,
-  textContent,
-  wAttr,
-} from "@lib/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent, wAttr } from "@lib/xml-utils.ts"
 import { summarizeTable } from "@lib/table-classifier.ts"
 import { pad } from "@lib/format.ts"
 
@@ -52,8 +46,7 @@ async function main() {
     if (!para) {
       const max = doc.paragraphs.length
       const closest = doc.paragraphs.reduce(
-        (best, p) =>
-          Math.abs(p.index - targetIdx) < Math.abs(best - targetIdx) ? p.index : best,
+        (best, p) => (Math.abs(p.index - targetIdx) < Math.abs(best - targetIdx) ? p.index : best),
         doc.paragraphs[0]?.index ?? 0,
       )
       console.error(
@@ -179,11 +172,36 @@ function signatureForRPrChild(el: Element, name: string): string {
 }
 
 const TOGGLE_PROPS = new Set([
-  "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike",
-  "vanish", "snapToGrid", "noProof", "outline", "shadow", "emboss", "imprint",
+  "b",
+  "bCs",
+  "i",
+  "iCs",
+  "caps",
+  "smallCaps",
+  "strike",
+  "dstrike",
+  "vanish",
+  "snapToGrid",
+  "noProof",
+  "outline",
+  "shadow",
+  "emboss",
+  "imprint",
 ])
 
-const ROLE_HINT_PROPS = ["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color", "u", "highlight", "strike"]
+const ROLE_HINT_PROPS = [
+  "rFonts",
+  "sz",
+  "szCs",
+  "b",
+  "bCs",
+  "i",
+  "iCs",
+  "color",
+  "u",
+  "highlight",
+  "strike",
+]
 
 function renderReport(
   paraIdx: number,
@@ -193,7 +211,9 @@ function renderReport(
   runs: RunInfo[],
 ): string {
   const lines: string[] = []
-  lines.push(`#${pad(paraIdx)} [${fingerprint}]  pStyle="${styleId}"  ${runs.length} run${runs.length === 1 ? "" : "s"}`)
+  lines.push(
+    `#${pad(paraIdx)} [${fingerprint}]  pStyle="${styleId}"  ${runs.length} run${runs.length === 1 ? "" : "s"}`,
+  )
   const truncated = fullText.length > 80 ? fullText.slice(0, 77) + "…" : fullText
   lines.push(`  text: ${JSON.stringify(truncated)}`)
   lines.push("")
@@ -237,7 +257,9 @@ function renderReport(
   const uniform: string[] = []
   for (const [name, vals] of propValues) {
     if (vals.size > 1) {
-      const display = Array.from(vals).map((v) => (v === "<absent>" ? "—" : v)).join(" / ")
+      const display = Array.from(vals)
+        .map((v) => (v === "<absent>" ? "—" : v))
+        .join(" / ")
       mixed.push(`${name}: ${display}`)
     } else {
       const v = Array.from(vals)[0]!
@@ -246,8 +268,12 @@ function renderReport(
   }
 
   lines.push(`  Run-level diversity:`)
-  lines.push(`    mixed (preserved on restyle): ${mixed.length === 0 ? "(none)" : mixed.join(", ")}`)
-  lines.push(`    uniform (strippable):         ${uniform.length === 0 ? "(none)" : uniform.join(", ")}`)
+  lines.push(
+    `    mixed (preserved on restyle): ${mixed.length === 0 ? "(none)" : mixed.join(", ")}`,
+  )
+  lines.push(
+    `    uniform (strippable):         ${uniform.length === 0 ? "(none)" : uniform.join(", ")}`,
+  )
   return lines.join("\n")
 }
 

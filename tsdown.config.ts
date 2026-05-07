@@ -31,10 +31,7 @@ const tools: Record<string, string> = {
 
 export default defineConfig({
   entry: Object.fromEntries(
-    Object.entries(tools).map(([scriptName, file]) => [
-      scriptName,
-      `skill/tools/${file}`,
-    ]),
+    Object.entries(tools).map(([scriptName, file]) => [scriptName, `skill/tools/${file}`]),
   ),
   alias: { "@lib": resolve(ROOT, "lib") },
   format: "esm",

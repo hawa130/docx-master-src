@@ -1,18 +1,5 @@
-import {
-  NS,
-  type ComputedParaStyle,
-  type ComputedRunStyle,
-  type StyleDefinition,
-} from "./types.ts"
-import {
-  attr,
-  firstChildNS,
-  getChildrenNS,
-  parseToggle,
-  textContent,
-  wAttr,
-  wVal,
-} from "./xml-utils.ts"
+import { NS, type ComputedParaStyle, type ComputedRunStyle, type StyleDefinition } from "./types.ts"
+import { attr, firstChildNS, getChildrenNS, parseToggle, wAttr, wVal } from "./xml-utils.ts"
 
 interface ThemeFonts {
   majorLatin?: string
@@ -82,7 +69,20 @@ export class StyleResolver {
     }
     const clrScheme = themeElements.getElementsByTagNameNS(NS.a, "clrScheme")[0]
     if (clrScheme) {
-      const slots = ["dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"]
+      const slots = [
+        "dk1",
+        "lt1",
+        "dk2",
+        "lt2",
+        "accent1",
+        "accent2",
+        "accent3",
+        "accent4",
+        "accent5",
+        "accent6",
+        "hlink",
+        "folHlink",
+      ]
       for (const slot of slots) {
         const el = clrScheme.getElementsByTagNameNS(NS.a, slot)[0]
         if (!el) continue

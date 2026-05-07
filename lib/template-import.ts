@@ -11,13 +11,7 @@
  */
 import { DocxReader } from "./reader.ts"
 import { NS } from "./types.ts"
-import {
-  firstChildNS,
-  getChildren,
-  getChildrenNS,
-  wAttr,
-  wVal,
-} from "./xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr, wVal } from "./xml-utils.ts"
 
 export interface ImportResult {
   /** Style IDs actually imported (includes transitive basedOn ancestors). */
@@ -46,9 +40,7 @@ export async function importTemplateStyles(
   if (!tplStylesDoc) {
     throw new Error(`Template ${templatePath} has no word/styles.xml`)
   }
-  const tplNumberingDoc = importNumbering
-    ? await reader.readXml("word/numbering.xml")
-    : null
+  const tplNumberingDoc = importNumbering ? await reader.readXml("word/numbering.xml") : null
 
   const tplStyles = collectStyles(tplStylesDoc)
   const targetStyles = collectStyles(targetStylesDoc)
@@ -102,11 +94,7 @@ export async function importTemplateStyles(
       if (v) referencedNumIds.add(v)
     }
     for (const oldNumId of referencedNumIds) {
-      const fresh = migrateNumIdToTarget(
-        oldNumId,
-        tplNumberingDoc,
-        targetNumberingDoc,
-      )
+      const fresh = migrateNumIdToTarget(oldNumId, tplNumberingDoc, targetNumberingDoc)
       if (fresh !== null) numIdRemap.set(oldNumId, fresh)
     }
   }
@@ -172,9 +160,7 @@ function importStyleNode(
 function deepCloneIntoDocument(src: Element, targetDoc: Document): Element {
   const ns = src.namespaceURI
   const tag = src.tagName // includes prefix (e.g. "w:style")
-  const out = ns
-    ? targetDoc.createElementNS(ns, tag)
-    : targetDoc.createElement(tag)
+  const out = ns ? targetDoc.createElementNS(ns, tag) : targetDoc.createElement(tag)
   // copy attributes
   if (src.attributes) {
     for (let i = 0; i < src.attributes.length; i++) {
@@ -203,9 +189,7 @@ function deepCloneIntoDocument(src: Element, targetDoc: Document): Element {
  */
 function upsertStyleNode(stylesDoc: Document, styleId: string, node: Element) {
   const root = stylesDoc.documentElement!
-  const existing = getChildrenNS(root, NS.w, "style").find(
-    (s) => wAttr(s, "styleId") === styleId,
-  )
+  const existing = getChildrenNS(root, NS.w, "style").find((s) => wAttr(s, "styleId") === styleId)
   if (existing) {
     root.replaceChild(node, existing)
   } else {
@@ -228,9 +212,7 @@ function migrateNumIdToTarget(
   const targetRoot = targetNumberingDoc.documentElement!
 
   // Find template num
-  const tplNum = getChildrenNS(tplRoot, w, "num").find(
-    (n) => wAttr(n, "numId") === oldNumId,
-  )
+  const tplNum = getChildrenNS(tplRoot, w, "num").find((n) => wAttr(n, "numId") === oldNumId)
   if (!tplNum) return null
   const absRef = firstChildNS(tplNum, w, "abstractNumId")
   if (!absRef) return null

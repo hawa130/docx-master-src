@@ -99,9 +99,7 @@ export class DocumentParser {
         const sectPr = pPr ? firstChildNS(pPr, NS.w, "sectPr") : null
         if (sectPr) {
           const endIndex = this.nextParaIndex - 1
-          sections.push(
-            this.buildSectionInfo(sectPr, sections.length, sectionStartIndex, endIndex),
-          )
+          sections.push(this.buildSectionInfo(sectPr, sections.length, sectionStartIndex, endIndex))
           sectionStartIndex = this.nextParaIndex
           flatItems.push({ kind: "sectionBreak", sectionIndex: this.currentSection })
           this.currentSection++
@@ -139,9 +137,7 @@ export class DocumentParser {
       } else if (child.localName === "sectPr") {
         // final section
         const endIndex = this.nextParaIndex - 1
-        sections.push(
-          this.buildSectionInfo(child, sections.length, sectionStartIndex, endIndex),
-        )
+        sections.push(this.buildSectionInfo(child, sections.length, sectionStartIndex, endIndex))
         sectionStartIndex = this.nextParaIndex
       }
     }
@@ -251,8 +247,11 @@ export class DocumentParser {
       // CJK numerals, list punctuation, or whitespace. Otherwise a heading
       // "4.5 导出器" (prefix 4 chars, title 3 chars) would be classified by
       // its prefix run instead of the title.
-      const isNumberingPrefix = text.length > 0 &&
-        /^[\d一二三四五六七八九十百千零０-９\.\(\)（）【】［］〔〕\[\]•·○●◆◇■□★☆※\-、，,\s]+$/.test(text)
+      const isNumberingPrefix =
+        text.length > 0 &&
+        /^[\d一二三四五六七八九十百千零０-９.()（）【】［］〔〕[\]•·○●◆◇■□★☆※\-、，,\s]+$/.test(
+          text,
+        )
       if (!isNumberingPrefix && text.length > 0 && firstSubstantiveRun === null) {
         firstSubstantiveRun = r
       }
@@ -266,16 +265,11 @@ export class DocumentParser {
       }
     }
     const chosenRun =
-      dominantLen > 0
-        ? dominantRun
-        : firstSubstantiveRun || firstNonEmptyRun || runs[0] || null
+      dominantLen > 0 ? dominantRun : firstSubstantiveRun || firstNonEmptyRun || runs[0] || null
     const chosenRPr = chosenRun ? firstChildNS(chosenRun, NS.w, "rPr") : null
     const paraMarkRPr = pPr ? firstChildNS(pPr, NS.w, "rPr") : null
 
-    const computed = this.resolver.computeRunStyle(
-      styleId,
-      chosenRPr || paraMarkRPr,
-    )
+    const computed = this.resolver.computeRunStyle(styleId, chosenRPr || paraMarkRPr)
 
     // overlay paragraph-level pPr direct formatting onto computed pPr
     const directPPr = this.resolver.parsePPr(pPr)
@@ -370,8 +364,7 @@ export class DocumentParser {
     const width = pgSz ? parseInt(wAttr(pgSz, "w") || "0", 10) : 0
     const height = pgSz ? parseInt(wAttr(pgSz, "h") || "0", 10) : 0
     const orient = pgSz ? wAttr(pgSz, "orient") : null
-    const orientation: "portrait" | "landscape" =
-      orient === "landscape" ? "landscape" : "portrait"
+    const orientation: "portrait" | "landscape" = orient === "landscape" ? "landscape" : "portrait"
     const margins = {
       top: pgMar ? parseInt(wAttr(pgMar, "top") || "0", 10) : 0,
       bottom: pgMar ? parseInt(wAttr(pgMar, "bottom") || "0", 10) : 0,
@@ -447,8 +440,7 @@ export class DocumentParser {
       switch (it.kind) {
         case "para": {
           const text = it.paragraph.text
-          const isEmpty =
-            text.trim().length === 0 && !it.isImageOnly && !it.isEquationOnly
+          const isEmpty = text.trim().length === 0 && !it.isImageOnly && !it.isEquationOnly
           out.push({
             kind: "paragraph",
             paraIndex: it.paragraph.index,

@@ -51,9 +51,7 @@ function renderPageSetup(doc: LoadedDoc): string[] {
     return lines
   }
   const paper = paperName(s.pageSize.width, s.pageSize.height)
-  lines.push(
-    `Paper:       ${paper} (${tw2mm(s.pageSize.width)} × ${tw2mm(s.pageSize.height)} mm)`,
-  )
+  lines.push(`Paper:       ${paper} (${tw2mm(s.pageSize.width)} × ${tw2mm(s.pageSize.height)} mm)`)
   lines.push(`Orientation: ${s.orientation}`)
   lines.push(
     `Margins:     top=${tw2mm(s.margins.top)} bottom=${tw2mm(s.margins.bottom)} left=${tw2mm(s.margins.left)} right=${tw2mm(s.margins.right)} mm`,
@@ -74,9 +72,7 @@ function renderTheme(doc: LoadedDoc): string[] {
       `Minor font: ${fonts.minorLatin || "?"}${fonts.minorEastAsia ? ` / ${fonts.minorEastAsia}` : ""}`,
     )
   const accentSlots = ["accent1", "accent2", "accent3", "accent4", "accent5", "accent6"]
-  const accents = accentSlots
-    .filter((s) => colors[s])
-    .map((s) => `${s}=#${colors[s]}`)
+  const accents = accentSlots.filter((s) => colors[s]).map((s) => `${s}=#${colors[s]}`)
   if (accents.length > 0) lines.push(`Accent colors: ${accents.join(" ")}`)
   if (lines.length === 1) lines.push("(no theme)")
   return lines
@@ -100,8 +96,7 @@ function renderStyleDefinitions(doc: LoadedDoc): string[] {
     if (s.rPr.fontEastAsia || s.rPr.fontAscii)
       props.push(s.rPr.fontEastAsia || s.rPr.fontAscii || "")
     if (s.pPr.alignment) props.push(s.pPr.alignment)
-    if (s.pPr.outlineLevel !== undefined)
-      props.push(`outlineLvl=${s.pPr.outlineLevel}`)
+    if (s.pPr.outlineLevel !== undefined) props.push(`outlineLvl=${s.pPr.outlineLevel}`)
     if (s.pPr.numId) props.push(`numId=${s.pPr.numId}`)
     const based = s.basedOn ? ` basedOn=${s.basedOn}` : ""
     lines.push(
@@ -150,16 +145,12 @@ function renderNumbering(doc: LoadedDoc): string[] {
     }
     // Only show non-empty levels; trailing decimal-with-empty-text levels are
     // Word's default filler that distract from the actual scheme
-    const meaningful = sample.levels.filter(
-      (l) => l.text.length > 0 || l.pStyle !== undefined,
-    )
+    const meaningful = sample.levels.filter((l) => l.text.length > 0 || l.pStyle !== undefined)
     const shown = meaningful.length > 0 ? meaningful : sample.levels.slice(0, 1)
     for (const lvl of shown) {
       const ps = lvl.pStyle ? ` pStyle=${lvl.pStyle}` : ""
       const startNote = group.length === 1 ? ` start=${lvl.start}` : ""
-      lines.push(
-        `    L${lvl.level}: numFmt=${lvl.format} lvlText="${lvl.text}"${startNote}${ps}`,
-      )
+      lines.push(`    L${lvl.level}: numFmt=${lvl.format} lvlText="${lvl.text}"${startNote}${ps}`)
     }
   }
   return lines
@@ -178,9 +169,7 @@ function renderVisualSummary(doc: LoadedDoc): string[] {
     const facts: string[] = [`×${s.count}`, `avg ${s.avgTextLength}ch`]
     if (s.boundStyleId) {
       facts.push(
-        s.boundStyleName
-          ? `via "${s.boundStyleName}"/${s.boundStyleId}`
-          : `via ${s.boundStyleId}`,
+        s.boundStyleName ? `via "${s.boundStyleName}"/${s.boundStyleId}` : `via ${s.boundStyleId}`,
       )
     }
     lines.push(`${s.label} [${s.hash}]: ${s.description.padEnd(36, " ")} ${facts.join("  ")}`)
@@ -225,16 +214,12 @@ function renderElement(el: DocumentElement, indent: string): string[] {
   const lines: string[] = []
   if (el.kind === "paragraph") {
     const p = el.paragraph
-    lines.push(
-      `${indent}  #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`,
-    )
+    lines.push(`${indent}  #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
   } else if (el.kind === "table") {
     if (el.classification === "layout") {
       lines.push(`${indent}--- LAYOUT TABLE ---`)
       for (const p of el.paragraphs) {
-        lines.push(
-          `${indent}    #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`,
-        )
+        lines.push(`${indent}    #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
       }
       lines.push(`${indent}--- END LAYOUT TABLE ---`)
     } else if (el.classification === "data") {
@@ -242,16 +227,12 @@ function renderElement(el: DocumentElement, indent: string): string[] {
         .map((h) => `"${truncate(h, 12)}"`)
         .slice(0, el.cols)
         .join(",")
-      lines.push(
-        `${indent}--- TABLE (${el.rows}×${el.cols}) headers:[${headers}] ---`,
-      )
+      lines.push(`${indent}--- TABLE (${el.rows}×${el.cols}) headers:[${headers}] ---`)
     } else {
       lines.push(`${indent}--- FORM TABLE (${el.rows}×${el.cols}) ---`)
     }
   } else if (el.kind === "image") {
-    lines.push(
-      `${indent}--- IMAGE (${el.widthCm.toFixed(1)}cm × ${el.heightCm.toFixed(1)}cm) ---`,
-    )
+    lines.push(`${indent}--- IMAGE (${el.widthCm.toFixed(1)}cm × ${el.heightCm.toFixed(1)}cm) ---`)
   } else if (el.kind === "equation") {
     lines.push(`${indent}--- EQUATION ---`)
   } else if (el.kind === "pageBreak") {

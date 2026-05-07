@@ -1,22 +1,29 @@
 {
   "name": "docx-restyle",
-  "module": "index.ts",
-  "type": "module",
   "private": true,
+  "type": "module",
+  "module": "index.ts",
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "build:skill": "tsdown && bun run build-skill.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "tsdown": "^0.21.10",
-    "typescript": "^5"
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware --deny-warnings",
+    "lint:fix": "oxlint --type-aware --fix",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check ."
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",
     "jszip": "^3.10.1",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0",
+    "oxlint-tsgolint": "^0.22.1",
+    "tsdown": "^0.21.10",
+    "typescript": "^5"
   }
 }

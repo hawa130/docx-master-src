@@ -80,14 +80,11 @@ async function main() {
         (fingerprintFilter ? `  filter: fingerprint=${fingerprintFilter}` : ""),
     )
     lines.push(
-      `Matches: ${matches.length}${
-        matches.length > limit ? ` (showing first ${limit})` : ""
-      }`,
+      `Matches: ${matches.length}${matches.length > limit ? ` (showing first ${limit})` : ""}`,
     )
     lines.push("")
     for (const p of matches.slice(0, limit)) {
-      const txt =
-        p.text.length > 80 ? `${p.text.slice(0, 77)}…` : p.text
+      const txt = p.text.length > 80 ? `${p.text.slice(0, 77)}…` : p.text
       lines.push(`  #${pad(p.index)} [${p.fingerprint}]  "${txt}"`)
     }
     console.log(lines.join("\n"))

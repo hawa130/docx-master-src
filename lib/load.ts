@@ -11,13 +11,7 @@ import {
   type ParsedParagraph,
   type SectionInfo,
 } from "./types.ts"
-import {
-  firstChildNS,
-  getChildrenNS,
-  textContent,
-  wAttr,
-  wVal,
-} from "./xml-utils.ts"
+import { firstChildNS, getChildrenNS, textContent, wAttr, wVal } from "./xml-utils.ts"
 
 export interface LoadedDoc {
   reader: DocxReader

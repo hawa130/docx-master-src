@@ -38,10 +38,7 @@ export class DocxReader {
    * Copy zip to outputPath, replacing the listed entries with new XML strings.
    * Replacement values are full XML documents serialized to string.
    */
-  async copyAndModify(
-    outputPath: string,
-    replacements: Map<string, string>,
-  ): Promise<void> {
+  async copyAndModify(outputPath: string, replacements: Map<string, string>): Promise<void> {
     // load fresh zip from original buffer to avoid mutating the open one
     const original = readFileSync(this.filePath)
     const out = await JSZip.loadAsync(original)

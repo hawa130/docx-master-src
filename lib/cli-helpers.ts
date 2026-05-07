@@ -45,7 +45,7 @@ export async function runCli(spec: CliSpec): Promise<void> {
   // Apply --dry-run before schema parse so it's captured by the schema's
   // boolean check (and survives strictObject's unknown-key rejection).
   if (dryRun && raw && typeof raw === "object") {
-    (raw as { dryRun?: boolean }).dryRun = true
+    ;(raw as { dryRun?: boolean }).dryRun = true
   }
 
   let config: ApplyConfig

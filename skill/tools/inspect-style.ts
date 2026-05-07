@@ -32,12 +32,9 @@ async function main() {
     const limit = Math.min(20, matches.length)
     for (let i = 0; i < limit; i++) {
       const p = matches[i]!
-      out.push(
-        `  #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`,
-      )
+      out.push(`  #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
     }
-    if (matches.length > limit)
-      out.push(`  ... (showing first ${limit}, total ${matches.length})`)
+    if (matches.length > limit) out.push(`  ... (showing first ${limit}, total ${matches.length})`)
     console.log(out.join("\n"))
   } catch (err) {
     console.error(`Error: ${(err as Error).message}`)
@@ -63,10 +60,8 @@ function formatPPr(p: ParsedParagraph, all: ParsedParagraph[]): string {
   const pp = p.pPr
   const parts: string[] = []
   if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
-  if (pp.spaceBefore !== undefined)
-    parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
-  if (pp.spaceAfter !== undefined)
-    parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
+  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
+  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
   if (pp.lineSpacing !== undefined)
     parts.push(`lineSpacing: ${formatLineSpacing(pp.lineSpacing, pp.lineRule)}`)
   if (pp.firstLineIndentChars !== undefined)
@@ -75,10 +70,8 @@ function formatPPr(p: ParsedParagraph, all: ParsedParagraph[]): string {
     parts.push(`firstLineIndent: ${pp.firstLineIndent / 20}pt`)
   if (pp.hangingIndentChars !== undefined)
     parts.push(`hangingIndent: ${pp.hangingIndentChars / 100}char`)
-  else if (pp.hangingIndent !== undefined)
-    parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
-  if (pp.outlineLevel !== undefined)
-    parts.push(`outlineLevel: ${pp.outlineLevel}`)
+  else if (pp.hangingIndent !== undefined) parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
+  if (pp.outlineLevel !== undefined) parts.push(`outlineLevel: ${pp.outlineLevel}`)
   const numIdDisplay = resolveNumId(all)
   if (numIdDisplay) parts.push(`numId: ${numIdDisplay}`)
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`

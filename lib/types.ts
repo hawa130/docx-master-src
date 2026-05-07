@@ -2,11 +2,11 @@ export interface ComputedRunStyle {
   fontAscii?: string
   fontEastAsia?: string
   fontHAnsi?: string
-  size?: number          // half-points
+  size?: number // half-points
   bold?: boolean
   italic?: boolean
   underline?: string
-  color?: string         // hex without # or "auto"
+  color?: string // hex without # or "auto"
   highlight?: string
   strike?: boolean
   caps?: boolean
@@ -15,16 +15,16 @@ export interface ComputedRunStyle {
 export interface ComputedParaStyle {
   pStyle?: string
   alignment?: string
-  spaceBefore?: number   // twips
-  spaceAfter?: number    // twips
+  spaceBefore?: number // twips
+  spaceAfter?: number // twips
   lineSpacing?: number
   lineRule?: string
   indentLeft?: number
   indentRight?: number
-  firstLineIndent?: number       // twips (1/20 pt)
-  firstLineIndentChars?: number  // hundredths of a character; auto-scales with font size
-  hangingIndent?: number         // twips
-  hangingIndentChars?: number    // hundredths of a character
+  firstLineIndent?: number // twips (1/20 pt)
+  firstLineIndentChars?: number // hundredths of a character; auto-scales with font size
+  hangingIndent?: number // twips
+  hangingIndentChars?: number // hundredths of a character
   outlineLevel?: number
   numId?: string
   numLevel?: number
@@ -57,7 +57,13 @@ export interface ParsedParagraph {
 export type NeighborItem =
   | { kind: "paragraph"; paraIndex: number; isEmpty: boolean; sectionIndex: number }
   | { kind: "image"; widthCm: number; heightCm: number; sectionIndex: number }
-  | { kind: "table"; classification: TableClassification; rows: number; cols: number; sectionIndex: number }
+  | {
+      kind: "table"
+      classification: TableClassification
+      rows: number
+      cols: number
+      sectionIndex: number
+    }
   | { kind: "equation"; sectionIndex: number }
   | { kind: "pageBreak"; sectionIndex: number }
   | { kind: "sectionBreak"; sectionIndex: number }

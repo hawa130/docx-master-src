@@ -1,10 +1,5 @@
 import { NS } from "@lib/types.ts"
-import {
-  firstChildNS,
-  getChildren,
-  getChildrenNS,
-  wAttr,
-} from "@lib/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import type { NumberingConfig } from "./config-types.ts"
 
 /* ------------- numbering.xml manipulation ------------- */

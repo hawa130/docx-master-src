@@ -1,10 +1,5 @@
 import { NS, type ParsedParagraph } from "@lib/types.ts"
-import {
-  firstChildNS,
-  getChildren,
-  getChildrenNS,
-  wAttr,
-} from "@lib/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import type { StyleConfigEntry } from "./config-types.ts"
 
 /* ------------- fromParagraph resolution ------------- */
@@ -21,7 +16,9 @@ export function resolveStyleDef(
     const maxIdx = indices[indices.length - 1] ?? 0
     const closest = paragraphs.reduce(
       (best, p) =>
-        Math.abs(p.index - def.fromParagraph!) < Math.abs(best.index - def.fromParagraph!) ? p : best,
+        Math.abs(p.index - def.fromParagraph!) < Math.abs(best.index - def.fromParagraph!)
+          ? p
+          : best,
       paragraphs[0]!,
     )
     throw new Error(
@@ -90,9 +87,7 @@ function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
  * list is critical: numPr (auto-numbering binding), keepNext, pBdr, shd,
  * adjustRightInd, etc. are all preserved when overriding an existing style. */
 const PPR_MANAGED_CHILDREN = new Set(["spacing", "ind", "jc", "outlineLvl"])
-const RPR_MANAGED_CHILDREN = new Set([
-  "rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color",
-])
+const RPR_MANAGED_CHILDREN = new Set(["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color"])
 
 export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "updated" {
   const w = NS.w
@@ -308,10 +303,7 @@ function parseIndent(v: string | number): { kind: "twip" | "char"; value: number
  * Each id appears at most once in `orderedIds`; duplicates are deduped (a
  * style can be both template-imported and re-declared in config.styles[]).
  */
-export function reorderAgentTouchedStylesFirst(
-  stylesDoc: Document,
-  orderedIds: string[],
-): void {
+export function reorderAgentTouchedStylesFirst(stylesDoc: Document, orderedIds: string[]): void {
   const w = NS.w
   const root = stylesDoc.documentElement
   if (!root) return

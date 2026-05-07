@@ -100,7 +100,10 @@ export interface ApplyContext {
    * pattern_rule, no bulk_rule). Grouped by fingerprint and split by whether
    * the paragraph has visible text — empty paragraphs are likely intentional
    * spacers, non-empty are coverage signal. */
-  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
+  implicitKeepByFingerprint: Map<
+    string,
+    { empty: number; nonEmpty: number; nonEmptySamples: string[] }
+  >
   /** styleId → { count, samples[] } for paragraphs assigned to a numbered
    * style whose leading text wasn't matched by any of the level's
    * stripPrefixPatterns. Surfaces sample texts (not pre-classified shapes)

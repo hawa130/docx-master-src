@@ -28,9 +28,7 @@ void runCli({
       !Array.isArray(config.numbering.levels) ||
       config.numbering.levels.length === 0
     ) {
-      throw new Error(
-        "migrate_numbering: config.numbering.levels must be a non-empty array",
-      )
+      throw new Error("migrate_numbering: config.numbering.levels must be a non-empty array")
     }
     // styles[] is optional on this path; the engine defaults it to [].
   },

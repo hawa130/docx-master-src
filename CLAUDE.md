@@ -1,6 +1,6 @@
 # Working in this repo
 
-This repo builds **one** Word (.docx) automation skill, `docx-master`. Standardization (the original `docx-normalize` capability — paragraph classification, named-style injection, numbering migration, template import) is currently the only sub-command surface; future sub-commands (surgical edit, content authoring) will add to the same SKILL.md as routed entries. The agent-facing contract is `src/docx-master/SKILL.md`; this file is for working *on* the project.
+This repo builds **one** Word (.docx) automation skill, `docx-master`. Standardization (the original `docx-normalize` capability — paragraph classification, named-style injection, numbering migration, template import) is currently the only sub-command surface; future sub-commands (surgical edit, content authoring) will add to the same SKILL.md as routed entries. The agent-facing contract is `skill/SKILL.md`; this file is for working *on* the project.
 
 **Keep this file in sync.** Tool names, build commands, file paths, and the lessons below are referenced concretely. When any of them changes, update here in the same commit — stale references mislead future maintainers and the next agent reviewing the design.
 
@@ -43,6 +43,10 @@ Tools and `lib/` modules import internal code via the `@lib/*` alias (declared i
 | Build + stage bundle + zip | `bun run build:skill` |
 | Watch | `bun run build:watch` |
 | Type-check (tsc, no emit) | `bun run typecheck` |
+| Lint (oxlint, type-aware, --deny-warnings) | `bun run lint` |
+| Auto-fix lint where possible | `bun run lint:fix` |
+| Format (oxfmt; markdown excluded) | `bun run fmt` |
+| Format check (no write) | `bun run fmt:check` |
 
 No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/docx-master/` reflects the change before claiming done.
 

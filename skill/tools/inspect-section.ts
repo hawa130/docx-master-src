@@ -20,7 +20,9 @@ async function main() {
     const out: string[] = []
     out.push(`Section ${sec.index} (paragraphs #${sec.paraRange[0]}-#${sec.paraRange[1]})`)
     const paper = paperName(sec.pageSize.width, sec.pageSize.height)
-    out.push(`  Paper:       ${paper} (${tw2mm(sec.pageSize.width)} × ${tw2mm(sec.pageSize.height)} mm)`)
+    out.push(
+      `  Paper:       ${paper} (${tw2mm(sec.pageSize.width)} × ${tw2mm(sec.pageSize.height)} mm)`,
+    )
     out.push(`  Orientation: ${sec.orientation}`)
     out.push(
       `  Margins:     top=${tw2mm(sec.margins.top)} bottom=${tw2mm(sec.margins.bottom)} left=${tw2mm(sec.margins.left)} right=${tw2mm(sec.margins.right)} mm`,
@@ -48,21 +50,30 @@ async function main() {
 function diffSections(a: SectionInfo, b: SectionInfo): string[] {
   const out: string[] = []
   if (a.pageSize.width !== b.pageSize.width || a.pageSize.height !== b.pageSize.height)
-    out.push(`paper changed: ${tw2mm(a.pageSize.width)}×${tw2mm(a.pageSize.height)}mm → ${tw2mm(b.pageSize.width)}×${tw2mm(b.pageSize.height)}mm`)
-  if (a.orientation !== b.orientation)
-    out.push(`orientation: ${a.orientation} → ${b.orientation}`)
+    out.push(
+      `paper changed: ${tw2mm(a.pageSize.width)}×${tw2mm(a.pageSize.height)}mm → ${tw2mm(b.pageSize.width)}×${tw2mm(b.pageSize.height)}mm`,
+    )
+  if (a.orientation !== b.orientation) out.push(`orientation: ${a.orientation} → ${b.orientation}`)
   for (const k of ["top", "bottom", "left", "right"] as const) {
     if (a.margins[k] !== b.margins[k])
       out.push(`margin.${k}: ${tw2mm(a.margins[k])}mm → ${tw2mm(b.margins[k])}mm`)
   }
   if ((a.header ?? "") !== (b.header ?? "")) {
     out.push(
-      a.header === null ? `+ Header added: "${b.header}"` : b.header === null ? `- Header removed` : `Header changed`,
+      a.header === null
+        ? `+ Header added: "${b.header}"`
+        : b.header === null
+          ? `- Header removed`
+          : `Header changed`,
     )
   }
   if ((a.footer ?? "") !== (b.footer ?? "")) {
     out.push(
-      a.footer === null ? `+ Footer added` : b.footer === null ? `- Footer removed` : `Footer changed`,
+      a.footer === null
+        ? `+ Footer added`
+        : b.footer === null
+          ? `- Footer removed`
+          : `Footer changed`,
     )
   }
   if ((a.footerPageNumFormat ?? "") !== (b.footerPageNumFormat ?? ""))

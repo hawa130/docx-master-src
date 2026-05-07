@@ -100,9 +100,7 @@ export const NumLevelSchema = z
   .check(
     z.refine(
       (lvl) => {
-        const counts = (lvl.stripPrefixPatterns ?? []).map(
-          (p) => (p.match(/%\d/g) ?? []).length,
-        )
+        const counts = (lvl.stripPrefixPatterns ?? []).map((p) => (p.match(/%\d/g) ?? []).length)
         for (let j = 1; j < counts.length; j++) {
           if (counts[j]! > counts[j - 1]!) return false
         }
@@ -226,11 +224,7 @@ function valueAtPath(raw: unknown, path: readonly PropertyKey[]): unknown {
  * particular issue shapes. Returning null means "use the default zod
  * message". The hints replicate the agent-friendly guidance the hand-written
  * checks used to emit. */
-function customHint(
-  issue: z.core.$ZodIssue,
-  pathStr: string,
-  raw: unknown,
-): string | null {
+function customHint(issue: z.core.$ZodIssue, pathStr: string, raw: unknown): string | null {
   // Top-of-numbering misplacement: stripPrefixPatterns naturally feels like
   // it should broadcast across all levels, but it lives per-level. The old
   // hand-written validator surfaced this; preserve the message verbatim.
@@ -249,11 +243,7 @@ function customHint(
   // Suff enum mismatch: spell out the allowed set and the omit-to-infer
   // escape hatch. Without this the agent only sees "invalid value" and may
   // not realise the field is optional.
-  if (
-    issue.code === "invalid_value" &&
-    pathStr.endsWith(".suff") &&
-    "values" in issue
-  ) {
+  if (issue.code === "invalid_value" && pathStr.endsWith(".suff") && "values" in issue) {
     const allowed = (issue as { values: readonly unknown[] }).values
     const got = valueAtPath(raw, issue.path)
     return (
@@ -269,11 +259,7 @@ function customHint(
  * issue's default message only when no specific code matches; for the common
  * codes we render concrete details (unknown keys, expected types, allowed
  * enum values) instead of the bare "Invalid input" zod emits at low cost. */
-function formatIssue(
-  issue: z.core.$ZodIssue,
-  pathStr: string,
-  raw: unknown,
-): string {
+function formatIssue(issue: z.core.$ZodIssue, pathStr: string, raw: unknown): string {
   const got = valueAtPath(raw, issue.path)
   const gotStr = got === undefined ? "(missing)" : JSON.stringify(got)
   switch (issue.code) {
@@ -311,10 +297,7 @@ function formatIssue(
 /** Format a ZodError as a multi-line, agent-readable string. Each issue
  * gets a path prefix and either a custom hint, a code-specific render, or
  * zod's default message as a final fallback. */
-export function formatConfigError(
-  error: z.core.$ZodError,
-  raw: unknown,
-): string {
+export function formatConfigError(error: z.core.$ZodError, raw: unknown): string {
   const lines: string[] = []
   for (const issue of error.issues) {
     const pathStr = formatPath(issue.path)

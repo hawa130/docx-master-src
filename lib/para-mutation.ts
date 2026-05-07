@@ -1,12 +1,6 @@
 import { summarizeTable } from "@lib/table-classifier.ts"
 import { NS, type ParsedParagraph } from "@lib/types.ts"
-import {
-  firstChildNS,
-  getChildren,
-  getChildrenNS,
-  textContent,
-  wAttr,
-} from "@lib/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent, wAttr } from "@lib/xml-utils.ts"
 import type { ApplyContext, CompiledPatternRule, RestyleSample } from "./config-types.ts"
 
 /* ------------- paragraph processing ------------- */
@@ -21,7 +15,7 @@ export function applyToBody(documentDoc: Document, ctx: ApplyContext) {
 
   // Walk in same order as DocumentParser to assign indices; modify in place
   let nextIdx = 1
-  const traverseChildren = (parentEl: Element | Document, insideLayout: boolean) => {
+  const traverseChildren = (parentEl: Element | Document, _insideLayout: boolean) => {
     const children = getChildren(parentEl)
     for (const child of children) {
       if (child.namespaceURI !== NS.w) continue
@@ -45,11 +39,7 @@ export function applyToBody(documentDoc: Document, ctx: ApplyContext) {
   traverseChildren(body, false)
 }
 
-function processOneParagraph(
-  pEl: Element,
-  para: ParsedParagraph,
-  ctx: ApplyContext,
-) {
+function processOneParagraph(pEl: Element, para: ParsedParagraph, ctx: ApplyContext) {
   if (ctx.excludeSet.has(para.index)) return
 
   const a = ctx.assignmentMap.get(para.index)
@@ -130,11 +120,7 @@ function processOneParagraph(
   const existingSamples = ctx.samples.get(targetStyle) ?? []
   let thisSample: RestyleSample | null = null
   if (existingSamples.length < ctx.samplesPerStyleCap) {
-    const via: RestyleSample["via"] = a
-      ? "assignment"
-      : matchedPattern
-        ? "pattern"
-        : "bulk"
+    const via: RestyleSample["via"] = a ? "assignment" : matchedPattern ? "pattern" : "bulk"
     thisSample = {
       paraIndex: para.index,
       oldStyle: oldPStyle,
@@ -165,10 +151,7 @@ function processOneParagraph(
     let stripped = false
     for (const pat of lvlPatterns) {
       if (removeManualNumberingPrefix(pEl, pat)) {
-        ctx.manualNumberingRemoved.set(
-          pat,
-          (ctx.manualNumberingRemoved.get(pat) ?? 0) + 1,
-        )
+        ctx.manualNumberingRemoved.set(pat, (ctx.manualNumberingRemoved.get(pat) ?? 0) + 1)
         let perStyle = ctx.manualNumberingByStyle.get(targetStyle)
         if (!perStyle) {
           perStyle = new Map()
@@ -218,16 +201,7 @@ function setParagraphStyle(pEl: Element, styleId: string) {
   pStyle.setAttributeNS(w, "w:val", styleId)
 }
 
-const RPR_CONFLICT_NAMES = [
-  "rFonts",
-  "sz",
-  "szCs",
-  "b",
-  "bCs",
-  "i",
-  "iCs",
-  "color",
-] as const
+const RPR_CONFLICT_NAMES = ["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color"] as const
 
 function stripConflictingDirectFormatting(pEl: Element) {
   const w = NS.w
@@ -296,9 +270,7 @@ function removeRPrConflicts(rPr: Element) {
 
 function rPrChildSignature(el: Element, name: string): string {
   if (name === "rFonts") {
-    return ["ascii", "hAnsi", "eastAsia", "cs"]
-      .map((a) => `${a}=${wAttr(el, a) ?? ""}`)
-      .join("|")
+    return ["ascii", "hAnsi", "eastAsia", "cs"].map((a) => `${a}=${wAttr(el, a) ?? ""}`).join("|")
   }
   // toggles (b, bCs, i, iCs): absence==off; presence==on unless val="0"/"false"
   if (name === "b" || name === "bCs" || name === "i" || name === "iCs") {
@@ -346,9 +318,7 @@ function stripLeadingMatch(pEl: Element, re: RegExp): boolean {
 }
 
 function removeRegexPrefix(pEl: Element, regex: RegExp): boolean {
-  const re = regex.source.startsWith("^")
-    ? regex
-    : new RegExp("^" + regex.source, regex.flags)
+  const re = regex.source.startsWith("^") ? regex : new RegExp("^" + regex.source, regex.flags)
   return stripLeadingMatch(pEl, re)
 }
 

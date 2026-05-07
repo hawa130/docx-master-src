@@ -21,9 +21,20 @@ export function extractDisplayFields(def: StyleConfigEntry): Record<string, unkn
   // only fontLatin is set, fontCJK is absent and the order collapses to
   // the natural one anyway.
   const interesting: (keyof StyleConfigEntry)[] = [
-    "fontCJK", "fontLatin", "size", "bold", "italic", "color",
-    "alignment", "lineSpacing", "lineRule", "spaceBefore", "spaceAfter",
-    "firstLineIndent", "hangingIndent", "outlineLevel",
+    "fontCJK",
+    "fontLatin",
+    "size",
+    "bold",
+    "italic",
+    "color",
+    "alignment",
+    "lineSpacing",
+    "lineRule",
+    "spaceBefore",
+    "spaceAfter",
+    "firstLineIndent",
+    "hangingIndent",
+    "outlineLevel",
   ]
   for (const k of interesting) {
     if (def[k] !== undefined) out[k] = def[k]
@@ -56,13 +67,23 @@ export function printReport(args: {
   output: string
   dryRun: boolean
   samples: Map<string, RestyleSample[]>
-  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
+  implicitKeepByFingerprint: Map<
+    string,
+    { empty: number; nonEmpty: number; nonEmptySamples: string[] }
+  >
   unstrippedByStyle: Map<string, { count: number; samples: string[] }>
-  numberingBindings: Array<{ styleId: string; level: number; lvlText: string; suff: "tab" | "space" | "nothing" }>
+  numberingBindings: Array<{
+    styleId: string
+    level: number
+    lvlText: string
+    suff: "tab" | "space" | "nothing"
+  }>
   templateImport: ImportResult | null
 }) {
   const lines: string[] = []
-  lines.push(args.dryRun ? "=== Change Report (DRY RUN — no file written) ===" : "=== Change Report ===")
+  lines.push(
+    args.dryRun ? "=== Change Report (DRY RUN — no file written) ===" : "=== Change Report ===",
+  )
   // Echo absolute paths up top so an agent that may have changed cwd between
   // calls (or is reading a captured report later) can see exactly which files
   // were involved without re-deriving from `config.source` / `config.output`.
@@ -88,12 +109,8 @@ export function printReport(args: {
     const src = args.derivedFrom.get(id)
     return src !== undefined ? `${id} (from #${src})` : id
   }
-  lines.push(
-    `Styles injected: ${args.injected.length} (${args.injected.map(annotate).join(", ")})`,
-  )
-  lines.push(
-    `Styles updated:  ${args.updated.length} (${args.updated.map(annotate).join(", ")})`,
-  )
+  lines.push(`Styles injected: ${args.injected.length} (${args.injected.map(annotate).join(", ")})`)
+  lines.push(`Styles updated:  ${args.updated.length} (${args.updated.map(annotate).join(", ")})`)
   lines.push("")
   let totalRestyled = 0
   for (const c of args.restyleStats.values()) totalRestyled += c
@@ -124,9 +141,10 @@ export function printReport(args: {
         .filter(([, v]) => v.nonEmpty > 0)
         .sort((a, b) => b[1].nonEmpty - a[1].nonEmpty)
       for (const [fp, v] of sortedEntries) {
-        const samples = v.nonEmptySamples.length > 0
-          ? `  e.g. ${v.nonEmptySamples.map((s) => `"${s}"`).join(" / ")}`
-          : ""
+        const samples =
+          v.nonEmptySamples.length > 0
+            ? `  e.g. ${v.nonEmptySamples.map((s) => `"${s}"`).join(" / ")}`
+            : ""
         lines.push(`    ${fp}×${v.nonEmpty}${samples}`)
       }
     }
@@ -158,9 +176,7 @@ export function printReport(args: {
   // matching in priority order; surfacing it here lets the agent tell the
   // user explicitly that normalization changed an inconsistent input — which
   // SKILL.md flags as a normalization decision worth confirming.
-  const mixedStyles = [...args.manualNumberingByStyle.entries()].filter(
-    ([, m]) => m.size >= 2,
-  )
+  const mixedStyles = [...args.manualNumberingByStyle.entries()].filter(([, m]) => m.size >= 2)
   if (mixedStyles.length > 0) {
     lines.push("Mixed manual numbering detected (source inconsistent):")
     for (const [styleId, patMap] of mixedStyles) {
@@ -188,12 +204,8 @@ export function printReport(args: {
       const samples = info.samples.map((s) => `"${s}"`).join(" / ")
       lines.push(`  ${styleId}: ${info.count} paragraphs  e.g. ${samples}`)
     }
-    lines.push(
-      "  → Read the samples: a typed prefix you missed (add to stripPrefixPatterns)",
-    )
-    lines.push(
-      "    or a clean heading without manual numbering (no action needed).",
-    )
+    lines.push("  → Read the samples: a typed prefix you missed (add to stripPrefixPatterns)")
+    lines.push("    or a clean heading without manual numbering (no action needed).")
     lines.push("")
   }
   if (args.patternMatchStats.size > 0) {

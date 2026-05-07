@@ -1,0 +1,59 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "typescript/no-misused-promises": ["warn", { "checksVoidReturn": false }],
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-nullish-coalescing": [
+      "error",
+      { "ignorePrimitives": { "boolean": true, "string": true } }
+    ],
+    "typescript/restrict-plus-operands": [
+      "error",
+      {
+        "allowAny": false,
+        "allowBoolean": false,
+        "allowNullish": false,
+        "allowNumberAndString": false
+      }
+    ],
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "warn",
+      { "considerDefaultExhaustiveForUnions": true }
+    ],
+    "typescript/no-explicit-any": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/non-nullable-type-assertion-style": "error",
+    "no-duplicate-imports": ["warn", { "allowSeparateTypeImports": true }],
+    "unicorn/no-abusive-eslint-disable": "error",
+    "no-await-in-loop": "off"
+  },
+  "overrides": [
+    {
+      "files": ["*.js", "*.mjs", "*.cjs"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/restrict-plus-operands": "off"
+      }
+    },
+    {
+      "files": ["*.config.ts"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["node_modules", "dist"]
+}

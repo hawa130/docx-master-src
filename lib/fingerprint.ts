@@ -70,9 +70,7 @@ export class Fingerprinter {
       const avgTextLength = Math.round((totalTextLen.get(hash) ?? 0) / count)
       const dominant = pickDominantStyle(styleIdCounts.get(hash) ?? new Map(), count)
       const boundStyleName =
-        dominant && styleResolver
-          ? styleResolver.getStyleDefinition(dominant)?.name
-          : undefined
+        dominant && styleResolver ? styleResolver.getStyleDefinition(dominant)?.name : undefined
       summary.push({
         label,
         hash: contentHash,
@@ -100,10 +98,7 @@ export class Fingerprinter {
  * `styleCounts`, so their share is implicitly counted against the total).
  * Skips "Normal" because every Word doc inherits it by default; surfacing
  * it adds no signal beyond "no custom binding". */
-function pickDominantStyle(
-  styleCounts: Map<string, number>,
-  total: number,
-): string | undefined {
+function pickDominantStyle(styleCounts: Map<string, number>, total: number): string | undefined {
   let bestId: string | undefined
   let bestCount = 0
   for (const [id, n] of styleCounts) {
@@ -124,14 +119,10 @@ function makeHash(p: ParsedParagraph): string {
   const font = r.fontAscii || r.fontHAnsi || r.fontEastAsia || "?"
   const size = r.size !== undefined ? String(r.size) : "?"
   const flags =
-    (r.bold ? "B" : "") +
-    (r.italic ? "I" : "") +
-    (r.underline ? "U" : "") +
-    (r.caps ? "C" : "")
+    (r.bold ? "B" : "") + (r.italic ? "I" : "") + (r.underline ? "U" : "") + (r.caps ? "C" : "")
   const color = r.color && r.color !== "auto" ? r.color : ""
   const alignment = pp.alignment || ""
-  const indent =
-    pp.firstLineIndent || pp.firstLineIndentChars ? "1stInd" : ""
+  const indent = pp.firstLineIndent || pp.firstLineIndentChars ? "1stInd" : ""
   // Include numbering presence so list items split out from visually-identical
   // body paragraphs. Without this, two paragraphs that share the same rPr
   // (e.g. 11pt non-bold body text vs. 11pt non-bold list item) would collapse

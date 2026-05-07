@@ -21,9 +21,7 @@ export function getChildrenNS(
   ns: string,
   localName: string,
 ): Element[] {
-  return getChildren(parent).filter(
-    (e) => e.namespaceURI === ns && e.localName === localName,
-  )
+  return getChildren(parent).filter((e) => e.namespaceURI === ns && e.localName === localName)
 }
 
 export function firstChildNS(
