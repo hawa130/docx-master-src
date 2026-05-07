@@ -149,6 +149,18 @@ Modes can mix within one `styles` array:
 
 **Chinese font size names** (初号/一号/.../小六): see `references/chinese-font-sizes.md` for the pt mapping when the user specifies sizes in Chinese terms.
 
+**Three layers for setting fonts — pick by intent, not by reflex:**
+
+| User intent | Tool | Effect |
+|---|---|---|
+| "标题黑体 / 正文宋体" — role-specific | `styles[]` per-role overrides | Targeted; only the styled paragraphs change |
+| "全文都用宋体" — whole-doc default | `Normal` style in `styles[]` (everything inheriting Normal picks it up) | Wide; covers most pStyle-bound paragraphs but not docDefaults-only ones |
+| "把这份文档的主题字体改成 X / Y" — design intent | `theme.fonts` block | Widest; updates theme1.xml so "+正文" / "+标题" entries in Word's UI reflect the new fonts, AND any docDefaults / styles that reference theme fonts auto-resolve to the new values |
+
+When in doubt: per-role > Normal > theme. The wider the layer, the easier it is to surprise the user with effects on chrome paragraphs they didn't intend to change. Reach for `theme.fonts` when the user explicitly expresses design-level intent (typically "全文都改"), not as a default for "set font" requests.
+
+`theme.fonts` and `styles[]` overrides compose cleanly: theme sets the document baseline, styles override specific roles on top.
+
 ### Step 5: Define the Numbering Scheme
 
 When the document has typed heading prefixes (`"1. 引言"` / `"1.1 研究方法"` / `"第N章 ..."`), migrate to automatic numbering — this is part of standardization. Skip only when the user explicitly opts out, the source already has real `numId` references you want to preserve (verify with `inspect_range` — typed-text prefixes look identical to auto-numbers but behave totally differently), or no numbered headings exist.
@@ -205,6 +217,15 @@ Call `apply_styles` with your decision in a JSON config.
   template: { source, styles: [ ... ] },   // optional. Import named styles from another
                                            //   docx; basedOn ancestors auto-pulled,
                                            //   numId references migrated.
+
+  theme: { fonts: { majorLatin?, majorEastAsia?, minorLatin?, minorEastAsia? } },
+                                           // optional. Document-level font scheme override.
+                                           //   Use for whole-doc design intent ("全文宋体",
+                                           //   "把这份文档的主题字体改成 X / Y"). Modifies
+                                           //   theme1.xml so the "+正文"/"+标题" entries
+                                           //   in Word's font dropdown show the new fonts.
+                                           //   For role-specific changes prefer styles[]
+                                           //   overrides. See Step 4 § "Theme vs cascade".
 
   requirements: { Heading1: "原话...", BodyText: "..." },  // optional. ANNOTATION ONLY — script records
                                            //   the user's natural-language spec next to

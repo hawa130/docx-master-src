@@ -88,6 +88,34 @@ export interface PatternRule {
   stripMatch?: boolean
 }
 
+/** Theme-level font overrides. Modifies the document's theme1.xml font
+ * scheme so the "+正文" / "+标题" entries in Word's font dropdown reflect
+ * the new fonts, AND so any docDefaults / styles / runs that reference
+ * theme fonts automatically resolve to the new values.
+ *
+ * Use this when the user expresses a *document-design* intent — "把这份文档
+ * 的主题字体改成 X / Y" or "全文都用宋体" — i.e. they want a uniform default
+ * across the whole document including content the agent didn't explicitly
+ * restyle. For role-specific changes ("标题黑体 / 正文宋体"), prefer
+ * per-style overrides on `styles[]` instead — those are more precise and
+ * don't touch the document's design-level font scheme.
+ *
+ * Slots map directly to OOXML theme font scheme entries (ECMA-376 §20.1.4.1.3):
+ *   majorLatin   → fontScheme/majorFont/latin    (used by "+标题" Latin)
+ *   majorEastAsia → fontScheme/majorFont/ea      (used by "+标题" CJK)
+ *   minorLatin   → fontScheme/minorFont/latin    (used by "+正文" Latin)
+ *   minorEastAsia → fontScheme/minorFont/ea      (used by "+正文" CJK)
+ *
+ * Specify only the slots the user actually wants changed; unspecified slots
+ * stay at the document's existing values.
+ */
+export interface ThemeFontsSpec {
+  majorLatin?: string
+  majorEastAsia?: string
+  minorLatin?: string
+  minorEastAsia?: string
+}
+
 export interface TemplateImportConfig {
   /** Path to the template .docx whose styles will be copied into source. */
   source: string
@@ -123,6 +151,12 @@ export interface ApplyConfig {
    * — pull them in wholesale instead of transcribing each field by hand.
    */
   template?: TemplateImportConfig
+  /**
+   * Theme-level font overrides — modify the document's design-level font
+   * scheme (theme1.xml). Use for whole-document defaults; for role-specific
+   * font changes, prefer styles[] overrides. See ThemeFontsSpec docs.
+   */
+  theme?: { fonts?: ThemeFontsSpec }
   /** Optional. When omitted (or undefined), the engine treats it as `[]` —
    * useful for pure template-import or numbering-only operations. CLIs decide
    * whether their entry point requires a non-empty styles list. */

@@ -21,9 +21,12 @@ void runCli({
     const hasStyles = (config.styles?.length ?? 0) > 0
     const hasNumbering = !!config.numbering?.levels?.length
     const hasTemplate = !!config.template?.styles?.length
-    if (!hasStyles && !hasNumbering && !hasTemplate) {
+    const hasThemeOverride =
+      !!config.theme?.fonts &&
+      Object.values(config.theme.fonts).some((v) => typeof v === "string" && v)
+    if (!hasStyles && !hasNumbering && !hasTemplate && !hasThemeOverride) {
       throw new Error(
-        "config has no operation: provide at least one of styles[] (non-empty), numbering, or template",
+        "config has no operation: provide at least one of styles[] (non-empty), numbering, template, or theme.fonts",
       )
     }
   },

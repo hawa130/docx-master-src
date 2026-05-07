@@ -2,7 +2,10 @@ import { unlinkSync, existsSync, copyFileSync, mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { DocxReader, serializeXml } from "@core/reader.ts"
 import { importTemplateStyles, type ImportResult } from "@core/template-import.ts"
-import { StyleResolver } from "@core/style-resolver.ts"
+import {
+  StyleResolver,
+  applyThemeFontOverrides,
+} from "@core/style-resolver.ts"
 import { DocumentParser } from "@core/document-parser.ts"
 import { Fingerprinter } from "@core/fingerprint.ts"
 import { NS } from "@core/types.ts"
@@ -64,11 +67,25 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   const themeDoc = await reader.readXml("word/theme/theme1.xml")
 
   // 3. Resolve original styles (used for paragraph indexing & assignments).
-  // Pre-expand themed font attrs in stylesDoc so the cascade reports honest
-  // values and the output XML doesn't carry a docDefaults theme reference
-  // that would silently override agent-injected literal fonts at render
-  // time. See StyleResolver.expandThemedFontsInStyles for the OOXML rule.
+  // If the agent asked for theme-level font overrides ("design intent"
+  // changes — see ThemeFontsSpec), apply them to theme1.xml first so the
+  // subsequent stylesDoc expansion uses the new values. Then expand themed
+  // font attrs in stylesDoc so the cascade reports honest values and the
+  // output XML doesn't carry a docDefaults theme reference that would
+  // silently override agent-injected literal fonts at render time. See
+  // StyleResolver.expandThemedFontsInStyles for the underlying OOXML rule.
+  let themeMutated = false
+  if (config.theme?.fonts && themeDoc) {
+    applyThemeFontOverrides(themeDoc, config.theme.fonts)
+    themeMutated = true
+  }
   const resolver = new StyleResolver(stylesDoc, themeDoc)
+  if (config.theme?.fonts) {
+    // resolver was constructed against the (possibly-updated) themeDoc, but
+    // explicit setThemeFontOverrides is a belt-and-suspenders sync in case
+    // theme parsing finds no fontScheme to update (rare but possible).
+    resolver.setThemeFontOverrides(config.theme.fonts)
+  }
   resolver.expandThemedFontsInStyles(stylesDoc)
   const parser = new DocumentParser(documentDoc, resolver, numberingDoc)
   const parsed = parser.parse()
@@ -390,6 +407,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   replacements.set("word/styles.xml", serializeXml(stylesDoc))
   if (numberingDoc) replacements.set("word/numbering.xml", serializeXml(numberingDoc))
   replacements.set("word/document.xml", serializeXml(documentDoc))
+  // Only serialize theme back when we actually mutated it; otherwise keep the
+  // original theme1.xml bytes untouched to avoid spurious whitespace changes.
+  if (themeMutated && themeDoc) {
+    replacements.set("word/theme/theme1.xml", serializeXml(themeDoc))
+  }
   // Make sure numbering.xml is referenced from [Content_Types].xml when
   // newly created — covers both injectNumbering and template numbering
   // migration paths.

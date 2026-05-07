@@ -287,6 +287,23 @@ export class StyleResolver {
   }
 
   /**
+   * Mutate the parsed theme fonts — call before parseTheme dependents read
+   * `themeFonts`. Used by `applyThemeFontOverrides` to keep the resolver's
+   * cache in sync after the theme1.xml DOM has been updated.
+   */
+  setThemeFontOverrides(spec: {
+    majorLatin?: string
+    majorEastAsia?: string
+    minorLatin?: string
+    minorEastAsia?: string
+  }): void {
+    if (spec.majorLatin) this.themeFonts.majorLatin = spec.majorLatin
+    if (spec.majorEastAsia) this.themeFonts.majorEastAsia = spec.majorEastAsia
+    if (spec.minorLatin) this.themeFonts.minorLatin = spec.minorLatin
+    if (spec.minorEastAsia) this.themeFonts.minorEastAsia = spec.minorEastAsia
+  }
+
+  /**
    * Walk a stylesDoc and expand every rFonts element's themed font attrs
    * (asciiTheme / hAnsiTheme / eastAsiaTheme / cstheme) to literal attrs
    * (ascii / hAnsi / eastAsia / cs) by resolving against the parsed theme.
@@ -506,4 +523,61 @@ function mergeRPr(base: ComputedRunStyle, overlay: ComputedRunStyle): ComputedRu
 
 function mergePPr(base: ComputedParaStyle, overlay: ComputedParaStyle): ComputedParaStyle {
   return mergeStyle(base, overlay)
+}
+
+/**
+ * Mutate `themeDoc` (theme1.xml) in place to override the typeface attrs of
+ * the theme font scheme. Call BEFORE constructing StyleResolver so the
+ * resolver picks up the new values from a fresh parseTheme; if the resolver
+ * already exists, follow up with `resolver.setThemeFontOverrides(spec)` to
+ * keep its cache in sync.
+ *
+ * Only the slots specified in `spec` are touched. `spec` keys map to:
+ *   majorLatin    → fontScheme/majorFont/latin@typeface
+ *   majorEastAsia → fontScheme/majorFont/ea@typeface
+ *   minorLatin    → fontScheme/minorFont/latin@typeface
+ *   minorEastAsia → fontScheme/minorFont/ea@typeface
+ *
+ * If theme1.xml has the empty `<a:ea typeface=""/>` pattern (very common in
+ * zh-CN templates that rely on system fallback), this writes a real typeface
+ * value into the empty slot. Combined with the stylesDoc themed-attr
+ * expansion that runs later, the new theme font ends up being the literal
+ * value used by every downstream cascade.
+ */
+export function applyThemeFontOverrides(
+  themeDoc: Document,
+  spec: {
+    majorLatin?: string
+    majorEastAsia?: string
+    minorLatin?: string
+    minorEastAsia?: string
+  },
+): void {
+  const root = themeDoc.documentElement
+  if (!root) return
+  const themeElements = root.getElementsByTagNameNS(NS.a, "themeElements")[0]
+  if (!themeElements) return
+  const fontScheme = themeElements.getElementsByTagNameNS(NS.a, "fontScheme")[0]
+  if (!fontScheme) return
+
+  const setTypeface = (
+    fontEl: Element | undefined,
+    childLocalName: string,
+    value: string,
+  ): void => {
+    if (!fontEl) return
+    let target = fontEl.getElementsByTagNameNS(NS.a, childLocalName)[0]
+    if (!target) {
+      target = themeDoc.createElementNS(NS.a, `a:${childLocalName}`)
+      fontEl.appendChild(target)
+    }
+    target.setAttribute("typeface", value)
+  }
+
+  const majorFont = fontScheme.getElementsByTagNameNS(NS.a, "majorFont")[0]
+  const minorFont = fontScheme.getElementsByTagNameNS(NS.a, "minorFont")[0]
+  if (spec.majorLatin) setTypeface(majorFont, "latin", spec.majorLatin)
+  if (spec.majorEastAsia) setTypeface(majorFont, "ea", spec.majorEastAsia)
+  if (spec.minorLatin) setTypeface(minorFont, "latin", spec.minorLatin)
+  if (spec.minorEastAsia) setTypeface(minorFont, "ea", spec.minorEastAsia)
 }
