@@ -58,7 +58,7 @@ export function printReport(args: {
   samples: Map<string, RestyleSample[]>
   implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
   unstrippedByStyle: Map<string, { count: number; samples: string[] }>
-  numberingBindings: Array<{ styleId: string; level: number; lvlText: string }>
+  numberingBindings: Array<{ styleId: string; level: number; lvlText: string; suff: "tab" | "space" | "nothing" }>
   templateImport: ImportResult | null
 }) {
   const lines: string[] = []
@@ -140,7 +140,7 @@ export function printReport(args: {
   if (args.numberingBindings.length > 0) {
     lines.push("Auto-numbering bindings (will prepend at render):")
     for (const b of args.numberingBindings) {
-      lines.push(`  ${b.styleId} → "${b.lvlText}" (level ${b.level})`)
+      lines.push(`  ${b.styleId} → "${b.lvlText}" + suff:${b.suff} (level ${b.level})`)
     }
     lines.push("")
   }

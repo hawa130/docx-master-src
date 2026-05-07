@@ -21,6 +21,7 @@ import { applyToBody } from "./para-mutation.ts"
 import {
   attachNumberingToStyle,
   injectNumbering,
+  resolveSuff,
 } from "./numbering-mutation.ts"
 import { extractDisplayFields, printReport } from "./report.ts"
 import {
@@ -237,8 +238,9 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     }
     const KNOWN_LEVEL_KEYS = new Set([
       "level", "numFmt", "lvlText", "styleId", "start",
-      "stripPrefixPatterns", "numRPr",
+      "stripPrefixPatterns", "suff", "numRPr",
     ])
+    const KNOWN_SUFF_VALUES = new Set(["tab", "space", "nothing"])
     for (const [i, lvl] of config.numbering.levels.entries()) {
       for (const k of Object.keys(lvl)) {
         if (KNOWN_LEVEL_KEYS.has(k)) continue
@@ -287,6 +289,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
           `numbering.levels[${i}]: styleId "${lvl.styleId}" doesn't exist.\n` +
             `  Declared in styles[]: [${[...declaredIds].join(", ")}]\n` +
             `  Existing in styles.xml: [${[...existingStyleIds].sort().join(", ")}]`,
+        )
+      }
+      if (lvl.suff !== undefined && !KNOWN_SUFF_VALUES.has(lvl.suff)) {
+        throw new Error(
+          `numbering.levels[${i}]: invalid suff "${lvl.suff}". Allowed: [${[...KNOWN_SUFF_VALUES].join(", ")}]. Omit to auto-infer from trailing whitespace in lvlText.`,
         )
       }
       // sanity-check stripPrefixPatterns vs lvlText placeholder count: a
@@ -520,11 +527,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // we pass styleId + level + lvlText so the report can show "Heading2 →
   // '%1.%2' (level 1)" without the agent needing to mentally cross-reference
   // numbering.levels[] against restyleStats.
-  const numberingBindings = (config.numbering?.levels ?? []).map((lvl) => ({
-    styleId: lvl.styleId,
-    level: lvl.level,
-    lvlText: lvl.lvlText,
-  }))
+  const numberingBindings = (config.numbering?.levels ?? []).map((lvl) => {
+    const { suff, effectiveLvlText } = resolveSuff(lvl.lvlText, lvl.suff)
+    return {
+      styleId: lvl.styleId,
+      level: lvl.level,
+      lvlText: effectiveLvlText,
+      suff,
+    }
+  })
 
   printReport({
     source,

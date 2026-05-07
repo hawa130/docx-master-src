@@ -49,6 +49,16 @@ export interface NumberingConfig {
      */
     stripPrefixPatterns?: string[]
     /**
+     * Character inserted between the auto-generated marker and the paragraph
+     * text (OOXML <w:suff>). Word's default is "tab", which renders an ugly
+     * gap unsuitable for CJK conventions like "一、研究方案". When omitted,
+     * the value is inferred from trailing whitespace in `lvlText`:
+     * 0 spaces → "nothing", 1 space → "space", 2+ → "tab"; the inferred
+     * trailing whitespace is stripped from the emitted lvlText so the gap
+     * isn't double-counted.
+     */
+    suff?: "tab" | "space" | "nothing"
+    /**
      * rPr applied to the auto-generated number marker only (not the title text).
      * Use to keep designs where headings have e.g. blue numbering + black title.
      */

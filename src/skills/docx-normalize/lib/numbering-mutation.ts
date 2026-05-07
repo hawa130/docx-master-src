@@ -9,6 +9,29 @@ import type { NumberingConfig } from "./types.ts"
 
 /* ------------- numbering.xml manipulation ------------- */
 
+export type SuffValue = "tab" | "space" | "nothing"
+
+/**
+ * Decide the marker-suffix character and the lvlText that should actually be
+ * written to OOXML. When the user sets `suff` explicitly, that wins. Otherwise
+ * we read the user's hand-written `lvlText` for trailing ASCII spaces — 0 → no
+ * gap, 1 → one space, 2+ → tab — which captures their format intent without
+ * us having to detect "is this CJK or Western punctuation". Trailing spaces
+ * are stripped from the emitted lvlText so the gap is owned solely by suff
+ * (otherwise a `"%1. "` lvlText with `suff=space` would render double-spaced).
+ */
+export function resolveSuff(
+  lvlText: string,
+  explicit?: SuffValue,
+): { suff: SuffValue; effectiveLvlText: string } {
+  const trailing = lvlText.match(/ *$/)![0].length
+  const inferred: SuffValue = trailing === 0 ? "nothing" : trailing === 1 ? "space" : "tab"
+  return {
+    suff: explicit ?? inferred,
+    effectiveLvlText: lvlText.replace(/ +$/, ""),
+  }
+}
+
 export function injectNumbering(numberingDoc: Document, config: NumberingConfig): string {
   const w = NS.w
   const root = numberingDoc.documentElement!
@@ -33,8 +56,12 @@ export function injectNumbering(numberingDoc: Document, config: NumberingConfig)
     const numFmtEl = numberingDoc.createElementNS(w, "w:numFmt")
     numFmtEl.setAttributeNS(w, "w:val", lvl.numFmt)
     lvlEl.appendChild(numFmtEl)
+    const { suff, effectiveLvlText } = resolveSuff(lvl.lvlText, lvl.suff)
+    const suffEl = numberingDoc.createElementNS(w, "w:suff")
+    suffEl.setAttributeNS(w, "w:val", suff)
+    lvlEl.appendChild(suffEl)
     const lvlTextEl = numberingDoc.createElementNS(w, "w:lvlText")
-    lvlTextEl.setAttributeNS(w, "w:val", lvl.lvlText)
+    lvlTextEl.setAttributeNS(w, "w:val", effectiveLvlText)
     lvlEl.appendChild(lvlTextEl)
     const lvlJc = numberingDoc.createElementNS(w, "w:lvlJc")
     lvlJc.setAttributeNS(w, "w:val", "left")
