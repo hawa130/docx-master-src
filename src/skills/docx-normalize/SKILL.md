@@ -145,7 +145,7 @@ Modes can mix within one `styles` array:
 
 **Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
 
-**When the document already defines the style ID you want:** if its parameters match your target, reuse as-is. If they differ, override (the script updates the existing definition rather than creating a duplicate). But first verify the style is actually used for its intended role — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first. Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
+**When the document already defines the style ID you want:** if its parameters match your target, reuse as-is. If they differ, override (the script updates the existing definition rather than creating a duplicate). Override is **non-destructive on unmanaged properties**: if you don't specify `basedOn`, the existing `basedOn` is preserved; the existing pPr's numbering binding (`numPr`) and other unmanaged children (`keepNext`, `pBdr`, `adjustRightInd`, etc.) survive untouched. Only the fields you specify are written. Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first. Use Word built-in IDs (`Heading1` / `Heading2` / `BodyText` / `Caption`) when the role matches, so TOC / nav / outline view work; never create parallel styles like `MyHeading1`.
 
 **Chinese font size names** (初号/一号/.../小六): see `references/chinese-font-sizes.md` for the pt mapping when the user specifies sizes in Chinese terms.
 
@@ -350,6 +350,13 @@ If a request *can* be expressed via `apply_styles` config, do that instead. The 
 - **Unnumbered special headings** (摘要 / Abstract / 目录 / 参考文献 / 致谢 / 附录): share the visual style of Heading1 but have no chapter number. Use `HeadingNoNum` or suppress numbering on the same style.
 - **Appendix numbering** often restarts with a different scheme (附录A / A.1 / A.2) — may need a second `numbering` entry.
 - **Layout vs data tables**: the overview tool classifies these — layout tables (single-cell content containers) are inlined into the skeleton; data/form tables are summarized. Verify the classification when inspecting unfamiliar table-heavy documents.
+- **Pre-printed chrome (forms, templates with printed labels and instructions)**: when the visual summary shows a long tail of low-occurrence fingerprints with short average text length (`avg ≤20ch`), those are usually printed labels / cover chrome, not author content. Step 6's coverage rule applies to *author-content* fingerprints (high count + meaningful `avg ch`); chrome is fixed content by default. Distinguish via the avg length and the `via "name"/id` annotation on the visual summary line — content fingerprints typically share one explicit pStyle, chrome scatters across the default.
+- **Source's base style violates the document's stated specs**: e.g. the doc's `Normal` (or a custom base like `a1` "段落") sets `bold: true` while the printed instructions say 正文不加粗. Three options:
+  1. **Override the base style** (declare it in `styles[]` with the corrected fields) — fixes everything that inherits, including untouched chrome. Use when chrome correctness matters and inherited side-effects on chrome are acceptable.
+  2. **Define a new role-specific style and bulk_rule content fingerprints to it** — leaves the broken base alone, only your targeted paragraphs get the right style. Chrome stays broken. Use when chrome layout is fragile and shouldn't be touched.
+  3. **Override the base AND assign chrome paragraphs to a separate fixed style** — most thorough, most config. Use for final-print-ready output.
+  
+  Verify the choice via the dry-run Style Resolution block before committing.
 
 ## Reading the Overview Output
 

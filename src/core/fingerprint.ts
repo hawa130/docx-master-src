@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import type { ParsedParagraph } from "./types.ts"
+import type { StyleResolver } from "./style-resolver.ts"
 
 export interface FingerprintSummary {
   /** Display label, sorted by frequency. Volatile across doc edits — fine for in-session interactive use. */
@@ -9,20 +10,41 @@ export interface FingerprintSummary {
   description: string
   count: number
   rawFingerprint: string
+  /** Average non-whitespace text length across paragraphs sharing this fingerprint.
+   * Cheap signal that distinguishes content (long) from chrome / form labels (short). */
+  avgTextLength: number
+  /** Dominant pStyle binding (id + display name) when ≥80% of paragraphs with
+   * this fingerprint reference the same styleId; undefined when split. Lets the
+   * agent see "this fingerprint comes from style X" without an extra inspect_style_def call. */
+  boundStyleId?: string
+  boundStyleName?: string
 }
 
 export class Fingerprinter {
-  assign(paragraphs: ParsedParagraph[]): {
+  assign(
+    paragraphs: ParsedParagraph[],
+    styleResolver?: StyleResolver,
+  ): {
     labels: Map<string, string>
     hashes: Map<string, string>
     summary: FingerprintSummary[]
   } {
     const counts = new Map<string, number>()
     const samples = new Map<string, ParsedParagraph>()
+    const totalTextLen = new Map<string, number>()
+    const styleIdCounts = new Map<string, Map<string, number>>()
     for (const p of paragraphs) {
       const hash = makeHash(p)
       counts.set(hash, (counts.get(hash) || 0) + 1)
       if (!samples.has(hash)) samples.set(hash, p)
+      totalTextLen.set(hash, (totalTextLen.get(hash) ?? 0) + p.text.trim().length)
+      const sid = p.styleId || "(default)"
+      let inner = styleIdCounts.get(hash)
+      if (!inner) {
+        inner = new Map()
+        styleIdCounts.set(hash, inner)
+      }
+      inner.set(sid, (inner.get(sid) ?? 0) + 1)
     }
 
     // sort by frequency desc, then by raw hash for stability
@@ -41,12 +63,21 @@ export class Fingerprinter {
       labels.set(hash, label)
       hashes.set(hash, contentHash)
       const sample = samples.get(hash)!
+      const avgTextLength = Math.round((totalTextLen.get(hash) ?? 0) / count)
+      const dominant = pickDominantStyle(styleIdCounts.get(hash)!, count)
+      const boundStyleName =
+        dominant && styleResolver
+          ? styleResolver.getStyleDefinition(dominant)?.name
+          : undefined
       summary.push({
         label,
         hash: contentHash,
         description: describe(sample),
         count,
         rawFingerprint: hash,
+        avgTextLength,
+        boundStyleId: dominant,
+        boundStyleName,
       })
     }
 
@@ -57,6 +88,28 @@ export class Fingerprinter {
 
     return { labels, hashes, summary }
   }
+}
+
+/** Return the styleId used by ≥80% of paragraphs sharing this fingerprint, or
+ * undefined when the binding is split. Skips Normal / default — every
+ * paragraph without an explicit pStyle inherits Normal, so reporting it
+ * adds no signal; the agent only cares about non-default bindings. */
+function pickDominantStyle(
+  styleCounts: Map<string, number>,
+  total: number,
+): string | undefined {
+  let bestId: string | undefined
+  let bestCount = 0
+  for (const [id, n] of styleCounts) {
+    if (n > bestCount) {
+      bestId = id
+      bestCount = n
+    }
+  }
+  if (bestId === undefined) return undefined
+  if (bestId === "(default)" || bestId === "Normal") return undefined
+  if (bestCount / total < 0.8) return undefined
+  return bestId
 }
 
 function makeHash(p: ParsedParagraph): string {

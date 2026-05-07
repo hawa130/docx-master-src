@@ -100,7 +100,7 @@ export async function loadDocx(filePath: string): Promise<LoadedDoc> {
   })
   const parsed = parser.parse()
   const fp = new Fingerprinter()
-  const fpResult = fp.assign(parsed.paragraphs)
+  const fpResult = fp.assign(parsed.paragraphs, resolver)
 
   const stat = statSync(filePath)
 

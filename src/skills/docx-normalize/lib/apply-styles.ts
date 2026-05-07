@@ -253,7 +253,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // DocumentParser doesn't fingerprint — that's a fingerprinter pass run by
   // load.ts (which we don't use here, since we want the in-memory mutated
   // documentDoc, not a fresh re-open via loadDocx). Run it ourselves.
-  const fpResult = new Fingerprinter().assign(parsed.paragraphs)
+  const fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
   // Build hash → letter map so bulk_rules can reference fingerprints by
   // either the in-session letter (A, B, ...) or the content-derived hash
   // (stable across runs / edits — survives doc changes that shuffle
@@ -511,7 +511,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // role got missed. Splitting the report makes that signal cheap to read.
   const implicitKeepByFingerprint = new Map<
     string,
-    { empty: number; nonEmpty: number }
+    { empty: number; nonEmpty: number; nonEmptySamples: string[] }
   >()
   const ctx: ApplyContext = {
     excludeSet,
@@ -628,7 +628,7 @@ interface ApplyContext {
    * pattern_rule, no bulk_rule). Grouped by fingerprint and split by whether
    * the paragraph has visible text — empty paragraphs are likely intentional
    * spacers, non-empty are coverage signal. */
-  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number }>
+  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
 }
 
 /* ------------- paragraph processing ------------- */
@@ -718,9 +718,20 @@ function processOneParagraph(
       const cur = ctx.implicitKeepByFingerprint.get(para.fingerprint) ?? {
         empty: 0,
         nonEmpty: 0,
+        nonEmptySamples: [],
       }
       if (isEmpty) cur.empty += 1
-      else cur.nonEmpty += 1
+      else {
+        cur.nonEmpty += 1
+        // Keep up to 2 short samples per fingerprint so the agent can spot-
+        // check coverage without running inspect_range. Two is enough to
+        // confirm a kind ("年 月 日" / "Page 3 of 12" → form chrome) without
+        // bloating the report.
+        if (cur.nonEmptySamples.length < 2) {
+          const snippet = para.text.trim().slice(0, 30)
+          cur.nonEmptySamples.push(snippet + (para.text.trim().length > 30 ? "…" : ""))
+        }
+      }
       ctx.implicitKeepByFingerprint.set(para.fingerprint, cur)
     }
     return
@@ -1015,49 +1026,74 @@ function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
 
 /* ------------- styles.xml manipulation ------------- */
 
+/** pPr / rPr children that this function manages (writes from def). Anything
+ * else found in an existing style's pPr/rPr is preserved untouched. The pPr
+ * list is critical: numPr (auto-numbering binding), keepNext, pBdr, shd,
+ * adjustRightInd, etc. are all preserved when overriding an existing style. */
+const PPR_MANAGED_CHILDREN = new Set(["spacing", "ind", "jc", "outlineLvl"])
+const RPR_MANAGED_CHILDREN = new Set([
+  "rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color",
+])
+
 function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "updated" {
   const w = NS.w
   const root = stylesDoc.documentElement!
   const existing = getChildrenNS(root, w, "style").find((s) => wAttr(s, "styleId") === def.id)
   let target: Element
+  let result: "created" | "updated"
   if (existing) {
     target = existing
-    // Wipe the parts we're about to rebuild — leave anything else (uiPriority,
-    // qFormat, link, etc.) intact so we don't strip metadata Word relies on.
-    const rebuildable = new Set(["pPr", "rPr", "basedOn", "name"])
-    for (const c of Array.from(getChildren(target))) {
-      if (c.namespaceURI === w && rebuildable.has(c.localName!)) {
-        target.removeChild(c)
-      }
-    }
+    result = "updated"
   } else {
     target = stylesDoc.createElementNS(w, "w:style")
     target.setAttributeNS(w, "w:type", "paragraph")
     target.setAttributeNS(w, "w:styleId", def.id)
     root.appendChild(target)
+    result = "created"
   }
 
+  // name: required and idempotent — replace any existing one.
+  for (const c of getChildrenNS(target, w, "name")) target.removeChild(c)
   const nameEl = stylesDoc.createElementNS(w, "w:name")
   nameEl.setAttributeNS(w, "w:val", def.name)
   target.appendChild(nameEl)
 
+  // basedOn: only touched when def explicitly provides it; otherwise the
+  // existing style's basedOn (and inheritance chain) is preserved. Avoids
+  // silently flattening the cascade when an agent overrides a style without
+  // re-specifying its parent.
   if (def.basedOn) {
+    for (const c of getChildrenNS(target, w, "basedOn")) target.removeChild(c)
     const bo = stylesDoc.createElementNS(w, "w:basedOn")
     bo.setAttributeNS(w, "w:val", def.basedOn)
     target.appendChild(bo)
   }
 
-  // pPr
-  const pPr = stylesDoc.createElementNS(w, "w:pPr")
+  // pPr: mutate in place. Remove only the children listed in
+  // PPR_MANAGED_CHILDREN (the visible paragraph properties this function
+  // writes), then append the new ones built from `def`. Existing children we
+  // don't manage — most importantly `numPr` (numbering binding), but also
+  // keepNext, pBdr, shd, adjustRightInd, etc. — stay intact. Without this,
+  // overriding an existing heading style would silently drop its
+  // auto-numbering reference.
+  let pPr = firstChildNS(target, w, "pPr")
+  if (pPr) {
+    for (const c of Array.from(getChildren(pPr))) {
+      if (c.namespaceURI === w && PPR_MANAGED_CHILDREN.has(c.localName!)) {
+        pPr.removeChild(c)
+      }
+    }
+  }
+  const pPrAdditions: Element[] = []
   if (def.outlineLevel !== undefined) {
     const ol = stylesDoc.createElementNS(w, "w:outlineLvl")
     ol.setAttributeNS(w, "w:val", String(def.outlineLevel))
-    pPr.appendChild(ol)
+    pPrAdditions.push(ol)
   }
   if (def.alignment) {
     const jc = stylesDoc.createElementNS(w, "w:jc")
     jc.setAttributeNS(w, "w:val", def.alignment)
-    pPr.appendChild(jc)
+    pPrAdditions.push(jc)
   }
   if (
     def.spaceBefore !== undefined ||
@@ -1079,7 +1115,7 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
         spacing.setAttributeNS(w, "w:lineRule", rule)
       }
     }
-    pPr.appendChild(spacing)
+    pPrAdditions.push(spacing)
   }
   if (def.firstLineIndent != null || def.hangingIndent != null) {
     const ind = stylesDoc.createElementNS(w, "w:ind")
@@ -1099,12 +1135,28 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
         ind.setAttributeNS(w, "w:hanging", String(r.value))
       }
     }
-    pPr.appendChild(ind)
+    pPrAdditions.push(ind)
   }
-  if (pPr.childNodes.length > 0) target.appendChild(pPr)
+  if (pPrAdditions.length > 0) {
+    if (!pPr) {
+      pPr = stylesDoc.createElementNS(w, "w:pPr")
+      target.appendChild(pPr)
+    }
+    for (const c of pPrAdditions) pPr.appendChild(c)
+  }
 
-  // rPr
-  const rPr = stylesDoc.createElementNS(w, "w:rPr")
+  // rPr: same mutate-in-place pattern. Removes only the run properties this
+  // function manages (font, size, weight, italic, color); preserves anything
+  // else the existing rPr carried (lang, w, kern, etc.).
+  let rPr = firstChildNS(target, w, "rPr")
+  if (rPr) {
+    for (const c of Array.from(getChildren(rPr))) {
+      if (c.namespaceURI === w && RPR_MANAGED_CHILDREN.has(c.localName!)) {
+        rPr.removeChild(c)
+      }
+    }
+  }
+  const rPrAdditions: Element[] = []
   if (def.font || def.fontEastAsia) {
     const rFonts = stylesDoc.createElementNS(w, "w:rFonts")
     const ascii = def.font ?? def.fontEastAsia ?? ""
@@ -1114,32 +1166,38 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
       rFonts.setAttributeNS(w, "w:hAnsi", ascii)
     }
     if (ea) rFonts.setAttributeNS(w, "w:eastAsia", ea)
-    rPr.appendChild(rFonts)
+    rPrAdditions.push(rFonts)
   }
   if (def.size !== undefined) {
     const sz = stylesDoc.createElementNS(w, "w:sz")
     sz.setAttributeNS(w, "w:val", String(Math.round(def.size * 2)))
-    rPr.appendChild(sz)
+    rPrAdditions.push(sz)
     const szCs = stylesDoc.createElementNS(w, "w:szCs")
     szCs.setAttributeNS(w, "w:val", String(Math.round(def.size * 2)))
-    rPr.appendChild(szCs)
+    rPrAdditions.push(szCs)
   }
   if (def.bold) {
-    rPr.appendChild(stylesDoc.createElementNS(w, "w:b"))
-    rPr.appendChild(stylesDoc.createElementNS(w, "w:bCs"))
+    rPrAdditions.push(stylesDoc.createElementNS(w, "w:b"))
+    rPrAdditions.push(stylesDoc.createElementNS(w, "w:bCs"))
   }
   if (def.italic) {
-    rPr.appendChild(stylesDoc.createElementNS(w, "w:i"))
-    rPr.appendChild(stylesDoc.createElementNS(w, "w:iCs"))
+    rPrAdditions.push(stylesDoc.createElementNS(w, "w:i"))
+    rPrAdditions.push(stylesDoc.createElementNS(w, "w:iCs"))
   }
   if (def.color) {
     const color = stylesDoc.createElementNS(w, "w:color")
     color.setAttributeNS(w, "w:val", def.color)
-    rPr.appendChild(color)
+    rPrAdditions.push(color)
   }
-  if (rPr.childNodes.length > 0) target.appendChild(rPr)
+  if (rPrAdditions.length > 0) {
+    if (!rPr) {
+      rPr = stylesDoc.createElementNS(w, "w:rPr")
+      target.appendChild(rPr)
+    }
+    for (const c of rPrAdditions) rPr.appendChild(c)
+  }
 
-  return existing ? "updated" : "created"
+  return result
 }
 
 /**
@@ -1375,7 +1433,7 @@ function printReport(args: {
   output: string
   dryRun: boolean
   samples: Map<string, RestyleSample[]>
-  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number }>
+  implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
   templateImport: ImportResult | null
 }) {
   const lines: string[] = []
@@ -1424,16 +1482,22 @@ function printReport(args: {
       lines.push(`  empty (likely spacers): ${totalEmpty}`)
     }
     if (totalNonEmpty > 0) {
-      // Non-empty untouched are the coverage signal — break down by fingerprint
-      // so the agent can spot a missed role. On the Targeted Edit path this is
-      // expected (only intentional changes apply); on Full Standardization, an
-      // unfamiliar count here means a fingerprint slipped through.
-      const groups = [...args.implicitKeepByFingerprint.entries()]
+      // Non-empty untouched are the coverage signal — break down by
+      // fingerprint with up-to-2 sample texts so the agent can spot a missed
+      // role at a glance. On the Targeted Edit path this is expected (only
+      // intentional changes apply); on Full Standardization, an unfamiliar
+      // entry here means a fingerprint slipped through and the samples make
+      // it cheap to confirm.
+      lines.push(`  non-empty (verify coverage): ${totalNonEmpty}`)
+      const sortedEntries = [...args.implicitKeepByFingerprint.entries()]
         .filter(([, v]) => v.nonEmpty > 0)
         .sort((a, b) => b[1].nonEmpty - a[1].nonEmpty)
-        .map(([fp, v]) => `${fp}×${v.nonEmpty}`)
-        .join(", ")
-      lines.push(`  non-empty (verify coverage): ${totalNonEmpty}  [${groups}]`)
+      for (const [fp, v] of sortedEntries) {
+        const samples = v.nonEmptySamples.length > 0
+          ? `  e.g. ${v.nonEmptySamples.map((s) => `"${s}"`).join(" / ")}`
+          : ""
+        lines.push(`    ${fp}×${v.nonEmpty}${samples}`)
+      }
     }
   }
   lines.push("")

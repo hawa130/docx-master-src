@@ -171,7 +171,19 @@ function renderVisualSummary(doc: LoadedDoc): string[] {
     // Letter is stable within this run; hash is content-derived and stable
     // across runs / edits — use it in persisted configs to survive
     // frequency-rank shuffles when paragraphs are added or removed.
-    lines.push(`${s.label} [${s.hash}]: ${s.description.padEnd(36, " ")} ×${s.count}`)
+    // Trailing facts (avg text length + dominant pStyle binding) are the cheap
+    // signals that distinguish content fingerprints from chrome / form labels:
+    // long avg + repeating pStyle = content; short avg + scattered styles =
+    // probably pre-printed labels.
+    const facts: string[] = [`×${s.count}`, `avg ${s.avgTextLength}ch`]
+    if (s.boundStyleId) {
+      facts.push(
+        s.boundStyleName
+          ? `via "${s.boundStyleName}"/${s.boundStyleId}`
+          : `via ${s.boundStyleId}`,
+      )
+    }
+    lines.push(`${s.label} [${s.hash}]: ${s.description.padEnd(36, " ")} ${facts.join("  ")}`)
   }
   return lines
 }
