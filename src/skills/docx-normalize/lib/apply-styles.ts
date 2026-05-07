@@ -394,6 +394,18 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     }
   }
 
+  // 5b. Reorder agent-touched <w:style> entries to the top of the style list.
+  // The default OOXML behavior (created styles append at the end) buries the
+  // agent's intentional styles below the doc's pre-existing leftovers. By
+  // surfacing them first, the styles.xml DOM order matches the agent's
+  // mental order in config.styles[] (and the Style Resolution block in the
+  // report). docDefaults / latentStyles stay above — those aren't <w:style>
+  // entries and aren't touched by this reorder.
+  reorderAgentTouchedStylesFirst(stylesDoc, [
+    ...(templateImport?.imported ?? []),
+    ...config.styles.map((s) => s.id),
+  ])
+
   // 6. Build action map for paragraphs. Cross-check that every styleId
   // referenced from rules actually exists in the styles array — catching
   // typos here is much friendlier than producing a broken docx that Word
@@ -1362,6 +1374,63 @@ function attachNumberingToStyle(
   numIdEl.setAttributeNS(w, "w:val", numId)
   numPr.appendChild(numIdEl)
   pPr.insertBefore(numPr, pPr.firstChild)
+}
+
+/**
+ * Move the styles named in `orderedIds` to the top of styles.xml's <w:style>
+ * entry list, preserving the given order. Styles not in the list keep their
+ * relative positions. Non-style children of the root (<w:docDefaults>,
+ * <w:latentStyles>) stay above all <w:style> entries — they're not touched.
+ *
+ * Each id appears at most once in `orderedIds`; duplicates are deduped (a
+ * style can be both template-imported and re-declared in config.styles[]).
+ */
+function reorderAgentTouchedStylesFirst(
+  stylesDoc: Document,
+  orderedIds: string[],
+): void {
+  const w = NS.w
+  const root = stylesDoc.documentElement
+  if (!root) return
+
+  const seen = new Set<string>()
+  const dedupedIds = orderedIds.filter((id) => {
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+  const targetSet = new Set(dedupedIds)
+
+  // Find the touched style elements and the first non-touched <w:style> (our
+  // insertion anchor). Iterate once.
+  const touchedById = new Map<string, Element>()
+  let firstUntouched: Element | null = null
+  for (const el of getChildrenNS(root, w, "style")) {
+    const id = wAttr(el, "styleId")
+    if (id && targetSet.has(id)) {
+      touchedById.set(id, el)
+    } else if (!firstUntouched) {
+      firstUntouched = el
+    }
+  }
+
+  // Detach touched elements (they'll be re-inserted in `dedupedIds` order).
+  for (const el of touchedById.values()) {
+    if (el.parentNode === root) root.removeChild(el)
+  }
+
+  // Re-insert in the requested order, just before the first untouched style.
+  // If the doc has no other styles, append at the end of root (which sits
+  // after docDefaults / latentStyles per OOXML schema).
+  for (const id of dedupedIds) {
+    const el = touchedById.get(id)
+    if (!el) continue
+    if (firstUntouched) {
+      root.insertBefore(el, firstUntouched)
+    } else {
+      root.appendChild(el)
+    }
+  }
 }
 
 /* ------------- bootstrap blank docs ------------- */
