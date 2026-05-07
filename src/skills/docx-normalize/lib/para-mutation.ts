@@ -181,53 +181,26 @@ function processOneParagraph(
       }
     }
     // None of the level's stripPrefixPatterns covered this paragraph's
-    // leading text, but the paragraph IS being assigned to an auto-numbered
-    // style. If the paragraph already carries a typed prefix that we'd
-    // recognize, we'd render a double-numbered result (auto-number + the
-    // unstripped manual prefix). Detect and track for a loud warning in the
-    // report — checking against the doc's actual typed-prefix shapes, not
-    // just against the patterns the agent already configured.
+    // leading text. Record a leading-text sample so the agent can see what
+    // the doc actually contains — recognising whether it's a missed prefix
+    // shape ("1. ..." that needs adding to stripPrefixPatterns) or a clean
+    // heading without manual numbering (already correct, no action). The
+    // script doesn't classify the shape; agents are far better at reading
+    // typed text and the script's hardcoded shape list would always lag
+    // real-doc variety (附录 A, I., a), 任务一, ⒈, ...).
     if (!stripped) {
-      const shape = detectTypedPrefixShape(para.text)
-      if (shape) {
-        let perStyle = ctx.unstrippedShapesByStyle.get(targetStyle)
-        if (!perStyle) {
-          perStyle = new Map()
-          ctx.unstrippedShapesByStyle.set(targetStyle, perStyle)
-        }
-        perStyle.set(shape, (perStyle.get(shape) ?? 0) + 1)
+      let perStyle = ctx.unstrippedByStyle.get(targetStyle)
+      if (!perStyle) {
+        perStyle = { count: 0, samples: [] }
+        ctx.unstrippedByStyle.set(targetStyle, perStyle)
+      }
+      perStyle.count += 1
+      if (perStyle.samples.length < 3) {
+        const snippet = para.text.trim().slice(0, 40)
+        perStyle.samples.push(snippet + (para.text.trim().length > 40 ? "…" : ""))
       }
     }
   }
-}
-
-/**
- * Recognise the typed-prefix shape of a paragraph's leading text and return
- * its canonical lvlText form (e.g. "%1.%2", "第%1章"). Returns null when no
- * known shape matches. Patterns are tried longest-first so "1.1.1" doesn't
- * partial-match "%1." instead of "%1.%2.%3".
- *
- * The list is non-exhaustive but covers the shapes typical Chinese theses,
- * reports, contracts, and form templates use. Adding shapes is cheap:
- * append a (regex, canonical) pair.
- */
-const TYPED_PREFIX_SHAPES: Array<[RegExp, string]> = [
-  [/^\s*\d+\.\d+\.\d+\.\d+(\s|$)/, "%1.%2.%3.%4"],
-  [/^\s*\d+\.\d+\.\d+(\s|$)/, "%1.%2.%3"],
-  [/^\s*\d+\.\d+(\s|$)/, "%1.%2"],
-  [/^\s*\d+\.(\s|$)/, "%1."],
-  [/^\s*第\s*[\d一二三四五六七八九十百千万]+\s*章/, "第%1章"],
-  [/^\s*第\s*[\d一二三四五六七八九十百千万]+\s*节/, "第%1节"],
-  [/^\s*第\s*[\d一二三四五六七八九十百千万]+\s*部分/, "第%1部分"],
-  [/^\s*（\s*\d+\s*）/, "（%1）"],
-  [/^\s*\(\s*\d+\s*\)/, "(%1)"],
-]
-
-function detectTypedPrefixShape(text: string): string | null {
-  for (const [re, canonical] of TYPED_PREFIX_SHAPES) {
-    if (re.test(text)) return canonical
-  }
-  return null
 }
 
 function setParagraphStyle(pEl: Element, styleId: string) {

@@ -413,7 +413,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     string,
     { empty: number; nonEmpty: number; nonEmptySamples: string[] }
   >()
-  const unstrippedShapesByStyle = new Map<string, Map<string, number>>()
+  const unstrippedByStyle = new Map<string, { count: number; samples: string[] }>()
   const ctx: ApplyContext = {
     excludeSet,
     assignmentMap,
@@ -430,7 +430,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     samples,
     samplesPerStyleCap: 5,
     implicitKeepByFingerprint,
-    unstrippedShapesByStyle,
+    unstrippedByStyle,
   }
   applyToBody(documentDoc, ctx)
 
@@ -487,7 +487,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     dryRun: !!config.dryRun,
     samples: ctx.samples,
     implicitKeepByFingerprint: ctx.implicitKeepByFingerprint,
-    unstrippedShapesByStyle: ctx.unstrippedShapesByStyle,
+    unstrippedByStyle: ctx.unstrippedByStyle,
     templateImport,
   })
 }

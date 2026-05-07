@@ -57,7 +57,7 @@ export function printReport(args: {
   dryRun: boolean
   samples: Map<string, RestyleSample[]>
   implicitKeepByFingerprint: Map<string, { empty: number; nonEmpty: number; nonEmptySamples: string[] }>
-  unstrippedShapesByStyle: Map<string, Map<string, number>>
+  unstrippedByStyle: Map<string, { count: number; samples: string[] }>
   templateImport: ImportResult | null
 }) {
   const lines: string[] = []
@@ -162,30 +162,24 @@ export function printReport(args: {
     )
     lines.push("")
   }
-  // Loud-fail on uncovered typed-prefix shapes: paragraphs assigned to a
-  // numbered style whose leading text matched a known prefix shape that the
-  // level's stripPrefixPatterns didn't cover. This is the "agent thought
-  // they handled it but missed half the doc" case — auto-numbering will fire
-  // AND the manual prefix will stay, producing "1. 1. Heading text" output.
-  // Surface here, not silently in the existing Mixed-detected section,
-  // because that section only fires when patterns ALREADY hit two shapes;
-  // it can't see what's still uncovered.
-  if (args.unstrippedShapesByStyle.size > 0) {
-    lines.push(
-      "Uncovered manual prefixes (will double-number — auto-number AND keep manual prefix):",
-    )
-    for (const [styleId, shapeMap] of args.unstrippedShapesByStyle) {
-      const breakdown = [...shapeMap.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([shape, n]) => `"${shape}"×${n}`)
-        .join(", ")
-      lines.push(`  ${styleId}: ${breakdown}`)
+  // Numbered-style paragraphs that fell through every stripPrefixPattern.
+  // We surface the leading-text samples — NOT a classified shape — and let
+  // the agent read them: if the samples show "1. 数据集管理" / "2. ..." the
+  // agent recognises a missed "%1." pattern and adds it; if the samples
+  // show "研究方法" / "实验结果" the agent recognises clean headings without
+  // manual numbering and does nothing. Avoids hardcoding a shape list that
+  // would always lag the variety of typed prefixes real docs use.
+  if (args.unstrippedByStyle.size > 0) {
+    lines.push("Numbered-style paragraphs not matched by any stripPrefixPattern:")
+    for (const [styleId, info] of args.unstrippedByStyle) {
+      const samples = info.samples.map((s) => `"${s}"`).join(" / ")
+      lines.push(`  ${styleId}: ${info.count} paragraphs  e.g. ${samples}`)
     }
     lines.push(
-      "  → Add the missing shape(s) to the style's numbering.levels[i].stripPrefixPatterns",
+      "  → Read the samples: a typed prefix you missed (add to stripPrefixPatterns)",
     )
     lines.push(
-      "    (longer patterns first, e.g. [\"%1.%2\", \"%1.\"]).",
+      "    or a clean heading without manual numbering (no action needed).",
     )
     lines.push("")
   }
