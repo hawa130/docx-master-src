@@ -62,7 +62,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 
 ## Path: Full Standardization
 
-When the user wants the document brought into a consistent, standardized form — typical phrasings: "帮我排版", "按学校格式", "套这个模板", or just handing over a messy docx without specifics. The default path when scope is unclear.
+When the user wants the document brought into a consistent, standardized form — see the path-decision criteria above. The default path when scope is unclear.
 
 ### Step 1: Understand the Goal
 
