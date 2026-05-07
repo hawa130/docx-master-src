@@ -63,8 +63,13 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   if (!documentDoc) throw new Error("word/document.xml not found")
   const themeDoc = await reader.readXml("word/theme/theme1.xml")
 
-  // 3. Resolve original styles (used for paragraph indexing & assignments)
+  // 3. Resolve original styles (used for paragraph indexing & assignments).
+  // Pre-expand themed font attrs in stylesDoc so the cascade reports honest
+  // values and the output XML doesn't carry a docDefaults theme reference
+  // that would silently override agent-injected literal fonts at render
+  // time. See StyleResolver.expandThemedFontsInStyles for the OOXML rule.
   const resolver = new StyleResolver(stylesDoc, themeDoc)
+  resolver.expandThemedFontsInStyles(stylesDoc)
   const parser = new DocumentParser(documentDoc, resolver, numberingDoc)
   const parsed = parser.parse()
   // DocumentParser doesn't fingerprint — that's a fingerprinter pass run by

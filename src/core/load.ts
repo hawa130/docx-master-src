@@ -93,6 +93,11 @@ export async function loadDocx(filePath: string): Promise<LoadedDoc> {
   }
 
   const resolver = new StyleResolver(stylesDoc, themeDoc)
+  // Pre-expand themed font attrs in stylesDoc so inspect_* tools report the
+  // fonts that Word will actually render. Without this, a docDefaults
+  // theme reference (very common in Office / WPS templates) silently
+  // overrides any literal font in the cascade per OOXML §17.3.2.27.
+  if (stylesDoc) resolver.expandThemedFontsInStyles(stylesDoc)
   const parser = new DocumentParser(documentDoc, resolver, numberingDoc, {
     headerDocs,
     footerDocs,

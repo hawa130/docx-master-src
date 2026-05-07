@@ -159,19 +159,23 @@ export class StyleResolver {
     if (!rPrEl) return out
     const rFonts = firstChildNS(rPrEl, NS.w, "rFonts")
     if (rFonts) {
+      // OOXML §17.3.2.27: when both themed and literal font attrs are
+      // specified on the same rFonts element, **themed wins**. Word and
+      // compatible renderers obey this rule; reporting the literal value
+      // (the previous behavior here) silently misleads agents — they'd see
+      // `font: "宋体"` from inspect_* yet Word would render the theme font.
       const ascii = wAttr(rFonts, "ascii")
       const hAnsi = wAttr(rFonts, "hAnsi")
       const eastAsia = wAttr(rFonts, "eastAsia")
       const asciiTheme = wAttr(rFonts, "asciiTheme")
       const hAnsiTheme = wAttr(rFonts, "hAnsiTheme")
       const eastAsiaTheme = wAttr(rFonts, "eastAsiaTheme")
-      if (ascii) out.fontAscii = ascii
-      if (hAnsi) out.fontHAnsi = hAnsi
-      if (eastAsia) out.fontEastAsia = eastAsia
-      if (!ascii && asciiTheme) out.fontAscii = this.resolveThemeFont(asciiTheme, false)
-      if (!hAnsi && hAnsiTheme) out.fontHAnsi = this.resolveThemeFont(hAnsiTheme, false)
-      if (!eastAsia && eastAsiaTheme)
-        out.fontEastAsia = this.resolveThemeFont(eastAsiaTheme, true)
+      if (asciiTheme) out.fontAscii = this.resolveThemeFont(asciiTheme, false)
+      else if (ascii) out.fontAscii = ascii
+      if (hAnsiTheme) out.fontHAnsi = this.resolveThemeFont(hAnsiTheme, false)
+      else if (hAnsi) out.fontHAnsi = hAnsi
+      if (eastAsiaTheme) out.fontEastAsia = this.resolveThemeFont(eastAsiaTheme, true)
+      else if (eastAsia) out.fontEastAsia = eastAsia
     }
     const sz = firstChildNS(rPrEl, NS.w, "sz")
     if (sz) {
@@ -282,7 +286,65 @@ export class StyleResolver {
     return out
   }
 
-  private resolveThemeFont(themeRef: string, isEastAsia: boolean): string | undefined {
+  /**
+   * Walk a stylesDoc and expand every rFonts element's themed font attrs
+   * (asciiTheme / hAnsiTheme / eastAsiaTheme / cstheme) to literal attrs
+   * (ascii / hAnsi / eastAsia / cs) by resolving against the parsed theme.
+   *
+   * Why this matters: OOXML §17.3.2.27 prescribes "themed wins over literal"
+   * when both are specified on the same rFonts element. That rule fires
+   * during the cascade merge too — if the doc's <w:docDefaults> uses themed
+   * fonts (very common in Office / WPS / 国产 docx templates) and an agent
+   * injects a style with literal fonts via this skill, Word merges them and
+   * the doc-defaults theme reference silently overrides the agent's literal
+   * value at render time. The agent's pre-flight inspect_* output and our
+   * Style Resolution report would say "宋体" while Word renders 等线.
+   *
+   * Pre-expanding stylesDoc to literal-only attrs eliminates the cascade
+   * conflict: every later rFonts merge sees only literal-vs-literal, and
+   * child-overrides-parent string semantics apply as expected.
+   *
+   * Safe to call before any other styles.xml mutations. Mutates stylesDoc
+   * in place. Idempotent (a second call finds no themed attrs to expand).
+   */
+  expandThemedFontsInStyles(stylesDoc: Document): void {
+    const root = stylesDoc.documentElement
+    if (!root) return
+    const visit = (el: Element) => {
+      if (el.namespaceURI === NS.w && el.localName === "rFonts") {
+        this.expandRFontsThemedAttrs(el)
+      }
+      // DOM `children` excludes text nodes; filter to elements via nodeType
+      // to handle xmldom's behavior consistently.
+      const childNodes = el.childNodes
+      for (let i = 0; i < childNodes.length; i++) {
+        const c = childNodes[i]!
+        if (c.nodeType === 1) visit(c as Element)
+      }
+    }
+    visit(root)
+  }
+
+  private expandRFontsThemedAttrs(rFonts: Element): void {
+    const w = NS.w
+    const pairs: Array<[themedAttr: string, literalAttr: string, isEastAsia: boolean]> = [
+      ["asciiTheme", "ascii", false],
+      ["hAnsiTheme", "hAnsi", false],
+      ["eastAsiaTheme", "eastAsia", true],
+      ["cstheme", "cs", false],
+    ]
+    for (const [themedAttr, literalAttr, isEastAsia] of pairs) {
+      const themed = wAttr(rFonts, themedAttr)
+      if (!themed) continue
+      const resolved = this.resolveThemeFont(themed, isEastAsia)
+      if (resolved) {
+        rFonts.setAttributeNS(w, `w:${literalAttr}`, resolved)
+      }
+      rFonts.removeAttributeNS(w, themedAttr)
+    }
+  }
+
+  resolveThemeFont(themeRef: string, isEastAsia: boolean): string | undefined {
     // OOXML theme font tokens are a closed set (ECMA-376 §17.18.96).
     // Match the exact token rather than fuzzy substring checks — guards
     // against accidental matches in unrelated values.
