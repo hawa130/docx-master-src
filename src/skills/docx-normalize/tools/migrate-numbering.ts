@@ -32,8 +32,6 @@ void runCli({
         "migrate_numbering: config.numbering.levels must be a non-empty array",
       )
     }
-    // styles[] is optional on this path. Default to empty so applyStyles'
-    // gate ("at least one operation") sees `numbering` and accepts the run.
-    if (!Array.isArray(config.styles)) config.styles = []
+    // styles[] is optional on this path; the engine defaults it to [].
   },
 })

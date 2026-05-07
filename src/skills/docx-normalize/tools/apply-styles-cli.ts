@@ -15,13 +15,10 @@ void runCli({
   // At least one operation must be specified. Pure restyle needs styles[];
   // pure numbering migration needs numbering; pure template import needs
   // template. With nothing, the script would just produce a copy.
+  // (`config.styles` is normalized to `[]` by the engine when omitted, so we
+  // read it via optional chaining here.)
   validate(config) {
-    if (!Array.isArray(config.styles)) {
-      throw new Error(
-        "config.styles must be an array (may be empty if `numbering` or `template` is supplied)",
-      )
-    }
-    const hasStyles = config.styles.length > 0
+    const hasStyles = (config.styles?.length ?? 0) > 0
     const hasNumbering = !!config.numbering?.levels?.length
     const hasTemplate = !!config.template?.styles?.length
     if (!hasStyles && !hasNumbering && !hasTemplate) {

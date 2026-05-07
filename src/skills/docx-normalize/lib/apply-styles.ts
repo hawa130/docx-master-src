@@ -143,7 +143,10 @@ export interface ApplyConfig {
    * — pull them in wholesale instead of transcribing each field by hand.
    */
   template?: TemplateImportConfig
-  styles: StyleConfigEntry[]
+  /** Optional. When omitted (or undefined), the engine treats it as `[]` —
+   * useful for pure template-import or numbering-only operations. CLIs decide
+   * whether their entry point requires a non-empty styles list. */
+  styles?: StyleConfigEntry[]
   numbering?: NumberingConfig
   assignments?: AssignmentEntry[]
   bulk_rules?: BulkRule[]
@@ -228,6 +231,11 @@ interface RestyleStat {
 }
 
 export async function applyStyles(source: string, output: string, config: ApplyConfig) {
+  // 0. Default styles[] to [] when omitted. Pure template-import and
+  // numbering-only configs don't need to declare any styles; CLIs that
+  // require non-empty styles enforce that themselves before calling.
+  config.styles ??= []
+
   // 1. Dry-run reads the source directly; otherwise copy first and modify
   // the copy so the original stays untouched on validation failure.
   if (!config.dryRun) {

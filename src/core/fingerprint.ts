@@ -32,19 +32,23 @@ export class Fingerprinter {
     const counts = new Map<string, number>()
     const samples = new Map<string, ParsedParagraph>()
     const totalTextLen = new Map<string, number>()
+    // Tracks explicit pStyle bindings only; paragraphs without a styleId
+    // simply don't contribute, so pickDominantStyle's percentage check
+    // naturally accounts for "mostly unstyled" cases.
     const styleIdCounts = new Map<string, Map<string, number>>()
     for (const p of paragraphs) {
       const hash = makeHash(p)
       counts.set(hash, (counts.get(hash) || 0) + 1)
       if (!samples.has(hash)) samples.set(hash, p)
       totalTextLen.set(hash, (totalTextLen.get(hash) ?? 0) + p.text.trim().length)
-      const sid = p.styleId || "(default)"
-      let inner = styleIdCounts.get(hash)
-      if (!inner) {
-        inner = new Map()
-        styleIdCounts.set(hash, inner)
+      if (p.styleId) {
+        let inner = styleIdCounts.get(hash)
+        if (!inner) {
+          inner = new Map()
+          styleIdCounts.set(hash, inner)
+        }
+        inner.set(p.styleId, (inner.get(p.styleId) ?? 0) + 1)
       }
-      inner.set(sid, (inner.get(sid) ?? 0) + 1)
     }
 
     // sort by frequency desc, then by raw hash for stability
@@ -64,7 +68,7 @@ export class Fingerprinter {
       hashes.set(hash, contentHash)
       const sample = samples.get(hash)!
       const avgTextLength = Math.round((totalTextLen.get(hash) ?? 0) / count)
-      const dominant = pickDominantStyle(styleIdCounts.get(hash)!, count)
+      const dominant = pickDominantStyle(styleIdCounts.get(hash) ?? new Map(), count)
       const boundStyleName =
         dominant && styleResolver
           ? styleResolver.getStyleDefinition(dominant)?.name
@@ -91,9 +95,11 @@ export class Fingerprinter {
 }
 
 /** Return the styleId used by ≥80% of paragraphs sharing this fingerprint, or
- * undefined when the binding is split. Skips Normal / default — every
- * paragraph without an explicit pStyle inherits Normal, so reporting it
- * adds no signal; the agent only cares about non-default bindings. */
+ * undefined when the binding is split — including the "mostly unstyled"
+ * case (because paragraphs without an explicit pStyle don't contribute to
+ * `styleCounts`, so their share is implicitly counted against the total).
+ * Skips "Normal" because every Word doc inherits it by default; surfacing
+ * it adds no signal beyond "no custom binding". */
 function pickDominantStyle(
   styleCounts: Map<string, number>,
   total: number,
@@ -107,7 +113,7 @@ function pickDominantStyle(
     }
   }
   if (bestId === undefined) return undefined
-  if (bestId === "(default)" || bestId === "Normal") return undefined
+  if (bestId === "Normal") return undefined
   if (bestCount / total < 0.8) return undefined
   return bestId
 }

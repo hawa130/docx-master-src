@@ -32,8 +32,6 @@ void runCli({
         "import_template: `numbering` is not allowed here. Imported styles' numbering references are migrated automatically; for a new numbering scheme, run `migrate_numbering` after.",
       )
     }
-    // styles[] is optional. Default to empty so applyStyles' gate sees
-    // `template` and accepts the run.
-    if (!Array.isArray(config.styles)) config.styles = []
+    // styles[] is optional; the engine defaults it to [].
   },
 })
