@@ -76,6 +76,8 @@ Real verification compares against ground truth: human-readable side-by-side dis
 
 When a fix or design decision teaches a principle the next maintainer should know, distill it as a brief rule above. Bar: would another maintainer save time reading it? — if no, commit history is enough. A root cause recurring in two different shapes is a strong signal a principle has earned a slot.
 
+State the principle, not the incident. Examples bloat context and make the rule read as "this one bug" instead of "this class of bug" — keep the conclusion, drop the illustration. If a reader can't picture the failure without an example, the rule isn't general enough yet.
+
 ### SKILL.md is the agent's runtime context — keep it lean
 
 Every line is loaded into the agent's context on every invocation. Encode only what the agent can't derive: technical invariants the scripts depend on, workflow anchors, tool references. Cut restated points, disambiguation tables for things an LLM infers from context, examples of output the tool prints itself. Detailed schema lives in `references/`, loaded on demand.
@@ -94,7 +96,7 @@ LLMs are bad at byte-level work; scripts must guarantee these and never bend the
 - Cross-run formatting preservation (smart-strip's uniform-vs-mixed rule)
 - Character-indent semantics — `firstLineChars` round-trips as `"Nchar"`, fixed twips as `"Npt"`
 - Dominant-run selection in `fromParagraph` skips numbering-prefix-only runs
-- Leading-prefix strip accumulates across consecutive `<w:t>` runs — Word splits hand-edited paragraphs mid-prefix (e.g. `<w:t>五</w:t><w:t>、Title</w:t>`), and a per-run regex test silently misses these
+- Leading-prefix strip accumulates across consecutive `<w:t>` runs; Word splits hand-edited paragraphs mid-prefix, so per-run regex testing silently misses some
 - numId migration on template import uses fresh IDs to avoid collision
 - The original file is never modified; `apply_styles` always writes a fresh copy and validates before keeping it
 
