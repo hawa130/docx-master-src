@@ -1,210 +1,35 @@
+import type * as z from "zod/mini"
 import type { ParsedParagraph } from "@core/types.ts"
+import type {
+  ApplyConfigSchema,
+  AssignmentSchema,
+  BulkRuleSchema,
+  NumberingSchema,
+  PatternRuleSchema,
+  StyleEntrySchema,
+  TemplateSchema,
+  ThemeFontsSchema,
+} from "./config-schema.ts"
 
-/* ------------- public config types ------------- */
-
-export interface StyleConfigEntry {
-  id: string
-  name: string
-  basedOn?: string
-  /** Latin / Western text font (writes to OOXML rFonts/@ascii AND @hAnsi —
-   * we keep both attrs at the same value because typical fonts cover both
-   * ASCII and high-ANSI ranges together). */
-  fontLatin?: string
-  /** CJK font (writes to OOXML rFonts/@eastAsia). The most common field in
-   * Chinese-academic configs — when the user says "正文宋体", this is what
-   * they mean. */
-  fontCJK?: string
-  size?: number // pt
-  bold?: boolean
-  italic?: boolean
-  color?: string
-  alignment?: "left" | "center" | "right" | "both"
-  lineSpacing?: number // multiple or exact pt
-  lineRule?: "auto" | "exact" | "atLeast"
-  spaceBefore?: number // pt
-  spaceAfter?: number // pt
-  firstLineIndent?: string | number | null
-  hangingIndent?: string | number | null
-  outlineLevel?: number
-  fromParagraph?: number // 1-based paragraph index — extract computed style from this paragraph
-  overrides?: Partial<Omit<StyleConfigEntry, "id" | "name" | "fromParagraph" | "overrides">>
-}
-
-export interface NumberingConfig {
-  levels: Array<{
-    level: number
-    /** OOXML numFmt value: "decimal" | "chineseCounting" | "bullet" | "lowerRoman" | ... */
-    numFmt: string
-    /** OOXML lvlText pattern: e.g. "%1." / "%1.%2" / "第%1章" */
-    lvlText: string
-    styleId: string
-    start?: number
-    /**
-     * Additional manual-prefix patterns to strip from paragraphs at this level.
-     * Same syntax as `text` (e.g. "%1.%2", "%1.", "（%1）"). Tried in order;
-     * the first regex that matches the leading text of a run is removed.
-     * If omitted, the level falls back to using only `text` for stripping.
-     * Useful when authors mixed numbering styles across chapters
-     * (e.g. some H2 written as "1.1 …", others as "1. …").
-     */
-    stripPrefixPatterns?: string[]
-    /**
-     * Character inserted between the auto-generated marker and the paragraph
-     * text (OOXML <w:suff>). Word's default is "tab", which renders an ugly
-     * gap unsuitable for CJK conventions like "一、研究方案". When omitted,
-     * the value is inferred from trailing whitespace in `lvlText`:
-     * 0 spaces → "nothing", 1 space → "space", 2+ → "tab"; the inferred
-     * trailing whitespace is stripped from the emitted lvlText so the gap
-     * isn't double-counted.
-     */
-    suff?: "tab" | "space" | "nothing"
-    /**
-     * rPr applied to the auto-generated number marker only (not the title text).
-     * Use to keep designs where headings have e.g. blue numbering + black title.
-     */
-    numRPr?: {
-      fontLatin?: string
-      fontCJK?: string
-      size?: number
-      bold?: boolean
-      italic?: boolean
-      color?: string
-    }
-  }>
-}
-
-export interface AssignmentEntry {
-  para: number
-  action: "keep" | "restyle" | "flag"
-  style?: string
-  reason?: string
-}
-
-export interface BulkRule {
-  fingerprint: string
-  style: string
-}
-
-export interface PatternRule {
-  /**
-   * JavaScript regex source matched against paragraph plain text. Useful for
-   * roles that are best identified by content prefix rather than visual
-   * fingerprint: figure captions ("^图\\s*\\d"), table captions ("^表\\s*\\d"),
-   * references ("^\\[\\d+\\]"), keyword lines ("^(关键词|Keywords?)\\s*[:：]").
-   */
-  regex: string
-  flags?: string
-  style: string
-  /**
-   * If true, strip the matched leading text from the paragraph (like
-   * stripPrefixPatterns does for numbering). Useful when the matched
-   * content is a label that the new style provides via numbering or
-   * bookmark fields.
-   */
-  stripMatch?: boolean
-}
-
-/** Theme-level font overrides. Modifies the document's theme1.xml font
- * scheme so the "+正文" / "+标题" entries in Word's font dropdown reflect
- * the new fonts, AND so any docDefaults / styles / runs that reference
- * theme fonts automatically resolve to the new values.
+/* ------------- public config types -------------
  *
- * Use this when the user expresses a *document-design* intent — "把这份文档
- * 的主题字体改成 X / Y" or "全文都用宋体" — i.e. they want a uniform default
- * across the whole document including content the agent didn't explicitly
- * restyle. For role-specific changes ("标题黑体 / 正文宋体"), prefer
- * per-style overrides on `styles[]` instead — those are more precise and
- * don't touch the document's design-level font scheme.
- *
- * Slots map directly to OOXML theme font scheme entries (ECMA-376 §20.1.4.1.3):
- *   majorLatin   → fontScheme/majorFont/latin    (used by "+标题" Latin)
- *   majorEastAsia → fontScheme/majorFont/ea      (used by "+标题" CJK)
- *   minorLatin   → fontScheme/minorFont/latin    (used by "+正文" Latin)
- *   minorEastAsia → fontScheme/minorFont/ea      (used by "+正文" CJK)
- *
- * Specify only the slots the user actually wants changed; unspecified slots
- * stay at the document's existing values.
+ * Single source of truth: zod schemas in config-schema.ts. Static types here
+ * are inferred from those schemas so runtime validation and TS types stay
+ * locked together — adding/removing/renaming a field on the schema flows
+ * straight through to every consumer's type checks. Field-level docs
+ * (semantics, examples, when-to-use) live in references/apply-styles-config.md
+ * because that's what the agent actually reads at runtime; types here just
+ * declare the surface.
  */
-export interface ThemeFontsSpec {
-  majorLatin?: string
-  majorEastAsia?: string
-  minorLatin?: string
-  minorEastAsia?: string
-}
 
-export interface TemplateImportConfig {
-  /** Path to the template .docx whose styles will be copied into source. */
-  source: string
-  /**
-   * styleIds to import from the template. Their basedOn ancestors are
-   * pulled in transitively. If the source already declares the same ID,
-   * the template's definition wins (template is treated as authoritative,
-   * which is the "stylebook" use case).
-   */
-  styles: string[]
-  /**
-   * If any imported style references a numbering scheme (numPr), copy the
-   * corresponding abstractNum from the template's numbering.xml and create
-   * a fresh numId in the source. Default: true. Set false to keep imported
-   * styles' numPr but rely on the source's existing numIds (rare).
-   */
-  importNumbering?: boolean
-}
-
-export interface ApplyConfig {
-  /**
-   * Preview mode: run the entire pipeline in memory and print the report,
-   * but skip writing the output file and skip post-write validation. Use
-   * this to iterate on configs quickly without disk churn or spurious
-   * artifacts. Settable via the --dry-run CLI flag too.
-   */
-  dryRun?: boolean
-  source: string
-  output: string
-  /**
-   * Import named styles from a template document. Useful when a thesis /
-   * report template defines the canonical Heading1, BodyText, Caption etc.
-   * — pull them in wholesale instead of transcribing each field by hand.
-   */
-  template?: TemplateImportConfig
-  /**
-   * Theme-level font overrides — modify the document's design-level font
-   * scheme (theme1.xml). Use for whole-document defaults; for role-specific
-   * font changes, prefer styles[] overrides. See ThemeFontsSpec docs.
-   */
-  theme?: { fonts?: ThemeFontsSpec }
-  /** Optional. When omitted (or undefined), the engine treats it as `[]` —
-   * useful for pure template-import or numbering-only operations. CLIs decide
-   * whether their entry point requires a non-empty styles list. */
-  styles?: StyleConfigEntry[]
-  numbering?: NumberingConfig
-  assignments?: AssignmentEntry[]
-  bulk_rules?: BulkRule[]
-  /**
-   * Regex-based assignment by paragraph text. Resolution order:
-   *   exclude > assignments > pattern_rules > bulk_rules > implicit-keep.
-   * First matching pattern wins (within pattern_rules they're tried in order).
-   */
-  pattern_rules?: PatternRule[]
-  /**
-   * Per-style record of the user's original natural-language spec, e.g.
-   *   { Heading1: "标题用黑体三号加粗居中", BodyText: "正文宋体小四…" }
-   *
-   * IMPORTANT: This field is annotation-only. The script does NOT parse it.
-   * The agent (LLM) is responsible for translating natural language into
-   * the structured `styles[i]` fields — an LLM handles negation, synonyms,
-   * hierarchical references, sentence structure, and unfamiliar fonts /
-   * colors that no fixed regex parser ever could.
-   *
-   * What the script does with this string: records it in the change report
-   * next to the agent-resolved structured fields so any reader (the user,
-   * a second-pass agent, or a reviewer) can verify the translation by eye.
-   * That side-by-side display is the verification mechanism — not a regex
-   * match, which would silently mistranslate "不要加粗" as "加粗".
-   */
-  requirements?: Record<string, string>
-  exclude?: number[]
-}
+export type StyleConfigEntry = z.infer<typeof StyleEntrySchema>
+export type NumberingConfig = z.infer<typeof NumberingSchema>
+export type AssignmentEntry = z.infer<typeof AssignmentSchema>
+export type BulkRule = z.infer<typeof BulkRuleSchema>
+export type PatternRule = z.infer<typeof PatternRuleSchema>
+export type ThemeFontsSpec = z.infer<typeof ThemeFontsSchema>
+export type TemplateImportConfig = z.infer<typeof TemplateSchema>
+export type ApplyConfig = z.infer<typeof ApplyConfigSchema>
 
 /* ------------- internal data shapes (cross-module passes) ------------- */
 

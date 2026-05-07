@@ -39,10 +39,6 @@ import type {
   StyleResolutionEntry,
 } from "./types.ts"
 
-// Re-export the public config type so direct callers (and the narrow CLIs)
-// can keep importing it from this module.
-export type { ApplyConfig } from "./types.ts"
-
 export async function applyStyles(source: string, output: string, config: ApplyConfig) {
   // 0. Default styles[] to [] when omitted. Pure template-import and
   // numbering-only configs don't need to declare any styles; CLIs that
@@ -112,11 +108,6 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let templateImport: ImportResult | null = null
   if (config.template) {
     const tplCfg = config.template
-    if (!Array.isArray(tplCfg.styles) || tplCfg.styles.length === 0) {
-      throw new Error(
-        "config.template.styles must be a non-empty array of styleIds to import",
-      )
-    }
     const tplPath = resolve(tplCfg.source)
     if (!existsSync(tplPath)) {
       throw new Error(`template not found: ${tplPath}`)
@@ -217,47 +208,16 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     if (src.fromParagraph !== undefined) derivedFrom.set(def.id, src.fromParagraph)
   }
 
-  // 5. Inject numbering
+  // 5. Inject numbering. Shape (required fields, enums, unknown-key
+  // rejection, descending-placeholder ordering) is enforced upstream by the
+  // zod schema; what's left here is the cross-field check that needs runtime
+  // context — the level's styleId must resolve in the source's styles.xml or
+  // in config.styles[]. Template-imported styles have already landed in
+  // stylesDoc by this point, so they count as valid targets too. Also emit
+  // the placeholder-count sanity warning, which is a heuristic (warn, not
+  // throw) that doesn't fit a schema rule.
   if (config.numbering && config.numbering.levels.length > 0) {
-    // Schema-strict: reject unknown fields with a helpful "did you mean" hint
-    // for the most common misplacement. Without this, an agent that puts
-    // `stripPrefixPatterns` at the top level (a natural shape — "broadcast
-    // these across all levels") gets silently ignored: the field doesn't
-    // exist, the per-level patterns fall back to [lvlText], and only some of
-    // the doc's typed prefixes get stripped. Agent sees a normal-looking
-    // dry-run report and ships broken numbering.
-    const KNOWN_NUMBERING_KEYS = new Set(["levels"])
-    for (const k of Object.keys(config.numbering)) {
-      if (KNOWN_NUMBERING_KEYS.has(k)) continue
-      const hint = k === "stripPrefixPatterns"
-        ? ` — stripPrefixPatterns belongs INSIDE each level (numbering.levels[i].stripPrefixPatterns), not at the top of numbering.`
-        : ""
-      throw new Error(
-        `numbering: unknown field "${k}".${hint} Supported top-level fields: [${[...KNOWN_NUMBERING_KEYS].join(", ")}].`,
-      )
-    }
-    const KNOWN_LEVEL_KEYS = new Set([
-      "level", "numFmt", "lvlText", "styleId", "start",
-      "stripPrefixPatterns", "suff", "numRPr",
-    ])
-    const KNOWN_SUFF_VALUES = new Set(["tab", "space", "nothing"])
-    for (const [i, lvl] of config.numbering.levels.entries()) {
-      for (const k of Object.keys(lvl)) {
-        if (KNOWN_LEVEL_KEYS.has(k)) continue
-        throw new Error(
-          `numbering.levels[${i}]: unknown field "${k}". Supported: [${[...KNOWN_LEVEL_KEYS].sort().join(", ")}].`,
-        )
-      }
-    }
-
     const declaredIds = new Set(config.styles.map((s) => s.id))
-    // Numbering levels can also bind to styles already present in the
-    // document's styles.xml without redeclaring them in config.styles[].
-    // This unlocks the "migrate numbering only" workflow — agent specifies
-    // numbering levels that target the doc's existing Heading1/2/3 without
-    // having to re-extract their definitions. Template-imported styles also
-    // landed in stylesDoc by this point, so they're valid numbering targets
-    // too.
     const existingStyleIds = new Set<string>()
     for (const s of getChildrenNS(stylesDoc.documentElement!, NS.w, "style")) {
       const sid = wAttr(s, "styleId")
@@ -265,25 +225,6 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     }
     const validNumberingTargets = new Set([...declaredIds, ...existingStyleIds])
     for (const [i, lvl] of config.numbering.levels.entries()) {
-      // Required-field validation. Without this an undefined `lvlText` /
-      // `numFmt` crashes downstream with "Cannot read properties of
-      // undefined" instead of pointing at the offending field.
-      if (typeof lvl.level !== "number") {
-        throw new Error(`numbering.levels[${i}]: missing required field "level" (number, 0-8)`)
-      }
-      if (typeof lvl.numFmt !== "string" || !lvl.numFmt) {
-        throw new Error(
-          `numbering.levels[${i}]: missing required field "numFmt" (e.g. "decimal", "chineseCounting", "bullet")`,
-        )
-      }
-      if (typeof lvl.lvlText !== "string") {
-        throw new Error(
-          `numbering.levels[${i}]: missing required field "lvlText" (level text pattern, e.g. "%1.", "%1.%2", "第%1章")`,
-        )
-      }
-      if (typeof lvl.styleId !== "string" || !lvl.styleId) {
-        throw new Error(`numbering.levels[${i}]: missing required field "styleId" (paragraph style id this level binds to)`)
-      }
       if (!validNumberingTargets.has(lvl.styleId)) {
         throw new Error(
           `numbering.levels[${i}]: styleId "${lvl.styleId}" doesn't exist.\n` +
@@ -291,39 +232,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
             `  Existing in styles.xml: [${[...existingStyleIds].sort().join(", ")}]`,
         )
       }
-      if (lvl.suff !== undefined && !KNOWN_SUFF_VALUES.has(lvl.suff)) {
-        throw new Error(
-          `numbering.levels[${i}]: invalid suff "${lvl.suff}". Allowed: [${[...KNOWN_SUFF_VALUES].join(", ")}]. Omit to auto-infer from trailing whitespace in lvlText.`,
-        )
-      }
-      // sanity-check stripPrefixPatterns vs lvlText placeholder count: a
-      // pattern with more %N placeholders than the level can produce will
-      // never match (e.g. "%1.%2.%3" on a level-0 lvlText "%1.")
       const numPlaceholders = (lvl.lvlText.match(/%\d/g) ?? []).length
-      const stripPatterns = lvl.stripPrefixPatterns ?? []
-      for (const p of stripPatterns) {
+      for (const p of lvl.stripPrefixPatterns ?? []) {
         const pn = (p.match(/%\d/g) ?? []).length
         if (pn > numPlaceholders) {
           console.error(
             `Warning: numbering.levels[${i}].stripPrefixPatterns "${p}" has ${pn} placeholders but lvlText "${lvl.lvlText}" has only ${numPlaceholders}. Pattern may match more than intended.`,
-          )
-        }
-      }
-      // Strip patterns are tried in array order, first match wins. If a
-      // shorter pattern (fewer %N placeholders) appears before a longer one,
-      // it will swallow the prefix the longer one wanted — e.g.
-      // ["%1.", "%1.%2"] strips just "1." from "1.1 ..." leaving ".1 ...".
-      // Catch this at config time instead of letting it write bad data.
-      const placeholderCounts = stripPatterns.map(
-        (p) => (p.match(/%\d/g) ?? []).length,
-      )
-      for (let j = 1; j < placeholderCounts.length; j++) {
-        if (placeholderCounts[j]! > placeholderCounts[j - 1]!) {
-          throw new Error(
-            `numbering.levels[${i}].stripPrefixPatterns must be ordered by descending placeholder count — ` +
-              `"${stripPatterns[j - 1]}" (${placeholderCounts[j - 1]} placeholders) before "${stripPatterns[j]}" (${placeholderCounts[j]} placeholders) ` +
-              `means the shorter pattern matches first and strips a prefix the longer one wanted. ` +
-              `Reorder so longer patterns come first, e.g. ["%1.%2", "%1."].`,
           )
         }
       }

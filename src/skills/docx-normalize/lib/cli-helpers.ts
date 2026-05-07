@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs"
 import { resolve } from "node:path"
-import { applyStyles, type ApplyConfig } from "./apply-styles.ts"
+import { applyStyles } from "./apply-styles.ts"
+import { parseConfig, type ApplyConfig } from "./config-schema.ts"
 
 /**
  * Shared scaffolding for the four apply-style-family CLIs (apply_styles,
@@ -34,17 +35,24 @@ export async function runCli(spec: CliSpec): Promise<void> {
     console.error(`Usage: node scripts/${spec.script} [--dry-run] <config.json>`)
     process.exit(1)
   }
-  let config: ApplyConfig
+  let raw: unknown
   try {
-    config = JSON.parse(readFileSync(configPath, "utf8"))
+    raw = JSON.parse(readFileSync(configPath, "utf8"))
   } catch (err) {
     console.error(`Cannot read config: ${(err as Error).message}`)
     process.exit(1)
   }
-  if (dryRun) (config as ApplyConfig & { dryRun?: boolean }).dryRun = true
+  // Apply --dry-run before schema parse so it's captured by the schema's
+  // boolean check (and survives strictObject's unknown-key rejection).
+  if (dryRun && raw && typeof raw === "object") {
+    (raw as { dryRun?: boolean }).dryRun = true
+  }
 
-  if (!config.source || !config.output) {
-    console.error("config.source and config.output are required")
+  let config: ApplyConfig
+  try {
+    config = parseConfig(raw)
+  } catch (err) {
+    console.error((err as Error).message)
     process.exit(1)
   }
 
