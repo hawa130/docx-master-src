@@ -15,16 +15,17 @@ Tools only present facts — computed styles, element positions, document struct
 
 ## What Are You Doing?
 
-Pick the path that matches the user's request. Each path's workflow is below.
+Pick the path that matches **what the user wants the document to become after the operation** — not what words they used. Same surface phrasing can land in different paths depending on intent; the examples below illustrate the concept, they're not triggers.
 
-| User intent | Path |
-|---|---|
-| 完整排版 / 套学校格式 / 按这个模板做 / "排版乱了帮我整理" | → **Full Standardization** |
-| 加 / 改 / 修单一处样式（"加个 Reference 样式" / "Heading2 字号改小一点" / "其他不动") | → **Targeted Edit** |
-| 检查文档合不合规范，但**不**修改 | → **Audit** |
-| 上面没覆盖（自定义水印、特殊 OOXML 操作等） | → **Escape Hatch** |
+- **Full Standardization** — the user is handing the document over for you to bring into a consistent form, you're the one deciding the rules. Default when intent is broad or unspecified. *Illustrative phrasings: "帮我排一下版", "套学校格式", "按这个模板做", or just receiving a docx without specifics.*
 
-When in doubt — user just hands over a docx without specifics, or says broad things like "排版一下" / "按这个模板" — default to **Full Standardization**. But when scope is explicitly narrowed ("只改..." / "保留..." / "加一个 X，其他不动" / "Heading2 改小一号"), don't fall back to full; **Targeted Edit** is the right tool.
+- **Targeted Edit** — the user is naming focused changes and expects everything else untouched. The signal is *narrowed scope*: they're either describing a specific change, or asking that something be preserved. *Illustrative phrasings: "加个 Reference 样式，其他不动", "Heading2 字号改小一号", "只调正文行距", "保留手动编号".*
+
+- **Audit** — the user wants to check the doc against a spec without modifying it. The output is a violation report, not a new docx. *Illustrative phrasings: "看看这份合不合学校规范", "对照这个标准检查一下".*
+
+- **Escape Hatch** — the request can't be expressed via the paths above. Custom OOXML manipulation territory. Reach for this only after confirming the other paths genuinely don't fit.
+
+When intent is genuinely ambiguous (broad request that could be either standardization or audit; mixed-scope ask), prefer asking one focused question over guessing.
 
 ## Iterating is Normal
 
@@ -272,7 +273,7 @@ Iterate with `apply_styles --dry-run` first. The change report has several secti
 
 ## Path: Targeted Edit
 
-When the user wants a focused change to an already-formatted document while leaving everything else untouched. Triggers: "加个 X 样式 / 其他不动", "Heading2 字号改小一号", "把所有 [N] 开头的段落统一缩进", "保留手动编号，只调字体".
+The user is expressing focused changes with the rest of the document expected to stay untouched. The decisive signal is *scope narrowing* — they either name a specific change, or ask that something be preserved — not a particular phrase. *Illustrative phrasings: "加个 X 样式 / 其他不动", "Heading2 字号改小一号", "把所有 [N] 开头的段落统一缩进", "保留手动编号，只调字体". A request that doesn't read as narrow on the surface but expects narrow effect lands here too.*
 
 **Mindset:** small, focused, additive. Locate target → minimal config → dry-run → verify → apply. Don't try to classify the whole document.
 
