@@ -25,9 +25,16 @@ Skipping the planning step produces output that fills slots but typesets badly: 
 
 ### Ask, don't decide
 
-This is a **mandatory checkpoint**, not advice. After surveying content and template (planning steps 1–2), and **before composing any `apply_edits` or `apply_styles` config**, you must send the user one message naming every applicable strategy choice from the list below, naming the trade-offs, and proposing a default — then **wait** for the user's response. Authoring the config and the message in the same turn defeats the purpose; you have to actually pause and yield.
+This is a **mandatory checkpoint**, not advice. After surveying content and template (planning steps 1–2), and **before composing any `apply_edits` or `apply_styles` config**, you must yield to the user with a strategy-confirmation question covering every applicable choice from the list further down. Authoring the config and the question in the same turn defeats the purpose.
 
-If you complete the task without asking, the result is treated as a failure even if the output looks fine. The point is not to find the right answer; it is to give the user agency over the design of their document.
+This rule applies regardless of how the task was phrased to you. "Use the skill to fill X with Y" / "do whatever the skill says" / "approach this however the skill directs" — none of these grant decision authority over design choices. They assume the strategy is obvious; it usually isn't.
+
+#### How to ask, depending on your runtime
+
+- **Conversational session** (you can produce multiple turns and the user replies between them): send one message with the strategy questions, **don't execute anything in that turn**, wait for the reply.
+- **Subagent / one-shot task** (you produce one final output and return to a parent): your final output **IS the question**. List the choices + trade-offs + your proposed default, and return *without* having run any `apply_edits` or `apply_styles`. The parent will collect the user's input and re-dispatch with the chosen strategy. **Do not execute your best guess and offer to redo** — that is deciding silently with extra steps; the user wanted input *before* the edit, not after.
+
+If you complete the task without yielding for input, the result is treated as a failure even if the output looks fine. The point is not to find the right answer; it is to give the user agency over the design of their document.
 
 #### Rationalizations that look like reasons to proceed but are not
 
