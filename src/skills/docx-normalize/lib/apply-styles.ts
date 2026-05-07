@@ -1052,21 +1052,39 @@ function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "u
     result = "created"
   }
 
-  // name: required and idempotent — replace any existing one.
-  for (const c of getChildrenNS(target, w, "name")) target.removeChild(c)
-  const nameEl = stylesDoc.createElementNS(w, "w:name")
-  nameEl.setAttributeNS(w, "w:val", def.name)
-  target.appendChild(nameEl)
+  // name: required and idempotent. When the element already exists, update
+  // its w:val in place — otherwise removing-and-re-appending would push it
+  // to the end of <w:style>, but OOXML's schema (ECMA-376 §17.7.4) requires
+  // <w:name> to be the FIRST child. Word is lenient enough to load
+  // mis-ordered styles, but stricter validators (and other docx libraries)
+  // reject them.
+  let nameEl = firstChildNS(target, w, "name")
+  if (nameEl) {
+    nameEl.setAttributeNS(w, "w:val", def.name)
+  } else {
+    nameEl = stylesDoc.createElementNS(w, "w:name")
+    nameEl.setAttributeNS(w, "w:val", def.name)
+    target.insertBefore(nameEl, target.firstChild)
+  }
 
   // basedOn: only touched when def explicitly provides it; otherwise the
   // existing style's basedOn (and inheritance chain) is preserved. Avoids
   // silently flattening the cascade when an agent overrides a style without
-  // re-specifying its parent.
+  // re-specifying its parent. Same in-place update pattern as name to keep
+  // the element in its original DOM position (basedOn must come before pPr
+  // per the OOXML schema).
   if (def.basedOn) {
-    for (const c of getChildrenNS(target, w, "basedOn")) target.removeChild(c)
-    const bo = stylesDoc.createElementNS(w, "w:basedOn")
-    bo.setAttributeNS(w, "w:val", def.basedOn)
-    target.appendChild(bo)
+    let bo = firstChildNS(target, w, "basedOn")
+    if (bo) {
+      bo.setAttributeNS(w, "w:val", def.basedOn)
+    } else {
+      bo = stylesDoc.createElementNS(w, "w:basedOn")
+      bo.setAttributeNS(w, "w:val", def.basedOn)
+      // OOXML: basedOn comes right after name. Insert there.
+      const afterName = nameEl.nextSibling
+      if (afterName) target.insertBefore(bo, afterName)
+      else target.appendChild(bo)
+    }
   }
 
   // pPr: mutate in place. Remove only the children listed in
