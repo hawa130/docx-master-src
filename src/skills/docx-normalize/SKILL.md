@@ -149,15 +149,15 @@ Modes can mix within one `styles` array:
 
 **Chinese font size names** (初号/一号/.../小六): see `references/chinese-font-sizes.md` for the pt mapping when the user specifies sizes in Chinese terms.
 
-**Three layers for setting fonts — pick by intent, not by reflex:**
+**Three layers for setting fonts. Decide by understanding what the user is expressing — the example phrases below are illustrations, not keyword triggers.**
 
-| User intent | Tool | Effect |
-|---|---|---|
-| "标题黑体 / 正文宋体" — role-specific | `styles[]` per-role overrides | Targeted; only the styled paragraphs change |
-| "全文都用宋体" — whole-doc default | `Normal` style in `styles[]` (everything inheriting Normal picks it up) | Wide; covers most pStyle-bound paragraphs but not docDefaults-only ones |
-| "把这份文档的主题字体改成 X / Y" — design intent | `theme.fonts` block | Widest; updates theme1.xml so "+正文" / "+标题" entries in Word's UI reflect the new fonts, AND any docDefaults / styles that reference theme fonts auto-resolve to the new values |
+- **Per-role override** (`styles[]` entries with `fontEastAsia` / `font` / `overrides`). Use when the user is talking about *specific roles* and you can name which ones. Effect: targeted, only the styled paragraphs change. Illustrative phrasings: "标题黑体, 正文宋体", "图注小五号", "Heading2 字号改小一号", "参考文献保持原样".
 
-When in doubt: per-role > Normal > theme. The wider the layer, the easier it is to surprise the user with effects on chrome paragraphs they didn't intend to change. Reach for `theme.fonts` when the user explicitly expresses design-level intent (typically "全文都改"), not as a default for "set font" requests.
+- **Whole-doc default** (declare a `Normal` entry in `styles[]`; other styles' `basedOn: "Normal"` chain inherits from it). Use when the user is expressing a uniform default for everything that doesn't have a more specific role decided — no role distinction in their phrasing. Effect: wide; covers most pStyle-bound paragraphs via the cascade. Illustrative phrasings: "整篇统一用 Times New Roman", "全文宋体小四" without further role specification.
+
+- **Document-design font scheme** (`theme.fonts` block). Use when the user is expressing intent at the document's *design layer* — they expect Word's "+正文" / "+标题" UI entries to reflect new fonts, they're talking about the template's font scheme, or they want defaults to propagate even into chrome / future-edited content. Effect: widest; updates theme1.xml directly so any docDefaults / styles / runs that reference theme fonts auto-resolve to the new values. Illustrative phrasings: "把这份文档的主题字体改成 X/Y", "更新文档的字体方案".
+
+The same surface phrase ("把字体改成宋体") can fall into any of the three depending on what the user actually means; ask yourself what they'd expect to change after the operation, not which words appeared. Bias toward the narrowest layer that captures the intent — wider layers risk surprising the user with effects on chrome they didn't intend to touch.
 
 `theme.fonts` and `styles[]` overrides compose cleanly: theme sets the document baseline, styles override specific roles on top.
 
