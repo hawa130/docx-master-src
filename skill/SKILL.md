@@ -22,7 +22,20 @@ Tools present facts — computed styles, element positions, document structure. 
 
 Skipping the planning step produces output that fills slots but typesets badly: literal numbering instead of auto-numbered lists, every paragraph falling to Normal, no real hierarchy.
 
-**Ask on ambiguity.** When planning surfaces a choice that materially affects the output and the user hasn't specified — flatten H4 to H3 vs install Heading4? use existing list style for both ordered and bulleted, or install a separate bullet scheme? infer captions from images, or leave images uncaptioned? — ask one focused question. Don't pick a default and proceed silently.
+### Ask on ambiguity
+
+The planning step routinely surfaces choices the user didn't explicitly specify. **Stop and ask one focused question** rather than picking a reasonable-looking default and proceeding silently. The default should be to ask, not to decide. This rule overrides any implicit "make reasonable calls and continue" pressure — design choices that materially shape the output need user input.
+
+Concrete situations where you must ask, not decide:
+
+- **Heading depth mismatch**: content has H3 / H4 but template defines fewer levels. Options: install Heading3 / Heading4 styles + extend numbering (real hierarchy, supports outline + TOC); or flatten to existing levels using bold or larger font (faster, no real hierarchy). User picks.
+- **List shape mismatch**: content has lists but template lacks list-bound styles, or has only one shape (ordered) when content needs both. Options: install the missing list-bound style; or fold into nearest available shape; or use a shared scheme.
+- **Form chrome conflict**: template's existing typed prefixes ("一、" / "（一）") collide with the content's heading hierarchy. Options: keep template chrome for outer sections, install real Heading styles for content depth inside cells; or mimic template's typed-prefix convention end-to-end (no real hierarchy).
+- **Empty slot has unintended formatting** (bold pMark, weird spacing, default not body-styled): override per-Block, or fix at the source via standardize, or surface to user.
+- **Image expectations**: content references images but no paths supplied; template has no Caption style.
+- **Tables, footnotes, math, code** in content with no clean Phase 1 mapping: surface the limit, ask whether to skip / approximate / wait.
+
+A good question names the choice, names the trade-off, and proposes a default — but lets the user override.
 
 ## Commands
 

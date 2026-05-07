@@ -28,6 +28,13 @@ import {
 
 const w = NS.w
 
+/** OOXML toggle element: presence-only when `on=true`, val="0" when false. */
+function toggleElement(ownerDoc: Document, qname: string, on: boolean): Element {
+  const el = ownerDoc.createElementNS(w, qname)
+  if (!on) el.setAttributeNS(w, "w:val", "0")
+  return el
+}
+
 /* ------------- run-level format ------------- */
 
 export function buildRPrChildren(fmt: RunFormat, ownerDoc: Document): Element[] {
@@ -51,20 +58,27 @@ export function buildRPrChildren(fmt: RunFormat, ownerDoc: Document): Element[] 
     szCs.setAttributeNS(w, "w:val", String(Math.round(fmt.size * 2)))
     out.push(szCs)
   }
-  if (fmt.bold) {
-    out.push(ownerDoc.createElementNS(w, "w:b"))
-    out.push(ownerDoc.createElementNS(w, "w:bCs"))
+  // Toggles emit both states: `true` adds the on-marker, `false` adds
+  // `w:val="0"` so it overrides an inherited / cascaded `on`. Without the
+  // explicit off, MDF inheritance from a bold anchor would silently
+  // re-bold the new content. `undefined` skips the property (style
+  // cascade decides).
+  if (fmt.bold !== undefined) {
+    out.push(toggleElement(ownerDoc, "w:b", fmt.bold))
+    out.push(toggleElement(ownerDoc, "w:bCs", fmt.bold))
   }
-  if (fmt.italic) {
-    out.push(ownerDoc.createElementNS(w, "w:i"))
-    out.push(ownerDoc.createElementNS(w, "w:iCs"))
+  if (fmt.italic !== undefined) {
+    out.push(toggleElement(ownerDoc, "w:i", fmt.italic))
+    out.push(toggleElement(ownerDoc, "w:iCs", fmt.italic))
   }
-  if (fmt.underline) {
+  if (fmt.underline !== undefined) {
     const u = ownerDoc.createElementNS(w, "w:u")
-    u.setAttributeNS(w, "w:val", "single")
+    u.setAttributeNS(w, "w:val", fmt.underline ? "single" : "none")
     out.push(u)
   }
-  if (fmt.strike) out.push(ownerDoc.createElementNS(w, "w:strike"))
+  if (fmt.strike !== undefined) {
+    out.push(toggleElement(ownerDoc, "w:strike", fmt.strike))
+  }
   if (fmt.color) {
     const c = ownerDoc.createElementNS(w, "w:color")
     c.setAttributeNS(w, "w:val", fmt.color)
