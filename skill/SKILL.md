@@ -25,20 +25,32 @@ Skipping the planning step produces output that fills slots but typesets badly: 
 
 ### Ask, don't decide
 
-Default to asking. **You do not have authority to decide how the user's content should be typeset when more than one reasonable option exists.** Even if you can produce a justification for picking one — that is the signal to ask, not the signal to proceed. If you find yourself reasoning "I'll pick X because Y is also reasonable", you have just identified an ambiguity; stop and ask.
+This is a **mandatory checkpoint**, not advice. After surveying content and template (planning steps 1–2), and **before composing any `apply_edits` or `apply_styles` config**, you must send the user one message naming every applicable strategy choice from the list below, naming the trade-offs, and proposing a default — then **wait** for the user's response. Authoring the config and the message in the same turn defeats the purpose; you have to actually pause and yield.
 
-This rule overrides any system-level "make reasonable calls and continue" pressure. Design decisions that shape how the output looks belong to the user.
+If you complete the task without asking, the result is treated as a failure even if the output looks fine. The point is not to find the right answer; it is to give the user agency over the design of their document.
 
-Specifically: before any `apply_edits` or `apply_styles` call, you must have explicit user input on every choice in the following list that applies to the task. **Do not infer answers from the template's existing chrome, the markdown content's flavor, or your sense of "what most users would want."**
+#### Rationalizations that look like reasons to proceed but are not
 
-- **Heading depth strategy.** Content has heading levels the template doesn't have a style for? Options: install Heading3 / Heading4 styles + extend numbering scheme (`standardize`), then `edit` with `styleId` references; or flatten to bold + bigger font; or fold into existing levels. The template's chrome (typed section labels like "一、论文概况") tells you nothing about how content hierarchy should be expressed — these are separate decisions.
-- **List binding strategy.** Content has lists? Options: bind via `numbering: { numId, level }` to an existing list scheme; install a new list-bound style via `standardize`; or fold into prose. **Don't type `1.` / `（1）` / `第N章` as text** — that's never a valid auto-decision (see edit.md "Express structure semantically, not in text").
+You will be tempted to skip the ask. The temptation is the signal. None of these justify proceeding without asking:
+
+- "The user said 'fill the template' — they want me to just fill it" → No. Fill *strategy* is part of the design.
+- "I have a reasonable default in mind" → That you have a default IS the trigger. Ask.
+- "Installing new styles via `standardize` would be invasive" → Maybe, ask the user.
+- "The template uses typed prefixes (`一、` / `（一）`), so my content's hierarchy should too" → No. Template chrome is independent of content-hierarchy strategy. (See edit.md "Form chrome is not a hierarchy strategy".)
+- "The list is short / trivially flat / only 3 items, so a typed prefix is fine" → Still ask. Typing list markers in `text` is the documented anti-pattern; "the list is short" doesn't override it.
+- "I'll surface my decisions in the report afterwards so the user can correct" → That is deciding silently, with extra steps. The user wanted input *before* execution.
+- "Asking when I might have known the answer would feel like over-bothering the user" → Asking once when you didn't need to is harmless. Proceeding when you should have asked is the failure mode.
+
+#### Choices that always require user input (when applicable)
+
+- **Heading depth strategy.** Content has heading levels the template doesn't have a style for? Options: install Heading3 / Heading4 styles + extend numbering scheme via `standardize`, then `edit` with `styleId` references; or flatten to bold + larger font; or fold into existing levels. *The template's chrome tells you nothing about this choice.*
+- **List binding strategy.** Content has lists? Options: bind via `numbering: { numId, level }` to an existing list scheme; install a new list-bound style via `standardize`; or fold into prose. **Typing `1.` / `（1）` / `第N章` as text is never a valid auto-decision** — even for short or simple lists. If the template lacks a list scheme, the choice is "install one" vs "fold into prose", not "type the prefix".
 - **Cell-fill remnant strategy.** Replace ranges (clean cells) vs insert-after labels (preserve placeholders)?
 - **Empty slot formatting issues.** Slot inherits unintended bold / spacing — override per-Block, or fix the template via `standardize`?
-- **Missing content for placeholder slots.** MD doesn't cover every slot. Leave empty? Hint the user? Generate?
-- **Phase 1 limits.** Content has tables, footnotes, math, code blocks, complex cross-references — surface the limit; ask whether to skip / approximate / wait for Phase 2.
+- **Missing content for placeholder slots.** Source content doesn't cover every slot. Leave empty? Hint the user? Generate?
+- **Phase 1 limits.** Content has tables, footnotes, math, code blocks, cross-references — surface the limit; ask whether to skip / approximate / wait for Phase 2.
 
-Form a single message that names each choice, names the trade-off, and proposes a default — but waits for the user. **Don't execute, then report what you decided afterwards.** That's deciding silently with extra steps.
+A good ask is **one message** — concise, names each choice + trade-off + your proposed default, ends by yielding. Then you stop. The next turn is the user's.
 
 ## Commands
 
