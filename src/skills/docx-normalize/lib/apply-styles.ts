@@ -387,11 +387,30 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // pattern with more %N placeholders than the level can produce will
       // never match (e.g. "%1.%2.%3" on a level-0 lvlText "%1.")
       const numPlaceholders = (lvl.lvlText.match(/%\d/g) ?? []).length
-      for (const p of lvl.stripPrefixPatterns ?? []) {
+      const stripPatterns = lvl.stripPrefixPatterns ?? []
+      for (const p of stripPatterns) {
         const pn = (p.match(/%\d/g) ?? []).length
         if (pn > numPlaceholders) {
           console.error(
             `Warning: numbering.levels[${i}].stripPrefixPatterns "${p}" has ${pn} placeholders but lvlText "${lvl.lvlText}" has only ${numPlaceholders}. Pattern may match more than intended.`,
+          )
+        }
+      }
+      // Strip patterns are tried in array order, first match wins. If a
+      // shorter pattern (fewer %N placeholders) appears before a longer one,
+      // it will swallow the prefix the longer one wanted — e.g.
+      // ["%1.", "%1.%2"] strips just "1." from "1.1 ..." leaving ".1 ...".
+      // Catch this at config time instead of letting it write bad data.
+      const placeholderCounts = stripPatterns.map(
+        (p) => (p.match(/%\d/g) ?? []).length,
+      )
+      for (let j = 1; j < placeholderCounts.length; j++) {
+        if (placeholderCounts[j]! > placeholderCounts[j - 1]!) {
+          throw new Error(
+            `numbering.levels[${i}].stripPrefixPatterns must be ordered by descending placeholder count — ` +
+              `"${stripPatterns[j - 1]}" (${placeholderCounts[j - 1]} placeholders) before "${stripPatterns[j]}" (${placeholderCounts[j]} placeholders) ` +
+              `means the shorter pattern matches first and strips a prefix the longer one wanted. ` +
+              `Reorder so longer patterns come first, e.g. ["%1.%2", "%1."].`,
           )
         }
       }
@@ -585,6 +604,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
 
   // 10. Print report
   printReport({
+    source,
     injected,
     updated,
     restyleStats,
@@ -1515,6 +1535,7 @@ async function validateOutput(
 /* ------------- report ------------- */
 
 function printReport(args: {
+  source: string
   injected: string[]
   updated: string[]
   restyleStats: Map<string, number>
@@ -1533,6 +1554,12 @@ function printReport(args: {
 }) {
   const lines: string[] = []
   lines.push(args.dryRun ? "=== Change Report (DRY RUN — no file written) ===" : "=== Change Report ===")
+  // Echo absolute paths up top so an agent that may have changed cwd between
+  // calls (or is reading a captured report later) can see exactly which files
+  // were involved without re-deriving from `config.source` / `config.output`.
+  lines.push(`Source: ${args.source}`)
+  lines.push(`Output: ${args.output}`)
+  lines.push("")
   if (args.templateImport) {
     const ti = args.templateImport
     const directly = ti.imported.filter((id) => !ti.pulledAncestors.includes(id))
