@@ -27,6 +27,16 @@ When intent is genuinely ambiguous (mixed scope, broad request that could be sta
 
 The split between `standardize` and `edit`: standardize works on **roles** (every H2 in the doc, every body paragraph, every figure caption); edit works on **locations** (paragraph #17, the cell at row 3 col 2 of table 1). If the user names specific paragraph indices or table cells, that's edit. If they describe a class of paragraphs, that's standardize.
 
+### Composing scopes
+
+The commands above are **scopes of mutation, not exclusive paths**. Real tasks often span more than one — compose by intent. Three concrete shapes:
+
+- **Messy template + content to fill**: `standardize` first to install a clean style system, then `edit` to insert content. Filling a dirty template directly with `edit` propagates the mess (Match-Destination-Formatting inherits whatever's there, including bad styles).
+- **Audit then fix**: `audit` (read-only) produces a violation list; `standardize` applies the fixes. Don't auto-fix without permission.
+- **Standardize then touch up**: bulk role-based reshape via `standardize`, then a few `edit` ops for paragraphs the rules missed or for content insertion the spec implied.
+
+Markdown content as input has no adapter yet — agent translates MD → Block JSON manually. Tables, footnotes, math, and cross-references in MD have no clean docx mapping in Phase 1; degrade or surface to the user.
+
 ## Tool Reference
 
 All tools invoked via `node <script> <args>`, output to stdout.

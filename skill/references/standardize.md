@@ -1,12 +1,14 @@
 # Command: `standardize`
 
-Apply style / numbering / structural changes to a Word document. Three workflows live here, distinguished by **scope** of change rather than the verbs the user used:
+Apply style / numbering / structural changes to a Word document. Operates by **role**: you describe a class of paragraphs (every H2, every figure caption, anything matching this fingerprint) and the engine restyles all matching instances.
 
-- **Full Standardization** — broad reshape, agent owns the style decisions. Default when intent is unspecified.
-- **Targeted Edit** — narrow scope, agent only touches what the user named.
-- **Escape Hatch** — request can't be expressed via the configs above; manual XML editing as a last resort.
+The sections below describe **three common config shapes**, not exclusive paths — they're points along a density spectrum. Configs are sparse by design: declare only what you're touching, leave the rest implicit.
 
-When intent is genuinely ambiguous (broad request that could be either standardization or audit; mixed-scope ask), prefer asking one focused question over guessing.
+- **Full Standardization** — broad reshape covering the whole doc, agent owns most style decisions.
+- **Targeted Edit** — narrow scope, only the styles the user named.
+- **Escape Hatch** — request can't be expressed via the config; manual XML editing as a last resort.
+
+When intent is genuinely ambiguous, prefer asking one focused question over guessing. When a task spans `standardize` + `edit` (typical for messy templates with content to fill), see SKILL.md "Composing scopes" — `standardize` first, `edit` after.
 
 ## Iterating is normal
 
@@ -330,3 +332,9 @@ If a request *can* be expressed via `apply_styles` config, do that instead. The 
   3. **Override the base AND assign chrome paragraphs to a separate fixed style** — most thorough, most config. Use for final-print-ready output.
 
   Verify the choice via the dry-run Style Resolution block before committing.
+
+## Compose with other commands
+
+- After installing the style system here, `edit` for surgical touch-ups on specific paragraphs the rules missed.
+- Mixed input (messy template + content to fill): `standardize` first → `edit` second. Filling directly with `edit` propagates the template's bad styles via Match-Destination-Formatting.
+- Read-only check before reshape: `audit`. The audit's violation list often translates directly into a `standardize` config.

@@ -86,8 +86,9 @@ Form templates pair a **label paragraph** (heading-ish style) with **empty body 
 - **Stale element**: if op A removes paragraphs and op B targets one of them, op B fails. Reorder so deletes / replaces happen last, or split into separate runs.
 - **Empty body**: `whole-body` on a doc with zero paragraphs only accepts `insert-*` (which appends before the trailing `<w:sectPr>`).
 
-## When to use a different command
+## Compose with other commands
 
-- Whole-doc role-based reshape ("classify body paragraphs as BodyText, normalize heading numbering"): `standardize`. `edit` does not classify by role or fingerprint.
-- Read-only conformance check: `audit`. `edit` always writes.
-- Single-style change without locator inspection: `standardize`'s targeted-edit path. `edit` requires explicit locators.
+- **Messy template + content**: run `standardize` first to install a clean style system, then `edit` to fill — Match-Destination-Formatting on a dirty template propagates the mess.
+- **Whole-doc role-based reshape**: `standardize`, not `edit`. `edit` does not classify by role or fingerprint.
+- **Read-only conformance check**: `audit`. `edit` always writes.
+- **Single-style change without locator inspection**: `standardize`'s targeted-edit shape — narrower than `edit`'s explicit locators when the change is "all paragraphs of role X."
