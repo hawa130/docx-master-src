@@ -208,7 +208,7 @@ Call `apply_styles` with your decision in a JSON config.
                                            //   theme1.xml so the "+正文"/"+标题" entries
                                            //   in Word's font dropdown show the new fonts.
                                            //   For role-specific changes prefer styles[]
-                                           //   overrides. See Step 4 § "Theme vs cascade".
+                                           //   overrides. See Step 4 § "Three layers for setting fonts".
 
   requirements: { Heading1: "原话...", BodyText: "..." },  // optional. ANNOTATION ONLY — script records
                                            //   the user's natural-language spec next to
@@ -225,12 +225,9 @@ Call `apply_styles` with your decision in a JSON config.
 
 Full schema in `references/config-schema.md` — read once before composing your first config.
 
-Key invariants:
-- **Paths resolve against current working directory.** `source` and `output` are passed through `path.resolve()` against cwd; absolute paths are passed through unchanged. If you may have changed directories during the session, use absolute paths to avoid surprises.
-- Paragraph indexing is 1-based, matching `#NNN` labels in the skeleton. Layout-table paragraphs are indexed; data/form tables are not.
+Config-shape invariants (cross-command invariants like file safety, paragraph indexing, paths-resolve, restyle uniform-strip live in SKILL.md and apply here unchanged):
 - Paragraph mapping order (first match wins): `exclude > assignments > pattern_rules > bulk_rules > implicit-keep`.
 - Style-field priority (later wins): defaults → template-imported → fromParagraph → direct fields → overrides.
-- Restyle behavior: when a paragraph is restyled, run-level direct formatting that is *uniform across all runs* gets stripped (so the new style's defaults take effect). Direct formatting that *differs between runs* is preserved as intentional inline emphasis — bold lead phrase + non-bold body, colored numbering prefix + black title, etc. survive automatically.
 
 ### Step 8: Validate and Report
 
