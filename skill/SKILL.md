@@ -33,7 +33,14 @@ This applies to pre-existing chrome the template designer typed by hand and to s
 
 If content has hierarchy or lists the document doesn't have styles / numbering for, **`standardize` runs first to install them, then `edit` fills**. This is not optional.
 
-**"Fill a template" is shorthand for "produce a well-formed document that incorporates source content into the template's structure"** — well-formed per Target state. The task is not "insert content while preserving the template byte-for-byte"; it is producing a properly-typeset output that combines the template's content + the new content. **Converting the template's hand-typed structural prefixes is part of fill, not beyond it.** Visual rendering after conversion is near-identical (Word renders auto-numbered "一、" the same as typed "一、"); the gain is real outline structure, TOC binding, and accept-changes granularity.
+**"Fill a template"** is the standardize-then-edit sequence below. All four steps are mandatory; partial fills produce half-converted documents (some chrome auto-numbered, some typed) which are worse than either extreme.
+
+1. Survey: content shape + document's existing styles + numbering schemes + manually-typed structural prefixes anywhere in the doc.
+2. `standardize`: install missing Heading styles, list-bound styles, captions, etc., plus a unified multi-level numbering scheme covering every hierarchy level the doc + content combined need.
+3. `standardize` (same call or chained): **convert the template's hand-typed chrome** — `一、…` `（一）…` `第N章 …` `1.1 …` — to the unified numbering via `assignments` (paragraph → heading style) + `stripPrefixPatterns` (manual prefix → auto-numbered). This is not optional. Visual rendering is preserved (Word renders auto-numbered `一、` the same as typed `一、`); logical structure is gained.
+4. `edit`: insert source content with semantic styleIds and numbering bindings.
+
+Skipping step 3 because the chrome "looks fine as-is" or "would change the form's identity" is the most common failure mode. Don't.
 
 **Source-content → styleId mapping** (fixed; install missing pieces, don't substitute):
 
