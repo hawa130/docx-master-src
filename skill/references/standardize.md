@@ -5,7 +5,7 @@ Apply style / numbering / structural changes to a Word document. Operates by **r
 The sections below describe **three common config shapes**, not exclusive paths — they're points along a density spectrum. Configs are sparse by design: declare only what you're touching, leave the rest implicit.
 
 - **Full Standardization** — broad reshape covering the whole doc, agent owns most style decisions.
-- **Targeted Edit** — narrow scope, only the styles the user named.
+- **Targeted Restyle** — narrow scope, only the styles the user named.
 - **Escape Hatch** — request can't be expressed via the config; manual XML editing as a last resort.
 
 When intent is genuinely ambiguous, prefer asking one focused question over guessing. When a task spans `standardize` + `edit` (typical for messy templates with content to fill), see SKILL.md "Composing scopes" — `standardize` first, `edit` after.
@@ -25,7 +25,7 @@ Small step → dry-run → verify → next step is a fully supported workflow, n
 
 ## Path: Full Standardization
 
-When the user wants the document brought into a consistent, standardized form. *Illustrative phrasings: "帮我排一下版", "套学校格式", "按这个模板做", or just receiving a docx without specifics.* Same surface phrasing can fall in Targeted Edit when the user signals narrowed scope; the examples illustrate the concept, they're not triggers.
+When the user wants the document brought into a consistent, standardized form. *Illustrative phrasings: "帮我排一下版", "套学校格式", "按这个模板做", or just receiving a docx without specifics.* Same surface phrasing can fall in Targeted Restyle when the user signals narrowed scope; the examples illustrate the concept, they're not triggers.
 
 ### Step 1: Understand the Goal
 
@@ -177,7 +177,7 @@ Before calling `apply_styles`, self-check:
 1. **Style values have sources** — every parameter came from user spec, template, or `inspect_style` extraction. None were invented.
 2. **Heading styles have `outlineLevel`** — required for TOC / nav / outline view. Word's built-in `Title` style has no `outlineLevel` by default; only set one if the user's template treats Title as part of the heading hierarchy (e.g., a thesis where Title is H0 above H1 chapters).
 3. **Numbering migrated** when source has typed heading prefixes (per Step 5). `stripPrefixPatterns` covers mixed variants within a role.
-4. **Every fingerprint has a decision** — restyle / keep / exclude / flag. No fingerprint left unaccounted for. *(This coverage rule applies to Full Standardization only — Targeted Edit and Audit paths do not require it.)*
+4. **Every fingerprint has a decision** — restyle / keep / exclude / flag. No fingerprint left unaccounted for. *(This coverage rule applies to Full Standardization only — Targeted Restyle and Audit paths do not require it.)*
 
 Fix any issue before proceeding.
 
@@ -236,15 +236,11 @@ Config-shape invariants (cross-command invariants like file safety, paragraph in
 Iterate with `apply_styles --dry-run` first. The change report has several sections worth scanning before committing:
 
 - **Style Resolution** — every injected style listed with user spec (if `requirements` set) next to agent-resolved fields. Read for translation correctness.
-- **Paragraphs untouched** — split into "empty (likely spacers)" and "non-empty (verify coverage)". On the Full Standardization path, an unfamiliar count under non-empty means a fingerprint slipped through; on Targeted Edit, both are expected.
+- **Paragraphs untouched** — split into "empty (likely spacers)" and "non-empty (verify coverage)". On the Full Standardization path, an unfamiliar count under non-empty means a fingerprint slipped through; on Targeted Restyle, both are expected.
 - **Manual numbering converted / Mixed manual numbering detected** — if the source mixed numbering schemes within one role (a real and common case), the report calls this out. Treat it as a normalization decision worth confirming with the user.
 - **Sample Affected Paragraphs** — first N restyled per style, with prefix-stripping notes inline. Use these to spot-check that bulk_rules / pattern_rules hit the right targets.
 
-**Safety guarantees:**
-
-- The original file is never modified — `apply_styles` writes a fresh copy.
-- The output is validated before being kept; if validation fails the output is discarded, the original returned unchanged, and the error reported. Don't silently retry on validation errors — surface them.
-- Section properties (page size, margins, headers, footers, columns) are never modified.
+**Safety guarantees:** see SKILL.md "Cross-command invariants" — original-never-modified, validation-or-discard, section properties untouched all apply unchanged.
 
 **When to `flag` vs. apply:** flag when the *role assignment* is genuinely uncertain (could be heading or emphasized body, prefix doesn't match any known pattern, ambiguous between two roles). Don't flag formatting variance within a clear role (one heading is 15pt while the rest are 16pt — just normalize it).
 
@@ -252,7 +248,7 @@ Iterate with `apply_styles --dry-run` first. The change report has several secti
 
 ---
 
-## Path: Targeted Edit
+## Path: Targeted Restyle
 
 The user is expressing focused changes with the rest of the document expected to stay untouched. The decisive signal is *scope narrowing* — they either name a specific change, or ask that something be preserved — not a particular phrase. *Illustrative phrasings: "加个 X 样式 / 其他不动", "Heading2 字号改小一号", "把所有 [N] 开头的段落统一缩进", "保留手动编号，只调字体". A request that doesn't read as narrow on the surface but expects narrow effect lands here too.*
 
@@ -270,7 +266,7 @@ The user is expressing focused changes with the rest of the document expected to
    - **Define a new style** only when no existing one fits: `fromParagraph` extracts from a representative paragraph; or specify fields directly. See § Step 4 (Define the Style System) for extraction details.
 
 3. **Write a sparse config.** Pick the narrowest tool that fits the change:
-   - **`restyle`** when the change is paragraph style assignment only — same config as `apply_styles` minus `template` / `numbering`. Most common Targeted Edit case.
+   - **`restyle`** when the change is paragraph style assignment only — same config as `apply_styles` minus `template` / `numbering`. Most common Targeted Restyle case.
    - **`migrate_numbering`** when only adding / replacing a numbering scheme. `styles[]` can be empty if you're binding to heading styles already in the doc.
    - **`import_template`** when only pulling in template styles. Often chained: `import_template` → `restyle` (apply the imported styles to paragraphs).
    - Use the unified `apply_styles` when the change spans multiple operations.
@@ -286,7 +282,7 @@ The user is expressing focused changes with the rest of the document expected to
 - **No fingerprint coverage requirement.** Step 6's coverage check is a Full Standardization rule. Here, untargeted paragraphs simply stay as they are.
 - **Run-level direct formatting on untouched paragraphs is preserved.** The uniform-strip rule fires only on paragraphs the script restyles; everything else keeps its inline formatting.
 - **Iterate.** Apply one change, dry-run, verify, then layer the next change on the result. Two small configs are easier to debug than one large one.
-- **When a request grows beyond "targeted":** if you find yourself adding 5+ styles, declaring numbering, or reaching for the template — switch to Full Standardization. Targeted Edit's discipline is keeping the change small.
+- **When a request grows beyond "targeted":** if you find yourself adding 5+ styles, declaring numbering, or reaching for the template — switch to Full Standardization. Targeted Restyle's discipline is keeping the change small.
 
 ---
 

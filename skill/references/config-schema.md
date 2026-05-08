@@ -88,8 +88,10 @@ your first config; SKILL.md only carries a top-level summary.
   hangingIndent:   null,       // optional. Same units as firstLineIndent. For
                                //   bibliography/reference entries use "2char" (or
                                //   pt to match the leading "[N] " marker width).
-  outlineLevel:    0,          // optional. 0-8. Set on heading styles to enable
-                               //   TOC / outline view / nav pane.
+  outlineLevel:    0,          // optional. 0–9 per OOXML §17.3.1.20: 0–8 are
+                               //   heading levels (0 = H1, 1 = H2, …); 9 = body
+                               //   text (no outline). Set on heading styles to
+                               //   enable TOC / outline view / nav pane.
 }
 ```
 

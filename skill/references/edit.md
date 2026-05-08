@@ -46,7 +46,7 @@ Always inspect before composing edits.
 
 #### Match-destination formatting (default)
 
-`replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` — same semantics as Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `format` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
+`replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` — same semantics as Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
 
 ### Blocks (in `with` / `content`)
 
@@ -68,7 +68,7 @@ If content has hierarchy or list shape, bind it via `styleId` and `numbering` �
 
 If the styleId or numId you need doesn't exist in the document, the **right move is `standardize` to install it**, then come back to `edit`. Falling back to typed prefixes is a footgun: the result fails to typeset as a real list or heading; Word loses outline navigation, TOC binding, and accept-changes granularity; the document's logical structure no longer matches its visual structure.
 
-When in doubt — should I install Heading3, or fold sub-headings into bold? — **ask the user**, per SKILL.md "Ask on ambiguity". Don't decide silently.
+When in doubt — should I install Heading3, or fold sub-headings into bold? — **ask the user**, per SKILL.md "Ask, don't decide". Don't decide silently.
 
 #### Form chrome is not a hierarchy strategy
 

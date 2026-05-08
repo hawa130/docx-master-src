@@ -56,7 +56,7 @@ const styleFormatFields = {
   spaceAfter: z.optional(z.number()),
   firstLineIndent: z.optional(IndentValue),
   hangingIndent: z.optional(IndentValue),
-  outlineLevel: z.optional(z.number()),
+  outlineLevel: z.optional(z.number().check(z.gte(0), z.lte(9))),
 }
 
 /* ------------- styles[] entry ------------- */
