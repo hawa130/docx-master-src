@@ -33,6 +33,8 @@ This applies to pre-existing chrome the template designer typed by hand and to s
 
 If content has hierarchy or lists the document doesn't have styles / numbering for, **`standardize` runs first to install them, then `edit` fills**. This is not optional.
 
+**"Fill a template" is shorthand for "produce a well-formed document that incorporates source content into the template's structure"** — well-formed per Target state. The task is not "insert content while preserving the template byte-for-byte"; it is producing a properly-typeset output that combines the template's content + the new content. **Converting the template's hand-typed structural prefixes is part of fill, not beyond it.** Visual rendering after conversion is near-identical (Word renders auto-numbered "一、" the same as typed "一、"); the gain is real outline structure, TOC binding, and accept-changes granularity.
+
 **Source-content → styleId mapping** (fixed; install missing pieces, don't substitute):
 
 | Source content shape | Word styleId |
@@ -56,6 +58,8 @@ Common rationalizations to recognize and reject:
 - "The list is short / trivially flat" → typed list markers are anti-pattern regardless of length.
 - "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier, not because the doc should stay that way.
 - "Form chrome is in a layout table, so it's out of Phase 1 scope" → No. The layout *table* is out of scope (don't restructure it). The chrome paragraphs inside its cells are indexed paragraphs, fully restyleable. `一、论文概况` becomes a `Heading1` paragraph; the table holding it stays a table.
+- "Migrating chrome would change the form's visual identity beyond the request" → No. After conversion, Word renders the auto-numbered `一、` the same as the typed one. Visual identity is preserved; logical structure is gained. "Beyond the request" assumes a minimal-disruption interpretation of fill — see Target state's redefinition above.
+- "The user asked for a fill, not a restyle of chrome" → "Fill" includes producing a well-formed document. If the template's chrome blocks well-formed-ness, converting it is part of fill.
 - "I'll surface this as a strategy choice for the user" → Target state pins the answer. Surfacing it as a question is a stall.
 
 **Locale defaults**:
