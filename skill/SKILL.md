@@ -38,7 +38,7 @@ If content has hierarchy or lists the document doesn't have styles / numbering f
 1. Survey: content shape + document's existing styles + numbering schemes + manually-typed structural prefixes anywhere in the doc.
 2. `standardize`: install missing Heading styles, list-bound styles, captions, etc., plus a unified multi-level numbering scheme covering every hierarchy level the doc + content combined need.
 3. `standardize` (same call or chained): **convert the template's hand-typed chrome** — `一、…` `（一）…` `第N章 …` `1.1 …` — to the unified numbering via `assignments` (paragraph → heading style) + `stripPrefixPatterns` (manual prefix → auto-numbered). This is not optional. Visual rendering is preserved (Word renders auto-numbered `一、` the same as typed `一、`); logical structure is gained.
-4. `edit`: insert source content with semantic styleIds and numbering bindings.
+4. `edit`: insert source content with semantic styleIds and numbering bindings. Before composing each Block, `inspect_range` the anchor paragraph; if its rPr carries unwanted formatting (typically bold pMark inherited from the preceding label), override per-Block via `runFormat: { bold: false }` so Match-Destination-Formatting doesn't propagate it. Skipping this leaves the entire body bold.
 
 Skipping step 3 because the chrome "looks fine as-is" or "would change the form's identity" is the most common failure mode. Don't.
 
