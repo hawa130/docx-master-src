@@ -306,27 +306,32 @@ If a request *can* be expressed via `apply_styles` config, do that instead. The 
 
 When the user is going to fill a template with content, but the template's existing styles don't cover what the content needs, run `standardize` first to install the missing pieces. Then hand off to `edit`.
 
-Trigger from the planning step (see SKILL.md Core Principle): content survey shows H3 / H4 but the template defines only H1 / H2 — or content has lists but the template has no list-bound styles — or content has captions / quotes / code but no matching style exists.
+Triggered from the planning survey (SKILL.md Core Principle): content depth exceeds the doc's existing Heading levels, or the doc has typed structural prefixes (chrome or pre-populated content) that should become real auto-numbering, or content shape lacks a list-bound / caption / quote / code style.
 
 What to install:
 
-- **Heading levels**: declare new `Heading3` / `Heading4` styleIds in `styles[]`, with `basedOn` chained to the existing Heading2 (so font / paragraph defaults inherit). Pick fonts and sizes that step down sensibly from the existing levels — don't invent a wholly new visual scheme.
-- **Multi-level numbering**: extend the existing scheme (or install a new one) in `numbering.levels[]` so each new Heading has its level binding. `numbering-formats.md` has ready-made templates for academic / technical / governmental / legal multi-level shapes.
-- **List-bound styles**: if content has bulleted or ordered lists, declare a list-bound style and bind a single-level numbering scheme to it.
-- **Other body styles**: caption, quote, code — add as needed.
+- **Heading levels** — new `Heading3` / `Heading4` etc. in `styles[]` with `basedOn` chained to the existing Heading2 so font and paragraph defaults inherit. Step down visual emphasis sensibly; don't invent a wholly new scheme.
+- **Unified multi-level numbering** — one `numbering` config covering every Heading level the doc needs (existing levels, levels you're adding, and the chrome levels the template typed by hand). Declare `stripPrefixPatterns` matching the manual shapes so the script removes them during restyle. `references/numbering-formats.md` has multi-level templates for academic / technical / governmental / legal shapes.
+- **List-bound style + separate single-level numbering** — for body lists, distinct from the heading scheme.
+- **Other body styles** — caption, quote, code — as needed.
 
-Don't auto-decide which Heading levels or list shapes to install. If the user's intent allows multiple reasonable options (flatten H4 to H3 vs install a fourth level; bullet styling style vs reuse ordered), ask before proceeding.
+After install, dry-run to confirm the Style Resolution block looks right, apply, and the doc is ready for `edit` content placement.
 
-After install, dry-run to confirm the Style Resolution block looks right, apply, and the template is ready for `edit` content placement.
+### Heading numbering vs list numbering — distinct treatments
 
-### Auto-converting manual numbering to real auto-numbering
+Two kinds of manual structural prefixes show up in real docs; convert each correctly:
 
-When the source content already has manually-typed prefixes (`1.` / `1.1` / `（1）` / `第N章`) that should become auto-numbering, `standardize` strips them during restyle:
+- **Heading-class** — outline-bearing prefixes that define document structure. Depth typically 1–4 levels. Convert to `Heading1` / `Heading2` / ... bound to **one unified multi-level scheme**.
+- **List-class** — local enumerations inside body sections. Usually single-level, restart per group. Convert to `ListNumber` / `ListBullet` bound to a **separate single-level scheme**.
 
-- Define `numbering.levels[i].stripPrefixPatterns` matching the manual shapes (use `%1`, `%2` placeholders aligned with the level).
-- Or use `pattern_rules` with `stripMatch: true` to identify + restyle paragraphs by regex.
+Detection signals (visible facts; agent classifies):
 
-This is the cleanest path when you need to migrate a doc that's already populated. See `numbering-formats.md` for placeholder semantics.
+- Position: heading sits at section start, followed by short title text; list item sits inside a section among other list items or body prose.
+- Surrounding format: heading already styled distinctly (bold, larger size); list items sit in body-style.
+- Pattern shape: headings tend to decimal hierarchy or chapter sentinels; lists tend to parenthesized or single-level digits.
+- Depth: headings nest 2–4 levels; lists usually 1.
+
+Rare ambiguous cases (a typed `第N章` inside body prose that's a citation rather than a heading; a numbered fragment that could be enumeration or sub-heading) — these are fallback Ask cases per SKILL.md.
 
 ---
 

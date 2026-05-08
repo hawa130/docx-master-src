@@ -11,53 +11,49 @@ Mutates Word (.docx) OOXML directly: classify paragraph roles, inject named styl
 
 **You are the analyst. The tools are your instruments.**
 
-Tools present facts — computed styles, element positions, document structure. They never classify or judge. Semantic reasoning is yours.
+Tools present facts — computed styles, element positions, document structure. They don't classify or judge. Semantic reasoning is yours.
 
-**Plan before executing.** For any task involving new or restructured content, the right first step is the survey-then-plan loop, not "start writing edit ops":
+For any task touching new or restructured content, work the survey-then-plan loop:
 
-1. **Survey the content** to be expressed: hierarchy depth (H1 / H2 / H3 / H4?), list usage (ordered, bulleted, nested?), inline emphasis, tables, images, code, captions.
-2. **Survey the document's expressiveness**: which Heading / Body / List / Caption styles exist? What numbering schemes are defined and how many levels do they cover?
-3. **Confirm strategy with the user**. Before composing any edit op, surface the gaps you found, the choices they imply, and your proposed default — and wait. Do not execute and report your decisions afterwards; that's deciding silently. The "Ask, don't decide" section below enumerates the choices that need user input.
-4. **Install missing pieces via `standardize`** if the strategy calls for it. Express structure semantically — `numbering` bindings and Heading styleIds — never by typing `1.` / `（1）` / `第N章` as text.
-5. **Then `edit`** to fill, referencing the now-installed styleIds and numbering.
+1. **Survey the content** — hierarchy depth, list usage, inline emphasis, tables / images / code / captions.
+2. **Survey the document** — which styles + numbering schemes exist; whether existing typed prefixes (e.g. `一、` / `（一）` / `1.1`) are real auto-numbering or hand-typed.
+3. **Plan toward Target state** (next section) — install missing styles / numbering via `standardize`, then `edit` to fill with semantic styleIds and numbering bindings.
+4. **Ask only on genuine ambiguity** (Ask section below). Most defaults are pinned by Target state — apply them.
 
-Skipping the planning step produces output that fills slots but typesets badly: literal numbering instead of auto-numbered lists, every paragraph falling to Normal, no real hierarchy.
+## Target state: structure-driven, not text-driven
 
-### Ask, don't decide
+A well-formed Word document expresses structural decisions through styles + numbering + sections, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) When the user has not pinned a choice, every pass should pull the document toward this shape:
 
-This is a **mandatory checkpoint**, not advice. After surveying content and template (planning steps 1–2), and **before composing any `apply_edits` or `apply_styles` config**, you must yield to the user with a strategy-confirmation question covering every applicable choice from the list further down. Authoring the config and the question in the same turn defeats the purpose.
+- Every paragraph carries a semantic styleId. Direct paragraph format only as one-off exceptions.
+- Structural hierarchy lives in **one unified multi-level numbering scheme** bound to Heading styles. Manually-typed structural prefixes inside heading text — decimal hierarchy, CJK numerals, parenthesized markers, chapter sentinels — get converted via `stripPrefixPatterns`.
+- Body lists bind to list-bound styles + a separate single-level numbering scheme. Manually-typed list markers in paragraph text get converted.
+- Heading levels nest without skipping.
 
-This rule applies regardless of how the task was phrased to you. "Use the skill to fill X with Y" / "do whatever the skill says" / "approach this however the skill directs" — none of these grant decision authority over design choices. They assume the strategy is obvious; it usually isn't.
+This includes pre-existing chrome the template designer typed by hand — default is to **convert and unify**, not to preserve. Manual structural prefixes are not chrome to leave alone; they are the conversion target.
 
-#### How to ask, depending on your runtime
+**Locale defaults**:
 
-- **Conversational session** (you can produce multiple turns and the user replies between them): send one message with the strategy questions, **don't execute anything in that turn**, wait for the reply.
-- **Subagent / one-shot task** (you produce one final output and return to a parent): your final output **IS the question**. List the choices + trade-offs + your proposed default, and return *without* having run any `apply_edits` or `apply_styles`. The parent will collect the user's input and re-dispatch with the chosen strategy. **Do not execute your best guess and offer to redo** — that is deciding silently with extra steps; the user wanted input *before* the edit, not after.
+- Chinese body text: 2-character first-line indent (`firstLineIndent: "2char"`). Standard CN typography. Apply to body-class styles (BodyText / `a` / Normal-equivalent) unless the user pins otherwise.
+- CJK-Latin spacing: don't insert literal spaces between Chinese and Western characters / digits in `text`. Word's `autoSpaceDE` / `autoSpaceDN` handle the visual gap automatically; literal spaces compound it. Strip them when transcribing source content (markdown, LLM-generated prose, copied snippets).
 
-If you complete the task without yielding for input, the result is treated as a failure even if the output looks fine. The point is not to find the right answer; it is to give the user agency over the design of their document.
+**Out of Phase 1 scope** (leave alone, surface to user if the limit blocks the task):
 
-#### Rationalizations that look like reasons to proceed but are not
+- Layout tables — real-world templates use them for label + cell positioning. The skill works inside their cells via the `cell` locator; it does not restructure or remove them.
+- TOC body content — Word regenerates the field on open after `outlineLevel` is set.
+- Cross-references, footnotes, comments, headers / footers — separate XML parts.
 
-You will be tempted to skip the ask. The temptation is the signal. None of these justify proceeding without asking:
+## Ask, don't decide (fallback for genuinely hard cases)
 
-- "The user said 'fill the template' — they want me to just fill it" → No. Fill *strategy* is part of the design.
-- "I have a reasonable default in mind" → That you have a default IS the trigger. Ask.
-- "Installing new styles via `standardize` would be invasive" → Maybe, ask the user.
-- "The template uses typed prefixes (`一、` / `（一）`), so my content's hierarchy should too" → No. Template chrome is independent of content-hierarchy strategy. (See edit.md "Form chrome is not a hierarchy strategy".)
-- "The list is short / trivially flat / only 3 items, so a typed prefix is fine" → Still ask. Typing list markers in `text` is the documented anti-pattern; "the list is short" doesn't override it.
-- "I'll surface my decisions in the report afterwards so the user can correct" → That is deciding silently, with extra steps. The user wanted input *before* execution.
-- "Asking when I might have known the answer would feel like over-bothering the user" → Asking once when you didn't need to is harmless. Proceeding when you should have asked is the failure mode.
+Most strategy choices have a default — Target state. Apply the default; don't ask just because a choice technically exists. Ask only when even the right semantic mapping is unclear:
 
-#### Choices that always require user input (when applicable)
+- A typed `第N章` inside body prose — structural chapter heading, or rhetorical citation?
+- A bold paragraph that could be a sub-heading or in-paragraph emphasis.
+- Source content lacks coverage for some template slots — leave empty, generate, or surface to user?
+- Content has tables / footnotes / math / cross-references with no clean Phase 1 mapping.
 
-- **Heading depth strategy.** Content has heading levels the template doesn't have a style for? Options: install Heading3 / Heading4 styles + extend numbering scheme via `standardize`, then `edit` with `styleId` references; or flatten to bold + larger font; or fold into existing levels. *The template's chrome tells you nothing about this choice.*
-- **List binding strategy.** Content has lists? Options: bind via `numbering: { numId, level }` to an existing list scheme; install a new list-bound style via `standardize`; or fold into prose. **Typing `1.` / `（1）` / `第N章` as text is never a valid auto-decision** — even for short or simple lists. If the template lacks a list scheme, the choice is "install one" vs "fold into prose", not "type the prefix".
-- **Cell-fill remnant strategy.** Replace ranges (clean cells) vs insert-after labels (preserve placeholders)?
-- **Empty slot formatting issues.** Slot inherits unintended bold / spacing — override per-Block, or fix the template via `standardize`?
-- **Missing content for placeholder slots.** Source content doesn't cover every slot. Leave empty? Hint the user? Generate?
-- **Phase 1 limits.** Content has tables, footnotes, math, code blocks, cross-references — surface the limit; ask whether to skip / approximate / wait for Phase 2.
+For these, send one message naming the choice + your default, and yield. The next turn is the user's. (Subagents producing one final output: the output IS the question — return without executing.)
 
-A good ask is **one message** — concise, names each choice + trade-off + your proposed default, ends by yielding. Then you stop. The next turn is the user's.
+For everything Target state covers, the default is the answer. Don't surface the rationale ("I'll convert manual prefixes to auto-numbering") as a question; just do it.
 
 ## Commands
 

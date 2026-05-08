@@ -59,27 +59,9 @@ Always inspect before composing edits.
 
 `text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required — the tool does not infer from the file.
 
-#### Express structure semantically, not in text
+#### Express structure via styleId + numbering
 
-If content has hierarchy or list shape, bind it via `styleId` and `numbering` — never type the markers in `text`:
-
-- List items → `{ "type": "paragraph", "numbering": { "numId": "5", "level": 0 }, "text": "..." }`. **Not** `"text": "1. ..."`.
-- Sub-headings → `{ "type": "paragraph", "styleId": "Heading3", "text": "..." }`. **Not** `"text": "（1）..."` with a bold runFormat.
-
-If the styleId or numId you need doesn't exist in the document, the **right move is `standardize` to install it**, then come back to `edit`. Falling back to typed prefixes is a footgun: the result fails to typeset as a real list or heading; Word loses outline navigation, TOC binding, and accept-changes granularity; the document's logical structure no longer matches its visual structure.
-
-When in doubt — should I install Heading3, or fold sub-headings into bold? — **ask the user**, per SKILL.md "Ask, don't decide". Don't decide silently.
-
-#### Form chrome is not a hierarchy strategy
-
-Many templates carry typed prefixes — "一、论文概况", "（一）选题意义" — as scaffolding for the form itself. These are **template chrome**. They tell you nothing about how to express your content's hierarchy.
-
-The trap: agent sees "the template uses typed prefixes" → agent reasons "so my content's sub-headings should also use typed prefixes" → agent types `1. 理论意义` / `（1）模型压缩方向` as text. **This is wrong every time.** Template chrome and content hierarchy are independent decisions:
-
-- Template chrome (outer section labels that came with the template): leave as text. Don't try to convert them to Heading styles unless explicitly asked.
-- Your content's hierarchy (sub-headings, lists, anything from the markdown): express semantically via `styleId` + `numbering`. If the template lacks the styles you need, `standardize` to install them.
-
-When the choice between these strategies is genuinely user-discretionary — e.g., the user might want a fast form-style fill, or might want full semantic typesetting — **ask** (per SKILL.md "Ask, don't decide"). Do not infer the answer from the template's chrome convention.
+Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. If the styleId or numId you need doesn't exist, that's a `standardize` task before this `edit` runs (see SKILL.md Target state). Manually-typed structural prefixes anywhere in the doc — including pre-existing chrome the template designer typed — are conversion targets, not chrome to leave alone.
 
 #### Quote handling
 

@@ -63,41 +63,33 @@ After a multi-commit feature push or before a release, spawn a subagent that inv
 
 ## Design principles
 
+### Minimum tokens for maximum effect
+
+Every line of agent-facing doc loads on every invocation. Examples are bloat unless they cover a non-obvious shape or a real footgun the rule alone won't convey. "What to avoid" lists and rebuttal-of-rationalization sections suffer the same way — each item must earn its keep by covering a class of mistakes agent would otherwise make. Defensive bloat compounds across turns.
+
+Test for any line: could a reader derive it from the rule + surrounding context? Yes → cut. No → keep. Same when distilling a fix into a principle here: state the conclusion, drop the illustration. If a reader can't picture the failure without an example, the rule isn't general enough yet.
+
+Reactive maintenance is the main vector for bloat: each external feedback adds a paragraph; over rounds the doc accretes restatements. When feedback comes in, ask first whether the agent's own judgment covers it. Periodically zoom out and audit holistically — patch-by-patch additions each looked justified; the sum often isn't.
+
 ### Tools expose visible facts; agents make role judgments
 
-Tools should expose what a human reader of the artifact can see — in this skill: font, size, weight, color, alignment, indent, numbering markers, text content. The agent classifies roles from those visible facts.
+Tools expose what a human reader of the artifact can see — font, size, weight, color, alignment, indent, numbering markers, text content. The agent classifies roles from those facts.
 
-**Don't pre-digest hidden metadata or natural language into role hints in default output.** When tooling presents a "convenient pre-classification" (a parsed translation, a metadata-derived label), the LLM accepts it as ground truth and bypasses its own judgment — the same judgment that would have caught upstream errors. This anti-pattern showed up twice in this project (a regex parser for Chinese typography, an `[LN]` outline-level hint on the fingerprint summary); both were removed for the same reason.
+Don't pre-digest hidden metadata or natural language into role hints in default output. A "convenient pre-classification" gets accepted as ground truth and bypasses agent judgment — the same judgment that would have caught upstream errors. Hidden metadata stays available *on demand* (`inspect_range` / `inspect_style_def`), where the agent has already started reasoning and consumes it as one input among many.
 
-Hidden metadata can still be exposed — but as **raw data on demand**, when the agent explicitly calls `inspect_range` / `inspect_style_def`. On-demand exposure means the agent has already started reasoning and is using the metadata as one input among many. Pre-packaging it into a default summary means the tool is doing the reasoning for the agent.
-
-**Litmus test for any new "helpful hint":** could a human reader derive this from the artifact's normal rendering, without opening the underlying file format? Yes → expose it. No → only on demand, never as a role hint in default output.
+Litmus test for any new "helpful hint": could a human reader derive this from the artifact's normal rendering? Yes → expose. No → on demand only, never as a role hint in default output.
 
 ### Examples illustrate, they're not triggers
 
-When SKILL.md presents "intent → path / tool / option" mappings, the LLM pattern-matches keywords instead of understanding intent — the same surface phrase routinely lands in different branches depending on what the user actually wants. Write concept-first and mark example phrasings as illustrative. Avoid lookup-table forms (`If user says | Pick this`) and the literal words *Triggers* / *Keywords* — both signal "stop thinking, start matching." Same anti-pattern as "Tools expose visible facts; agents make role judgments," applied to the doc itself.
+When SKILL.md presents "intent → path / tool / option" mappings, the LLM pattern-matches surface phrasings instead of understanding intent. Write concept-first and mark example phrasings as illustrative. Avoid lookup-table forms (`If user says | Pick this`) and the literal words *Triggers* / *Keywords*.
 
 ### Verification must check against intent, not interpretation
 
-If a check grades the system's output against the same system's interpretation of the input, it's a tautology and passes regardless of correctness. The removed `requirements-parser.ts` had this flaw — it parsed user text into fields, then verified the script wrote those same fields; the parser's own misreading was invisible to the check.
-
-Real verification compares against ground truth: human-readable side-by-side display (Style Resolution shows raw user text + agent-resolved fields for visual review), or output re-parsed against an independent invariant (apply_styles validates by re-reading the produced docx).
-
-### Capture lessons here as you learn them
-
-When a fix or design decision teaches a principle the next maintainer should know, distill it as a brief rule above. Bar: would another maintainer save time reading it? — if no, commit history is enough. A root cause recurring in two different shapes is a strong signal a principle has earned a slot.
-
-State the principle, not the incident. Examples bloat context and make the rule read as "this one bug" instead of "this class of bug" — keep the conclusion, drop the illustration. If a reader can't picture the failure without an example, the rule isn't general enough yet.
-
-### SKILL.md is the agent's runtime context — keep it lean
-
-Every line is loaded into the agent's context on every invocation. Encode only what the agent can't derive: technical invariants the scripts depend on, workflow anchors, tool references. Cut restated points, disambiguation tables for things an LLM infers from context, examples of output the tool prints itself. Detailed schema lives in `references/`, loaded on demand.
-
-Reactive maintenance is a trap: each external feedback adds a paragraph; over multiple rounds the doc bloats with restatements. When feedback comes in, ask first: *can the agent's own judgment cover this?* If yes, don't add. Periodically zoom out and audit holistically — patch-by-patch additions all looked justified, but the sum may not be.
+If a check grades the system's output against the same system's interpretation of the input, it's a tautology and passes regardless of correctness. Real verification compares against ground truth: human-readable side-by-side (e.g. Style Resolution shows raw user text + resolved fields for visual review), or output re-parsed against an independent invariant (apply_styles validates by re-reading the produced docx).
 
 ### Tools follow the on-demand pattern
 
-Each tool has one focused job. Don't add always-on enrichment to default outputs — prefer a new focused script. Default outputs stay scannable; deep info is one tool call away.
+Each tool has one focused job. Default outputs stay scannable; deep info is one tool call away.
 
 ### Mechanical correctness is the script's job
 
@@ -110,6 +102,7 @@ LLMs are bad at byte-level work; scripts must guarantee these and never bend the
 - Leading-prefix strip accumulates across consecutive `<w:t>` runs; Word splits hand-edited paragraphs mid-prefix, so per-run regex testing silently misses some
 - numId migration on template import uses fresh IDs to avoid collision
 - The original file is never modified; every applying CLI writes a fresh copy and validates before keeping it
+- Manual structural prefix detection is part of the standardize survey: pre-existing typed prefixes (`一、` / `（一）` / `1.1` / `第N章`) inside otherwise-styled headings are candidates for `stripPrefixPatterns` conversion to auto-numbering, not chrome to preserve
 - **Edit side**: locators resolve to Element refs *before* any mutation, so subsequent ops survive DOM rearrangement; stale-element rejection guards against an op targeting a paragraph an earlier op removed
 - **Edit side**: blocker scan refuses edits inside existing `<w:ins>` / `<w:del>` / `<w:fldChar>` regions / `<w:sdt>` controls — fields and revisions don't survive ad-hoc paragraph rewriting
 - **Edit side**: track-changes mode snapshots previous `<w:rPr>` / `<w:pPr>` *before* mutating the live element, so `<w:rPrChange>` / `<w:pPrChange>` carry the genuine prior state (cloning after mutation would record the new state as the snapshot)
