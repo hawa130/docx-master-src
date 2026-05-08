@@ -55,6 +55,7 @@ Common rationalizations to recognize and reject:
 - "Sub-headings render fine as bold lead phrases inside body paragraphs" → That collapses two paragraphs (heading + body) into one and loses the Heading styleId. The mapping is per-source-paragraph, preserved.
 - "The list is short / trivially flat" → typed list markers are anti-pattern regardless of length.
 - "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier, not because the doc should stay that way.
+- "Form chrome is in a layout table, so it's out of Phase 1 scope" → No. The layout *table* is out of scope (don't restructure it). The chrome paragraphs inside its cells are indexed paragraphs, fully restyleable. `一、论文概况` becomes a `Heading1` paragraph; the table holding it stays a table.
 - "I'll surface this as a strategy choice for the user" → Target state pins the answer. Surfacing it as a question is a stall.
 
 **Locale defaults**:
@@ -64,7 +65,7 @@ Common rationalizations to recognize and reject:
 
 **Out of Phase 1 scope** (leave alone, surface to user if the limit blocks the task):
 
-- Layout tables — real-world templates use them for label + cell positioning. The skill works inside their cells via the `cell` locator; it does not restructure or remove them.
+- Layout-table **structure** — restructuring or removing the layout table itself. Paragraphs inside layout-table cells, including the form's typed-prefix labels like `一、论文概况` or `（一）选题意义`, are normal indexed paragraphs and fully subject to Target state — restyle them to `Heading1` / `Heading2` and convert the typed prefix via `stripPrefixPatterns`. The table holding them stays as a layout table; its contents get standardized.
 - TOC body content — Word regenerates the field on open after `outlineLevel` is set.
 - Cross-references, footnotes, comments, headers / footers — separate XML parts.
 
