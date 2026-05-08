@@ -31,11 +31,30 @@ A well-formed Word document expresses structural decisions through styles + numb
 
 This applies to pre-existing chrome the template designer typed by hand and to source content (markdown, prose) the agent is transcribing in. **Convert, don't preserve.** Manual structural prefixes are the conversion target.
 
-If content has hierarchy or lists the document doesn't have styles / numbering for, **`standardize` runs first to install them, then `edit` fills**. This is not optional. Common rationalizations to recognize and reject:
+If content has hierarchy or lists the document doesn't have styles / numbering for, **`standardize` runs first to install them, then `edit` fills**. This is not optional.
 
-- "Just a fill task — `standardize` is over-reaching" → If content has shape the template lacks, `standardize`-then-`edit` IS the fill task. The framing is wrong.
-- "The list is short / trivially flat" → typed list markers in `text` are anti-pattern regardless of length.
-- "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier than configuring auto-numbering, not because the doc should be that way.
+**Source-content → styleId mapping** (fixed; install missing pieces, don't substitute):
+
+| Source content shape | Word styleId |
+|---|---|
+| Top-level heading (MD `#`, document `第N章`, form section label `一、`) | `Heading1` |
+| Second level (`##`, `1.`, `（一）`) | `Heading2` |
+| Third level (`###`, `1.1`) | `Heading3` |
+| Fourth level (`####`, `1.1.1`) | `Heading4` |
+| Ordered list item | `ListNumber` |
+| Bulleted list item | `ListBullet` |
+| Code block | `Code` |
+| Body paragraph | existing body style (`BodyText` / `a` / Normal-equivalent) |
+
+The destination document type — form, report, thesis, contract — doesn't change this mapping. If the document lacks any of these styles, `standardize` installs them. **Never substitute "bold paragraph in Normal style" for a Heading style; never substitute "typed `1.` in Normal" for a ListNumber binding.**
+
+Common rationalizations to recognize and reject:
+
+- "Just a fill task — `standardize` is over-reaching" → If content has shape the template lacks, `standardize`-then-`edit` IS the fill task.
+- "This is an administrative form / fixed template, simpler typesetting matches its convention" → No. Document type doesn't override the mapping. The user's request to standardize / fill includes semantic structure.
+- "Sub-headings render fine as bold lead phrases inside body paragraphs" → That collapses two paragraphs (heading + body) into one and loses the Heading styleId. The mapping is per-source-paragraph, preserved.
+- "The list is short / trivially flat" → typed list markers are anti-pattern regardless of length.
+- "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier, not because the doc should stay that way.
 - "I'll surface this as a strategy choice for the user" → Target state pins the answer. Surfacing it as a question is a stall.
 
 **Locale defaults**:
