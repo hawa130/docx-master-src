@@ -184,7 +184,11 @@ export const ApplyConfigSchema = z.strictObject({
   template: z.optional(TemplateSchema),
   theme: z.optional(ThemeSchema),
   styles: z.optional(z.array(StyleEntrySchema)),
-  numbering: z.optional(NumberingSchema),
+  // Single scheme (most common: one multi-level scheme bound to Heading1–N)
+  // or an array of schemes when the doc needs multiple parallel ones (e.g.
+  // a multi-level heading scheme + a single-level list-bound scheme). The
+  // engine processes them in array order, allocating fresh numIds for each.
+  numbering: z.optional(z.union([NumberingSchema, z.array(NumberingSchema)])),
   assignments: z.optional(z.array(AssignmentSchema)),
   bulk_rules: z.optional(z.array(BulkRuleSchema)),
   pattern_rules: z.optional(z.array(PatternRuleSchema)),

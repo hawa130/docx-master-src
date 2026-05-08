@@ -197,7 +197,10 @@ Call `apply_styles` with your decision in a JSON config.
                                            //   manual fields, with optional overrides.
 
   numbering: { levels: [ ... ] },          // Multi-level auto-numbering bound to heading
-                                           //   styles. See Step 5 for when to include / skip.
+                                           //   styles. Array form accepted when installing
+                                           //   multiple parallel schemes (heading + list) in
+                                           //   one pass: `numbering: [ {levels:[...]}, ... ]`.
+                                           //   See Step 5 for when to include / skip.
 
   template: { source, styles: [ ... ] },   // optional. Import named styles from another
                                            //   docx; basedOn ancestors auto-pulled,

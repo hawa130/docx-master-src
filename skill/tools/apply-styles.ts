@@ -19,7 +19,11 @@ void runCli({
   // read it via optional chaining here.)
   validate(config) {
     const hasStyles = (config.styles?.length ?? 0) > 0
-    const hasNumbering = !!config.numbering?.levels?.length
+    const hasNumbering = (() => {
+      if (!config.numbering) return false
+      const schemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
+      return schemes.some((s) => s.levels.length > 0)
+    })()
     const hasTemplate = !!config.template?.styles?.length
     const hasThemeOverride =
       !!config.theme?.fonts &&

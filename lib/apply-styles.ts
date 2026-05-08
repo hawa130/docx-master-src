@@ -197,7 +197,13 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // stylesDoc by this point, so they count as valid targets too. Also emit
   // the placeholder-count sanity warning, which is a heuristic (warn, not
   // throw) that doesn't fit a schema rule.
-  if (config.numbering && config.numbering.levels.length > 0) {
+  //
+  // `numbering` accepts either a single scheme or an array of schemes
+  // (multi-level heading scheme + a separate single-level list-bound scheme
+  // is the canonical multi-scheme case). Each scheme allocates a fresh
+  // numId and binds its levels independently.
+  if (config.numbering) {
+    const numberingSchemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
     const declaredIds = new Set(config.styles.map((s) => s.id))
     const existingStyleIds = new Set<string>()
     for (const s of getChildrenNS(stylesDoc.documentElement!, NS.w, "style")) {
@@ -205,47 +211,47 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       if (sid) existingStyleIds.add(sid)
     }
     const validNumberingTargets = new Set([...declaredIds, ...existingStyleIds])
-    for (const [i, lvl] of config.numbering.levels.entries()) {
-      if (!validNumberingTargets.has(lvl.styleId)) {
-        throw new Error(
-          `numbering.levels[${i}]: styleId "${lvl.styleId}" doesn't exist.\n` +
-            `  Declared in styles[]: [${[...declaredIds].join(", ")}]\n` +
-            `  Existing in styles.xml: [${[...existingStyleIds].sort().join(", ")}]`,
-        )
-      }
-      const numPlaceholders = (lvl.lvlText.match(/%\d/g) ?? []).length
-      for (const p of lvl.stripPrefixPatterns ?? []) {
-        const pn = (p.match(/%\d/g) ?? []).length
-        if (pn > numPlaceholders) {
+    for (const [schemeIdx, scheme] of numberingSchemes.entries()) {
+      if (scheme.levels.length === 0) continue
+      const path = numberingSchemes.length === 1 ? "numbering" : `numbering[${schemeIdx}]`
+      for (const [i, lvl] of scheme.levels.entries()) {
+        if (!validNumberingTargets.has(lvl.styleId)) {
+          throw new Error(
+            `${path}.levels[${i}]: styleId "${lvl.styleId}" doesn't exist.\n` +
+              `  Declared in styles[]: [${[...declaredIds].join(", ")}]\n` +
+              `  Existing in styles.xml: [${[...existingStyleIds].sort().join(", ")}]`,
+          )
+        }
+        const numPlaceholders = (lvl.lvlText.match(/%\d/g) ?? []).length
+        for (const p of lvl.stripPrefixPatterns ?? []) {
+          const pn = (p.match(/%\d/g) ?? []).length
+          if (pn > numPlaceholders) {
+            console.error(
+              `Warning: ${path}.levels[${i}].stripPrefixPatterns "${p}" has ${pn} placeholders but lvlText "${lvl.lvlText}" has only ${numPlaceholders}. Pattern may match more than intended.`,
+            )
+          }
+        }
+        // %N is positional (1-indexed): %1 → level 0, %2 → level 1, ...
+        // A level whose lvlText omits its own counter (%(level+1)) renders
+        // every item with a higher level's number. Statically detectable.
+        const ownPlaceholder = `%${lvl.level + 1}`
+        if (!lvl.lvlText.includes(ownPlaceholder)) {
+          const referenced = lvl.lvlText.match(/%\d/g) ?? []
+          const refDesc = referenced.length
+            ? `only references ${referenced.map((p) => `${p} (level ${Number(p[1]) - 1})`).join(", ")}`
+            : "references no counter"
           console.error(
-            `Warning: numbering.levels[${i}].stripPrefixPatterns "${p}" has ${pn} placeholders but lvlText "${lvl.lvlText}" has only ${numPlaceholders}. Pattern may match more than intended.`,
+            `Warning: ${path}.levels[${i}].lvlText "${lvl.lvlText}" does not reference its own counter ${ownPlaceholder} — ${refDesc}.\n` +
+              `  All level-${lvl.level} items will display the same number, restarting only when a higher level changes.\n` +
+              `  %N is positional (1-indexed): %1 → level 0, %2 → level 1, ... — so level ${lvl.level} needs ${ownPlaceholder} to render its own counter.\n` +
+              `  Did you mean lvlText: "${lvl.lvlText.replace(/%\d/, ownPlaceholder)}"?`,
           )
         }
       }
-      // %N is positional (1-indexed): %1 → level 0, %2 → level 1, ...
-      // A level whose lvlText omits its own counter (%(level+1)) renders
-      // every item with a higher level's number — e.g. lvlText "（%1）" on
-      // level 1 makes all sub-items under chapter 二 show "（二）" because
-      // %1 is H1's counter, not H2's. Validation passes, dry-run is silent
-      // (stripPrefixPatterns matches digits/CJK identically for any %N), so
-      // the bug only surfaces when Word renders. Statically detectable here.
-      const ownPlaceholder = `%${lvl.level + 1}`
-      if (!lvl.lvlText.includes(ownPlaceholder)) {
-        const referenced = lvl.lvlText.match(/%\d/g) ?? []
-        const refDesc = referenced.length
-          ? `only references ${referenced.map((p) => `${p} (level ${Number(p[1]) - 1})`).join(", ")}`
-          : "references no counter"
-        console.error(
-          `Warning: numbering.levels[${i}].lvlText "${lvl.lvlText}" does not reference its own counter ${ownPlaceholder} — ${refDesc}.\n` +
-            `  All level-${lvl.level} items will display the same number, restarting only when a higher level changes.\n` +
-            `  %N is positional (1-indexed): %1 → level 0, %2 → level 1, ... — so level ${lvl.level} needs ${ownPlaceholder} to render its own counter.\n` +
-            `  Did you mean lvlText: "${lvl.lvlText.replace(/%\d/, ownPlaceholder)}"?`,
-        )
+      const newNumId = injectNumbering(numberingDoc, scheme)
+      for (const lvl of scheme.levels) {
+        attachNumberingToStyle(stylesDoc, lvl.styleId, newNumId, lvl.level)
       }
-    }
-    const newNumId = injectNumbering(numberingDoc, config.numbering)
-    for (const lvl of config.numbering.levels) {
-      attachNumberingToStyle(stylesDoc, lvl.styleId, newNumId, lvl.level)
     }
   }
 
@@ -361,12 +367,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // source document mixed numbering styles across sections.
   const numLvlTextByStyle = new Map<string, string[]>()
   if (config.numbering) {
-    for (const lvl of config.numbering.levels) {
-      const patterns =
-        lvl.stripPrefixPatterns && lvl.stripPrefixPatterns.length > 0
-          ? lvl.stripPrefixPatterns
-          : [lvl.lvlText]
-      numLvlTextByStyle.set(lvl.styleId, patterns)
+    const numberingSchemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
+    for (const scheme of numberingSchemes) {
+      for (const lvl of scheme.levels) {
+        const patterns =
+          lvl.stripPrefixPatterns && lvl.stripPrefixPatterns.length > 0
+            ? lvl.stripPrefixPatterns
+            : [lvl.lvlText]
+        numLvlTextByStyle.set(lvl.styleId, patterns)
+      }
     }
   }
 
@@ -442,15 +451,21 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // we pass styleId + level + lvlText so the report can show "Heading2 →
   // '%1.%2' (level 1)" without the agent needing to mentally cross-reference
   // numbering.levels[] against restyleStats.
-  const numberingBindings = (config.numbering?.levels ?? []).map((lvl) => {
-    const { suff, effectiveLvlText } = resolveSuff(lvl.lvlText, lvl.suff)
-    return {
-      styleId: lvl.styleId,
-      level: lvl.level,
-      lvlText: effectiveLvlText,
-      suff,
-    }
-  })
+  const numberingBindings = (() => {
+    if (!config.numbering) return []
+    const schemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
+    return schemes.flatMap((scheme) =>
+      scheme.levels.map((lvl) => {
+        const { suff, effectiveLvlText } = resolveSuff(lvl.lvlText, lvl.suff)
+        return {
+          styleId: lvl.styleId,
+          level: lvl.level,
+          lvlText: effectiveLvlText,
+          suff,
+        }
+      }),
+    )
+  })()
 
   printReport({
     source,

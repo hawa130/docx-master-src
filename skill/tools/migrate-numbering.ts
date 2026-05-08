@@ -23,12 +23,14 @@ void runCli({
         "migrate_numbering: `template` is not allowed here. Run `import_template` first if you need template styles, then `migrate_numbering`.",
       )
     }
-    if (
-      !config.numbering ||
-      !Array.isArray(config.numbering.levels) ||
-      config.numbering.levels.length === 0
-    ) {
-      throw new Error("migrate_numbering: config.numbering.levels must be a non-empty array")
+    if (!config.numbering) {
+      throw new Error("migrate_numbering: config.numbering is required")
+    }
+    const schemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
+    if (schemes.length === 0 || schemes.every((s) => s.levels.length === 0)) {
+      throw new Error(
+        "migrate_numbering: config.numbering must contain at least one scheme with levels",
+      )
     }
     // styles[] is optional on this path; the engine defaults it to [].
   },
