@@ -22,14 +22,21 @@ For any task touching new or restructured content, work the survey-then-plan loo
 
 ## Target state: structure-driven, not text-driven
 
-A well-formed Word document expresses structural decisions through styles + numbering + sections, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) When the user has not pinned a choice, every pass should pull the document toward this shape:
+A well-formed Word document expresses structural decisions through styles + numbering + sections, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) **This is the agent's required output shape, not an aspiration.** When the user hasn't pinned a contradicting choice, every pass produces a document with:
 
-- Every paragraph carries a semantic styleId. Direct paragraph format only as one-off exceptions.
-- Structural hierarchy lives in **one unified multi-level numbering scheme** bound to Heading styles. Manually-typed structural prefixes inside heading text — decimal hierarchy, CJK numerals, parenthesized markers, chapter sentinels — get converted via `stripPrefixPatterns`.
-- Body lists bind to list-bound styles + a separate single-level numbering scheme. Manually-typed list markers in paragraph text get converted.
-- Heading levels nest without skipping.
+- Every paragraph carrying a semantic styleId. Direct paragraph format only as one-off exceptions.
+- Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Manually-typed structural prefixes inside heading text — decimal hierarchy, CJK numerals, parenthesized markers, chapter sentinels — converted via `stripPrefixPatterns`.
+- Body lists bound to list-bound styles + a separate single-level numbering scheme. Never written as typed markers in `text`.
+- Heading levels nesting without skipping.
 
-This includes pre-existing chrome the template designer typed by hand — default is to **convert and unify**, not to preserve. Manual structural prefixes are not chrome to leave alone; they are the conversion target.
+This applies to pre-existing chrome the template designer typed by hand and to source content (markdown, prose) the agent is transcribing in. **Convert, don't preserve.** Manual structural prefixes are the conversion target.
+
+If content has hierarchy or lists the document doesn't have styles / numbering for, **`standardize` runs first to install them, then `edit` fills**. This is not optional. Common rationalizations to recognize and reject:
+
+- "Just a fill task — `standardize` is over-reaching" → If content has shape the template lacks, `standardize`-then-`edit` IS the fill task. The framing is wrong.
+- "The list is short / trivially flat" → typed list markers in `text` are anti-pattern regardless of length.
+- "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier than configuring auto-numbering, not because the doc should be that way.
+- "I'll surface this as a strategy choice for the user" → Target state pins the answer. Surfacing it as a question is a stall.
 
 **Locale defaults**:
 
