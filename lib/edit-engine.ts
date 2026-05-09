@@ -281,15 +281,10 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
     if (c.localName === "pPrChange") continue
     const existing = existingByName.get(c.localName!)
     if (existing) {
-      // MDF semantics: agent's paraFormat overrides the *attrs* it specifies,
-      // unset attrs keep the anchor's values. Without this merge, partial
-      // overrides like `paraFormat: { spaceBefore: 6 }` produce
-      // <w:spacing w:before="120"/> that wipes the anchor's
-      // w:line / w:lineRule, and `firstLineIndent: "Nchar"` produces
-      // <w:ind w:firstLineChars="..."/> that wipes the anchor's
-      // w:firstLine. Word's loader treats the missing
-      // attribute halves as damage and prompts to repair on open even
-      // though the schema validates.
+      // MDF: agent's paraFormat overrides only the attrs it explicitly sets;
+      // unset attrs keep the anchor's values. Skipping by localName instead
+      // would let a partial override wipe linked attrs (e.g. `spaceBefore: 6`
+      // alone would drop anchor's <w:spacing w:line/lineRule>).
       mergeMissingAttrs(c, existing)
     } else {
       toClone.push(c.cloneNode(true) as Element)
@@ -300,10 +295,9 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
     newPPr = ownerDoc.createElementNS(w, "w:pPr")
     newP.insertBefore(newPPr, newP.firstChild)
   }
-  // CT_PPr schema requires a specific child order — Word's strict validator
-  // rejects mis-ordered children with "needs repair". Naive appendChild here
-  // produces sequences like [spacing, jc, ind] (jc came from buildPPrChildren,
-  // ind inherited from anchor) which violate the schema.
+  // Schema-correct insertion: anchor's child can land between elements
+  // buildPPrChildren already pushed (e.g. anchor `ind` after our `spacing`
+  // and before our `jc`). Plain appendChild would mis-order them.
   for (const c of toClone) insertChildInOrder(newPPr, c, PPR_CHILD_ORDER)
 }
 

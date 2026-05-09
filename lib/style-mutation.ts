@@ -132,10 +132,17 @@ function resolveStyleRef(stylesDoc: Document, val: string, selfId?: string): str
   return null
 }
 
-/** pPr / rPr children that this function manages (writes from def). Anything
- * else found in an existing style's pPr/rPr is preserved untouched. The pPr
- * list is critical: numPr (auto-numbering binding), keepNext, pBdr, shd,
- * adjustRightInd, etc. are all preserved when overriding an existing style. */
+/** pPr / rPr children that this function clears before re-writing from `def`.
+ * Anything else found in an existing style's pPr/rPr is preserved untouched.
+ * The pPr list is critical: numPr (auto-numbering binding), keepNext, pBdr,
+ * shd, adjustRightInd, etc. are all preserved when overriding an existing
+ * style.
+ *
+ * Scope: only the children writeable from `StyleConfigEntry`. Narrower than
+ * fragment-emit's RPR_MANAGED_LOCAL_NAMES (run-level rPr from `RunFormat`,
+ * which has u / strike). The two sets must NOT be unified — expanding this
+ * one without adding the corresponding write paths would silently drop
+ * existing style attrs (e.g. <w:u>) that the engine has no way to put back. */
 const PPR_MANAGED_CHILDREN = new Set(["spacing", "ind", "jc", "outlineLvl"])
 const RPR_MANAGED_CHILDREN = new Set(["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color"])
 

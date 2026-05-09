@@ -96,9 +96,15 @@ export function buildRPrChildren(fmt: RunFormat, ownerDoc: Document): Element[] 
   return out
 }
 
-/** Run-property children that buildRPrChildren manages — exposed so edit-
- * engine's format op can clear only these children before re-appending,
- * preserving anything the user didn't ask to change (lang, kern, w, ...). */
+/** Run-property children that `buildRPrChildren` can produce — exposed so
+ * edit-engine's `format` op can clear exactly these before re-applying the
+ * builder's output, preserving anything the user didn't ask to change (lang,
+ * kern, w, ...).
+ *
+ * Scope: run-level (from `RunFormat`). Wider than style-mutation's
+ * RPR_MANAGED_CHILDREN — RunFormat has `u` and `strike` which
+ * `StyleConfigEntry` does not. Don't fold the two sets together; their
+ * scopes are intentionally different. */
 export const RPR_MANAGED_LOCAL_NAMES: ReadonlySet<string> = new Set([
   "rFonts",
   "sz",
