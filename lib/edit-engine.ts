@@ -267,22 +267,35 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
   const anchorPPr = firstChildNS(anchor, w, "pPr")
   if (!anchorPPr) return
   let newPPr = firstChildNS(newP, w, "pPr")
-  const existingLocalNames = new Set<string>()
+  // Index existing new-pPr children by localName so we can merge per element.
+  const existingByName = new Map<string, Element>()
   if (newPPr) {
     for (const c of getChildren(newPPr)) {
-      if (c.namespaceURI === w) existingLocalNames.add(c.localName!)
+      if (c.namespaceURI === w) existingByName.set(c.localName!, c)
     }
   }
-  const toInherit: Element[] = []
+  const toClone: Element[] = []
   for (const c of getChildren(anchorPPr)) {
     if (c.namespaceURI !== w) continue
     // Skip the tracked-changes pPr snapshot — that's history, not content.
     if (c.localName === "pPrChange") continue
-    // Skip if the new paragraph already declared this property explicitly.
-    if (existingLocalNames.has(c.localName!)) continue
-    toInherit.push(c.cloneNode(true) as Element)
+    const existing = existingByName.get(c.localName!)
+    if (existing) {
+      // MDF semantics: agent's paraFormat overrides the *attrs* it specifies,
+      // unset attrs keep the anchor's values. Without this merge, partial
+      // overrides like `paraFormat: { spaceBefore: 6 }` produce
+      // <w:spacing w:before="120"/> that wipes the anchor's
+      // w:line / w:lineRule, and `firstLineIndent: "Nchar"` produces
+      // <w:ind w:firstLineChars="..."/> that wipes the anchor's
+      // w:firstLine. Word's loader treats the missing
+      // attribute halves as damage and prompts to repair on open even
+      // though the schema validates.
+      mergeMissingAttrs(c, existing)
+    } else {
+      toClone.push(c.cloneNode(true) as Element)
+    }
   }
-  if (toInherit.length === 0) return
+  if (toClone.length === 0) return
   if (!newPPr) {
     newPPr = ownerDoc.createElementNS(w, "w:pPr")
     newP.insertBefore(newPPr, newP.firstChild)
@@ -291,7 +304,23 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
   // rejects mis-ordered children with "needs repair". Naive appendChild here
   // produces sequences like [spacing, jc, ind] (jc came from buildPPrChildren,
   // ind inherited from anchor) which violate the schema.
-  for (const c of toInherit) insertChildInOrder(newPPr, c, PPR_CHILD_ORDER)
+  for (const c of toClone) insertChildInOrder(newPPr, c, PPR_CHILD_ORDER)
+}
+
+/** Copy `source`'s attributes onto `target`, leaving any attribute already
+ * set on `target` untouched. Namespace-aware. */
+function mergeMissingAttrs(source: Element, target: Element): void {
+  const attrs = source.attributes
+  if (!attrs) return
+  for (let i = 0; i < attrs.length; i++) {
+    const a = attrs[i]!
+    const ns = a.namespaceURI
+    const local = a.localName ?? a.name
+    const has = ns ? target.hasAttributeNS(ns, local) : target.hasAttribute(local)
+    if (has) continue
+    if (ns) target.setAttributeNS(ns, a.name, a.value)
+    else target.setAttribute(a.name, a.value)
+  }
 }
 
 function inheritFormatForNewParagraphs(
