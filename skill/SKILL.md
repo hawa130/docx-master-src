@@ -25,7 +25,7 @@ For any task touching new or restructured content, work the survey-then-plan loo
 A well-formed Word document expresses structural decisions through styles + numbering + sections, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) **This is the agent's required output shape, not an aspiration.** When the user hasn't pinned a contradicting choice, every pass produces a document with:
 
 - Every paragraph carrying a semantic styleId. Direct paragraph format only as one-off exceptions.
-- Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Manually-typed structural prefixes inside heading text — decimal hierarchy, CJK numerals, parenthesized markers, chapter sentinels — converted via `stripPrefixPatterns`.
+- Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Every installed Heading level is bound to its corresponding scheme level — install Heading1–Heading4 → the scheme has 4 levels with `outlineLevel` 0/1/2/3 and `numLevel` 0/1/2/3 respectively. Don't bind only the chrome levels and leave content-internal Heading3/Heading4 unbound; the result has wrong outline levels and Word's nav pane / TOC sees holes. Manually-typed structural prefixes inside heading text — decimal hierarchy, CJK numerals, parenthesized markers, chapter sentinels — converted via `stripPrefixPatterns`.
 - Body lists bound to list-bound styles + a separate single-level numbering scheme. Never written as typed markers in `text`.
 - Heading levels nesting without skipping.
 
@@ -65,6 +65,7 @@ Common rationalizations to recognize and reject:
 - "The list is short / trivially flat" → typed list markers are anti-pattern regardless of length.
 - "Installing a list-style for one occurrence is disproportionate / not worth it" → `apply_styles`'s `numbering` field accepts an array; install the heading multi-level scheme **and** the list single-level scheme in one pass. There is no second-pass cost to economize on. If the content has lists, install the list-style.
 - Any "disproportionate / minimal disruption / not worth it / over-engineering for this case" framing → wrong shape of argument. Target state is the spec; correctness is not weighed against effort.
+- "Heading3 / Heading4 are content-internal, they don't need outline numbers like the chrome does" → Wrong. The unified scheme covers every installed Heading level, not just the chrome levels. Heading3 binds to numLevel 2 + outlineLevel 2; Heading4 to numLevel 3 + outlineLevel 3. Missing this gives paragraphs styled as Heading3/4 but with the wrong outline level — Word's nav pane and any TOC will misrender.
 - "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier, not because the doc should stay that way.
 - "Form chrome is in a layout table, so it's out of Phase 1 scope" → No. The layout *table* is out of scope (don't restructure it). The chrome paragraphs inside its cells are indexed paragraphs, fully restyleable. `一、论文概况` becomes a `Heading1` paragraph; the table holding it stays a table.
 - "Migrating chrome would change the form's visual identity beyond the request" → No. After conversion, Word renders the auto-numbered `一、` the same as the typed one. Visual identity is preserved; logical structure is gained. "Beyond the request" assumes a minimal-disruption interpretation of fill — see Target state's redefinition above.
@@ -74,7 +75,7 @@ Common rationalizations to recognize and reject:
 **Locale defaults**:
 
 - Chinese body text: 2-character first-line indent (`firstLineIndent: "2char"`). Standard CN typography. Apply to body-class styles (BodyText / `a` / Normal-equivalent) unless the user pins otherwise.
-- CJK-Latin spacing: don't insert literal spaces between Chinese and Western characters / digits in `text`. Word's `autoSpaceDE` / `autoSpaceDN` handle the visual gap automatically; literal spaces compound it. Strip them when transcribing source content (markdown, LLM-generated prose, copied snippets).
+- CJK-Latin spacing: strip literal spaces between Chinese and Western characters / digits before emitting `text`. Source content (markdown, copied prose, LLM output) routinely contains them for source readability; transcribing them verbatim into Word produces double gaps because `autoSpaceDE` / `autoSpaceDN` add their own. Concrete: `在 ImageNet` → `在ImageNet`, `约 38%` → `约38%`, `4-bit` → `4-bit` (Latin-only spans keep internal punctuation). This is a transcription transformation, not a "strip if they look wrong" judgment — apply unconditionally.
 
 **Out of Phase 1 scope** (leave alone, surface to user if the limit blocks the task):
 
