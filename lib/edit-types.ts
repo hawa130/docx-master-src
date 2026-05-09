@@ -34,11 +34,13 @@ import type {
   ParagraphFormatSchema,
   RichTextSchema,
   RunFormatSchema,
+  RunLocatorSchema,
 } from "./edit-config-schema.ts"
 
 /* ------------- Public config types (inferred from zod schemas) ------------- */
 
 export type Locator = z.infer<typeof LocatorSchema>
+export type RunLocator = z.infer<typeof RunLocatorSchema>
 export type RunFormat = z.infer<typeof RunFormatSchema>
 export type ParagraphFormat = z.infer<typeof ParagraphFormatSchema>
 export type RichText = z.infer<typeof RichTextSchema>
@@ -71,6 +73,9 @@ export interface ResolvedTarget {
 export interface ResolvedEdit {
   op: EditOp
   target: ResolvedTarget
+  /** Set only for `set-run`: the resolved run inside the target paragraph.
+   * Other ops leave this undefined. */
+  runRef?: Element
 }
 
 /* ------------- Track-changes context ------------- */

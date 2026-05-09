@@ -241,6 +241,74 @@ function resolveWholeBody(ctx: ResolverContext): ResolvedTarget {
   return { paragraphs, container: ctx.body }
 }
 
+/** Resolve a `set-run` op's RunLocator. Returns the target paragraph element
+ * and the specific run element to mutate. The run is selected by:
+ *   - `runIndex: M`     → 0-based run index in the paragraph
+ *   - `blank: K`        → Kth run that's a "blank" placeholder (whitespace-only
+ *                         text + rPr containing `<w:u/>`)
+ *   - neither given     → first blank run (= `blank: 0`)
+ *
+ * Throws with a clear message when the paragraph isn't found, the index is
+ * out of range, or the requested blank doesn't exist (lists what blanks ARE
+ * present so the agent can adjust). */
+export function resolveRunLocator(
+  loc: { paragraph: number; blank?: number; runIndex?: number },
+  ctx: ResolverContext,
+): { paragraph: Element; run: Element } {
+  const hit = ctx.indexed[loc.paragraph - 1]
+  if (!hit || hit.index !== loc.paragraph) {
+    const max = ctx.indexed.length
+    throw new Error(
+      `paragraph #${loc.paragraph} not found. Document has ${max} indexed paragraph(s).`,
+    )
+  }
+  const runs = getChildrenNS(hit.element, NS.w, "r")
+  if (runs.length === 0) {
+    throw new Error(`paragraph #${loc.paragraph} has no runs to target.`)
+  }
+  if (loc.runIndex !== undefined) {
+    const run = runs[loc.runIndex]
+    if (!run) {
+      throw new Error(
+        `paragraph #${loc.paragraph}: runIndex ${loc.runIndex} out of range (paragraph has ${runs.length} run(s); valid 0..${runs.length - 1}).`,
+      )
+    }
+    return { paragraph: hit.element, run }
+  }
+  // blank-run mode (default when neither field given)
+  const blankK = loc.blank ?? 0
+  const blanks = runs.filter(isBlankRun)
+  if (blanks.length === 0) {
+    throw new Error(
+      `paragraph #${loc.paragraph}: no blank runs found. ` +
+        `A blank run is one whose text is whitespace-only and rPr carries <w:u/> ` +
+        `(typical form-fill placeholder). Use \`runIndex\` to target a specific run by 0-based index instead.`,
+    )
+  }
+  const run = blanks[blankK]
+  if (!run) {
+    throw new Error(
+      `paragraph #${loc.paragraph}: blank ${blankK} out of range (paragraph has ${blanks.length} blank run(s); valid 0..${blanks.length - 1}).`,
+    )
+  }
+  return { paragraph: hit.element, run }
+}
+
+/** Heuristic: a "blank" run is one whose text content is whitespace-only and
+ * whose rPr declares underline (`<w:u/>`). Captures form-fill placeholder
+ * runs without false-positive on legitimate empty runs that happen to lack
+ * underline (those are usually inter-text spacers, not fillable slots). */
+function isBlankRun(r: Element): boolean {
+  const rPr = firstChildNS(r, NS.w, "rPr")
+  if (!rPr) return false
+  if (!firstChildNS(rPr, NS.w, "u")) return false
+  let text = ""
+  for (const c of getChildren(r)) {
+    if (c.namespaceURI === NS.w && c.localName === "t") text += textContent(c)
+  }
+  return text.trim() === ""
+}
+
 /* ------------- helpers usable downstream ------------- */
 
 /** Read the styleId of a paragraph element (for blocker logging / heading

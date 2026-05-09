@@ -31,6 +31,7 @@ import {
 import {
   buildResolverContext,
   resolveLocator,
+  resolveRunLocator,
   trailingBodySectPr,
   type ResolverContext,
 } from "./locator.ts"
@@ -119,13 +120,11 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
 
   const resolved: ResolvedEdit[] = []
   for (const [i, op] of edits.entries()) {
-    let target: ResolvedTarget
     try {
-      target = resolveLocator(op.at, resolverCtx)
+      resolved.push(resolveOneEdit(op, resolverCtx, i))
     } catch (err) {
       throw new Error(`edits[${i}] (${op.op}): ${(err as Error).message}`, { cause: err })
     }
-    resolved.push({ op, target })
   }
   validateAgainstBlockers(resolved, blockers, resolverCtx.indexByElement)
 
@@ -196,13 +195,11 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
 
   const resolved: ResolvedEdit[] = []
   for (const [i, op] of edits.entries()) {
-    let target: ResolvedTarget
     try {
-      target = resolveLocator(op.at, resolverCtx)
+      resolved.push(resolveOneEdit(op, resolverCtx, i))
     } catch (err) {
       throw new Error(`edits[${i}] (${op.op}): ${(err as Error).message}`, { cause: err })
     }
-    resolved.push({ op, target })
   }
 
   validateAgainstBlockers(resolved, blockers, resolverCtx.indexByElement)
@@ -239,6 +236,21 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       perOp,
     },
   }
+}
+
+/** Resolve one op's locator. Single source of truth used by both
+ * `previewEditOps` (dry-run path) and `runEditOps` — keeps set-run's
+ * RunLocator special case in one place. */
+function resolveOneEdit(op: EditOp, resolverCtx: ResolverContext, _opIndex: number): ResolvedEdit {
+  if (op.op === "set-run") {
+    const r = resolveRunLocator(op.at, resolverCtx)
+    return {
+      op,
+      target: { paragraphs: [r.paragraph], container: resolverCtx.body },
+      runRef: r.run,
+    }
+  }
+  return { op, target: resolveLocator(op.at, resolverCtx) }
 }
 
 /* ------------- blocker enforcement ------------- */
@@ -303,6 +315,11 @@ function applyOne(
       return applyDelete(edit.target, documentDoc, trackContext, stale)
     case "format":
       return applyFormat(edit.target, edit.op, documentDoc, trackContext)
+    case "set-run":
+      if (!edit.runRef) {
+        throw new Error("set-run: missing resolved run reference (internal)")
+      }
+      return applySetRun(edit.runRef, edit.op, documentDoc, trackContext)
     default:
       return assertNever(edit.op)
   }
@@ -669,4 +686,65 @@ function applyFormat(
     touched++
   }
   return touched
+}
+
+/* ------------- set-run -------------
+ *
+ * Replace text in a single run while preserving the run's rPr (font /
+ * underline / size / etc.) and all sibling runs in the paragraph. The
+ * archetypal use is filling a form-fill placeholder: paragraph reads
+ * `[label-bold] [whitespace-blank-with-underline]` and the agent wants to
+ * provide the value text — the underline run's rPr (the placeholder
+ * shape) carries through to the rendered value automatically. Optional
+ * `format` lets the agent override specific rPr fields on the targeted
+ * run when needed; absent, the run's existing rPr is preserved verbatim. */
+function applySetRun(
+  runEl: Element,
+  op: Extract<EditOp, { op: "set-run" }>,
+  documentDoc: Document,
+  trackContext: TrackContext,
+): number {
+  // Take a snapshot of the run's rPr for tracked-changes recording before
+  // any mutation, matching the order discipline used elsewhere in this
+  // engine (snapshot pre-mutation; later cloneNode would capture the new
+  // state and produce wrong rPrChange entries).
+  const oldRPr = firstChildNS(runEl, w, "rPr")
+  const rPrSnapshot = oldRPr ? (oldRPr.cloneNode(true) as Element) : null
+
+  // Optional format override — same pattern as applyFormat but scoped to
+  // this one run: clear managed children, re-emit from buildRPrChildren.
+  if (op.format) {
+    let rPr: Element
+    if (oldRPr) {
+      rPr = oldRPr
+      for (const c of Array.from(getChildren(rPr))) {
+        if (c.namespaceURI === w && RPR_MANAGED_LOCAL_NAMES.has(c.localName!)) {
+          rPr.removeChild(c)
+        }
+      }
+    } else {
+      rPr = documentDoc.createElementNS(w, "w:rPr")
+      runEl.insertBefore(rPr, runEl.firstChild)
+    }
+    for (const c of buildRPrChildren(op.format, documentDoc)) rPr.appendChild(c)
+    attachRPrChange(rPr, rPrSnapshot, documentDoc, trackContext)
+  }
+
+  // Replace the run's text content. A run can hold multiple <w:t> /
+  // <w:tab> / <w:br> children; we collapse them into one <w:t> carrying
+  // the new text with xml:space="preserve" so leading/trailing whitespace
+  // (common in form values) survives serialization. tab / br elements are
+  // dropped — they belonged to the placeholder run's structure, not the
+  // value's; agent supplies a string, not structured runs.
+  for (const c of Array.from(getChildren(runEl))) {
+    if (c.namespaceURI !== w) continue
+    if (c.localName === "rPr") continue
+    runEl.removeChild(c)
+  }
+  const t = documentDoc.createElementNS(w, "w:t")
+  t.setAttribute("xml:space", "preserve")
+  t.appendChild(documentDoc.createTextNode(op.with))
+  runEl.appendChild(t)
+
+  return 1
 }
