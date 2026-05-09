@@ -57,7 +57,7 @@ Sparse by design — only declared blocks apply. Untouched styles / numbering / 
 
 Sketch the content's structural outline first; `styles[]` follows that outline, not the other way around. Reactive style additions accrete debt later edits have to re-untangle.
 
-- `styles[]` — every Heading level the combined doc + content needs; `BodyText`; **`ListNumber` + single-level numbering scheme for any body list content**. Do NOT type `(1)(2)(3)` / `①②③` in inserted text — Word renders nothing, the parens become literal characters. Adjacent levels need a visible typographic gradient (size / weight / spacing); identical sizing defeats the structural signal.
+- `styles[]` — every Heading level the combined doc + content needs; `BodyText`; **`ListNumber` + single-level numbering scheme for any body list content**. Do NOT type `(1)(2)(3)` / `①②③` in inserted text — Word renders nothing, the parens become literal characters. **Sizes follow the document's existing chrome** (visual style summary in `overview`). If all pre-existing heading-shaped paragraphs share a size — common in CN academic templates where everything is 小四 12pt and hierarchy is signalled via `Bold` + spacing + indent + auto-numbering — preserve that uniform size and differentiate levels along weight / spacing / indent axes instead. Invent new sizes only when the document has no chrome convention to match.
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
 - `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use cell-content insert or run-level surgery, not whole-paragraph `replace`.
