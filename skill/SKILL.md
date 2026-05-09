@@ -39,7 +39,7 @@ install styles + numbering + theme + template
   → validate, write
 ```
 
-Sparse by design — only declared blocks apply. Untouched styles / numbering / paragraphs / theme stay as they are.
+Sparse by design — only declared blocks apply. Untouched styles / numbering / paragraphs / theme stay as they are. **Declare only what's wrong, missing, or the user explicitly asked to change** — existing chrome that already meets the target state (correct styles / numbering / typography) is not your business to normalize. Match existing conventions; fill gaps; route unrouted body fingerprints. Don't rewrite what already works.
 
 ## Workflow
 
