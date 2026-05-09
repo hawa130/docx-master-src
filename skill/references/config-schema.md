@@ -1,15 +1,15 @@
-# `apply_styles` Config Schema
+# `apply` Config Schema
 
 Full field-by-field reference for the JSON config consumed by
-`apply_styles [--dry-run] <config.json>`. Read this before composing
-your first config; SKILL.md only carries a top-level summary.
+`apply [--dry-run] <config.json>`. Read this before composing your first
+config; SKILL.md only carries a top-level summary.
 
 ## Top-level shape
 
 ```jsonc
 {
   source: "/path/to/original.docx",  // REQUIRED. Path to the input file.
-                                     // This file is NEVER modified — apply_styles
+                                     // This file is NEVER modified — apply
                                      // copies it first, then writes the modified copy.
   output: "/path/to/output.docx",    // REQUIRED. Path for the new file. Must differ from source.
   dryRun: false,                     // optional. If true, runs the entire pipeline
@@ -20,7 +20,9 @@ your first config; SKILL.md only carries a top-level summary.
 
   template: { ... },                 // optional. See § "Template import" below.
   styles:   [ ... ],                 // REQUIRED. See § "Style entries" below.
-  numbering:{ levels: [...] },       // optional. See § "Numbering" below.
+  numbering: { levels: [...] }       // optional. Single scheme, OR array of
+            | [ {levels:[...]}, ... ], // schemes for parallel installations
+                                     // (e.g. multi-level heading + single-level list).
   requirements: { id: "..." },       // optional. Annotation only — see § "Requirements" below.
 
   // Paragraph-to-style mapping, in resolution order:

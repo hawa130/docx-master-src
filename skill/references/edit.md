@@ -12,7 +12,7 @@ Always inspect before composing edits.
 
 - `inspect_table` — top-level tables with `[row,col]` cell snippets (before composing a `cell` locator).
 - `inspect_blockers` — paragraphs `apply` will refuse to touch in the edit phase (existing tracked changes / fields / SDT controls).
-- `overview` / `find_paragraphs` / `inspect_range` / `inspect_neighbors` — same as the standardize path.
+- `overview` / `find_paragraphs` / `inspect_range` / `inspect_neighbors` — same inspect tools the standardize-shape config uses.
 
 ## Config shape (within an `apply` config)
 
@@ -51,7 +51,7 @@ Always inspect before composing edits.
 
 `replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` — same semantics as Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
 
-**Bold-pMark trap**: a label paragraph (heading-style) often has bold paragraph-mark rPr; the empty placeholder row beneath it inherits that bold. When you `replace` or `insert-after` against either, the new content inherits bold via Match-Destination-Formatting and renders wrong for prose. **Inspect the anchor's rPr first.** If it carries unwanted bold, override per-Block with `runFormat: { bold: false }` (the emitter writes `<w:b w:val="0"/>` for explicit-off, distinct from omitting the field). For systemic template defects (slot-rows uniformly bold-styled), the cleaner fix is a `standardize` pass that resets the slot's pStyle.
+**Bold-pMark trap**: a label paragraph (heading-style) often has bold paragraph-mark rPr; the empty placeholder row beneath it inherits that bold. When you `replace` or `insert-after` against either, the new content inherits bold via Match-Destination-Formatting and renders wrong for prose. **Inspect the anchor's rPr first.** If it carries unwanted bold, override per-Block with `runFormat: { bold: false }` (the emitter writes `<w:b w:val="0"/>` for explicit-off, distinct from omitting the field). For systemic template defects (slot-rows uniformly bold-styled), the cleaner fix is to add `styles[]` / `bulk_rules` to the same `apply` config to reset the slot's pStyle.
 
 ### Blocks (in `with` / `content`)
 
@@ -64,7 +64,7 @@ Always inspect before composing edits.
 
 `text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required.
 
-**Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. List items use `numbering: { numId, level }`; sub-headings use `styleId: "Heading3"`. If the styleId or numId you reference doesn't exist in the doc, `standardize` first to install it (see SKILL.md Target state).
+**Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. List items use `numbering: { numId, level }`; sub-headings use `styleId: "Heading3"`. If the styleId or numId you reference doesn't exist in the doc, add `styles[]` / `numbering` to the same `apply` config so they get installed before `edits[]` runs (see SKILL.md Target state).
 
 ### Quote handling
 
@@ -74,9 +74,9 @@ Always inspect before composing edits.
 
 `runFormat`: `bold` / `italic` / `underline` / `strike` (boolean, tri-state — `false` emits explicit off-toggle to override inherited true), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (pt).
 
-`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (pt), `lineSpacing` + `lineRule` (same convention as `apply_styles`), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (`"Nchar"` / `"Npt"` / number), `outlineLevel` (0–9).
+`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (pt), `lineSpacing` + `lineRule` (same convention as a style definition), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (`"Nchar"` / `"Npt"` / number), `outlineLevel` (0–9).
 
-Mirrors the standardize style schema — what you'd put inside a style definition there, you put as direct paragraph formatting here.
+Mirrors the style schema — what you'd put inside a `styles[]` entry, you put as direct paragraph formatting here.
 
 ## Track-changes mode
 
@@ -100,9 +100,9 @@ For multi-paragraph content, pass multiple Blocks in one op rather than chaining
 - **Stale element**: if op A removes paragraphs and op B targets one of them, op B fails. Reorder so deletes / replaces happen last, or split into separate runs.
 - **Empty body**: `whole-body` on a doc with zero paragraphs only accepts `insert-*` (appends before the trailing `<w:sectPr>`).
 
-## Compose with other commands
+## Compose with other shapes
 
-- **Messy template + content**: `standardize` first to install / fix the style system, then `edit` to insert content. Match-Destination-Formatting on a dirty template propagates the mess.
-- **Whole-doc role-based reshape**: `standardize`, not `edit`.
-- **Read-only conformance check**: `audit`. `edit` always writes.
-- **Single-style change covering all paragraphs of role X**: `standardize`'s targeted-restyle path — narrower than `edit`'s per-locator approach.
+- **Messy template + content**: combine `styles[]` / `numbering` / `pattern_rules` (standardize-shape) with `edits[]` in one `apply` config. The engine installs structure first, then `edits[]` references the just-installed styleIds. Match-Destination-Formatting on a dirty template otherwise propagates the mess.
+- **Whole-doc role-based reshape**: drop `edits[]` and use the standardize-shape blocks (see [standardize.md](standardize.md)).
+- **Read-only conformance check**: `audit`. `apply` always writes when not in dry-run.
+- **Single-style change covering all paragraphs of role X**: `restyle` (or standardize-shape `pattern_rules`) — narrower than per-locator edits.

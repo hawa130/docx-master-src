@@ -1,22 +1,28 @@
-# Command: `standardize`
+# Standardize-shape `apply` config
 
-Reshape a Word document's style system, numbering, and role assignments. Operates by **pattern**: you describe categories of paragraphs (regex match / fingerprint match / specific style), the engine applies uniformly to every member of the category. Per-paragraph enumeration is the **last resort**, not the default.
+How to compose an `apply` config that reshapes a Word document's style
+system, numbering, and role assignments. Operates by **pattern**: you
+describe categories of paragraphs (regex match / fingerprint match /
+specific style), the engine applies uniformly to every member of the
+category. Per-paragraph enumeration is the **last resort**, not the default.
 
-## When to use
+## When to use this shape
 
 - The user wants the doc brought into a consistent, standardized form (whole-doc reshape).
 - The user wants a focused style-system change (add a Heading3, change Heading2 size, install numbering).
 - A template needs structure work before content can be filled (typed chrome → auto-numbering, missing Heading levels, missing list-bound style).
 
-For surgical changes at specific paragraph indices or table cells, see `edit`.
+For surgical changes at specific paragraph indices or table cells, see the
+edits-shape config in [edit.md](edit.md). Both shapes are blocks of the same
+`apply` config — combine them in one call when a task needs both.
 
 ## Iterating with --dry-run
 
 The supported workflow:
 
-1. `apply_styles --dry-run <config.json>` — applies in-memory, prints the change report, doesn't touch the output file.
+1. `apply --dry-run <config.json>` — applies in-memory, prints the change report, doesn't touch the output file.
 2. Read the report. Refine the config based on what hit / what didn't.
-3. Repeat until correct, then `apply_styles` (no flag) to write.
+3. Repeat until correct, then `apply` (no flag) to write.
 
 Each cycle is seconds. `styles[]` is sparse — declare only what you're touching; untouched styles stay as they are.
 
@@ -24,7 +30,7 @@ Each cycle is seconds. `styles[]` is sparse — declare only what you're touchin
 
 ## Default workflow: pattern-driven config
 
-For most standardize tasks, design **one** config that does the whole reshape. Start with this skeleton and fill it in based on what the doc + content needs:
+For most whole-doc reshape tasks, design **one** `apply` config that does the entire job. Start with this skeleton and fill it in based on what the doc + content needs:
 
 ```jsonc
 {
@@ -81,7 +87,7 @@ For most standardize tasks, design **one** config that does the whole reshape. S
 
 **Targeting precedence (first match wins):** `exclude` > `assignments` > `pattern_rules` > `bulk_rules` > implicit-keep.
 
-This is one config, one `apply_styles` call, dry-run + apply. **Don't** enumerate chrome paragraphs into `assignments` — that's where round-by-round selective skipping happens. Patterns describe; assignments correct.
+This is one config, one `apply` call, dry-run + apply. **Don't** enumerate chrome paragraphs into `assignments` — that's where round-by-round selective skipping happens. Patterns describe; assignments correct.
 
 ### Typical recipe shapes
 
@@ -188,10 +194,10 @@ The user is expressing focused changes with the rest of the document expected to
    - Define a new style only when no existing one fits.
 
 3. **Pick the narrowest tool.**
-   - `restyle` for paragraph style assignment only — same config as `apply_styles` minus `template` / `numbering`. Most common.
+   - `restyle` for paragraph style assignment only — same config as `apply` minus `template` / `numbering` / `edits`. Most common.
    - `migrate_numbering` for numbering-only changes.
    - `import_template` for template-only imports.
-   - `apply_styles` when the change spans multiple operations.
+   - `apply` when the change spans multiple operations.
 
 4. **Sparse config.** Don't redeclare untouched styles. Prefer `pattern_rules` (content-based) or targeted `assignments`. Avoid broad `bulk_rules` unless the fingerprint cleanly captures only your target.
 
@@ -215,7 +221,7 @@ Outline:
 3. Re-zip preserving the directory structure (`cd /tmp/docx-unpacked && zip -r ../output.docx .`).
 4. Open in Word; if it errors or silently drops content, your XML edit broke something — do not deliver.
 
-If a request *can* be expressed via `apply_styles` config, do that instead.
+If a request *can* be expressed via `apply` config, do that instead.
 
 ---
 
@@ -238,7 +244,7 @@ If a request *can* be expressed via `apply_styles` config, do that instead.
 - **Pre-printed chrome (forms, templates with printed labels and instructions)**: when the visual summary shows a long tail of low-occurrence fingerprints with short average text length (`avg ≤20ch`), those are usually printed labels / cover chrome, not author content.
 - **Source's base style violates the document's stated specs**: e.g. doc's `Normal` sets `bold: true` while the spec says 正文不加粗. Override the base style in `styles[]` with the corrected fields.
 
-## Compose with other commands
+## Compose with other shapes
 
-- After installing the style system here, `edit` for content insertion or surgical touch-ups on specific paragraphs the rules missed.
-- Read-only check before reshape: `audit`. The audit's violation list often translates directly into a `standardize` config.
+- After installing the style system, add an `edits[]` block to the same `apply` config (or follow up with another call) for content insertion or surgical touch-ups on specific paragraphs the rules missed. See [edit.md](edit.md).
+- Read-only check before reshape: `audit`. The audit's violation list often translates directly into the standardize-shape blocks (`styles[]` / `pattern_rules` / `numbering`) of an `apply` config.

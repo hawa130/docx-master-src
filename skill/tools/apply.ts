@@ -31,7 +31,9 @@ import { runCli } from "@lib/cli-helpers.ts"
  *   `restyle` — paragraph restyle only
  *   `migrate_numbering` — numbering only
  *   `import_template` — template-style import only
- *   `apply_edits` — content edits only (no style/numbering install)
+ *
+ * Pure content-only edits (no style/numbering install) still go through
+ * `apply` with `edits[]` as the only populated block.
  */
 void runCli({
   command: "apply",

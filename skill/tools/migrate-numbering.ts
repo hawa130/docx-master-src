@@ -12,7 +12,7 @@ import { runCli } from "@lib/cli-helpers.ts"
  *
  * `template` is rejected here; chain `import_template` first if you need to
  * pull in heading styles from a template, then run `migrate_numbering` to
- * bind the numbering. (Or use `apply_styles` for combined operations.)
+ * bind the numbering. (Or use `apply` for combined operations.)
  */
 void runCli({
   command: "migrate_numbering",

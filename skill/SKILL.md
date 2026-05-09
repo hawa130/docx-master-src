@@ -9,13 +9,14 @@ Mutates Word (.docx) OOXML directly: produce well-formed documents from messy te
 
 ## Target state — the highest principle
 
-A well-formed Word document expresses structural decisions through **styles + numbering + sections**, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) **This is the destination — every operation in this skill exists to move the document toward this state.**
+A well-formed Word document expresses structural decisions through **styles + numbering + sections**, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) **This is the destination — every write operation in this skill exists to move the document toward this state.**
 
 The required output shape:
 
 - Every paragraph carries a semantic styleId (Heading1 / Heading2 / … / BodyText / ListNumber / Caption / etc.). Direct paragraph format only as one-off exceptions.
-- Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Every installed Heading level is bound to its scheme level (Heading1 → numLevel 0 + outlineLevel 0, …, HeadingN → numLevel N-1 + outlineLevel N-1). Manually-typed structural prefixes inside heading text — decimal hierarchy, locale numerals, parenthesized markers, chapter sentinels — converted to auto-numbering via `stripPrefixPatterns`.
-- Body lists bound to list-bound styles (`ListNumber` / `ListBullet`) + a separate single-level numbering scheme. List markers never written as typed text in paragraph content.
+- Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Every installed Heading level binds to its scheme level (Heading1 → numLevel 0 + outlineLevel 0, …, HeadingN → numLevel N-1 + outlineLevel N-1).
+- Body lists bound to list-bound styles (`ListNumber` / `ListBullet`) + a separate single-level numbering scheme.
+- **All hierarchy and list markers come from auto-numbering — never typed text, in either direction.** Pre-existing typed chrome is converted via `stripPrefixPatterns`. Newly inserted heading or list content omits the prefix from its `text` — Word renders the marker from the bound numbering level. The display format follows the `lvlText` pattern (`%1` references the level's own counter; composite forms like `%1.%2` reference multiple levels). See `references/numbering-formats.md` for level-shape recipes covering common patterns.
 - Heading levels nest without skipping.
 - Locale typography defaults applied (CN body: 2-character first-line indent; CJK ↔ Latin literal spaces stripped — Word's autoSpace handles the gap).
 
@@ -88,67 +89,23 @@ For any task that produces output:
 
 For chrome conversion specifically: write one `pattern_rules` entry per hierarchy shape (e.g. `^[一二三...]+、` → Heading1, `^（[一二三...]）` → Heading2, `^\d+\.\d+\s` → Heading3). Don't enumerate the chrome paragraphs by index — pattern matching is the more reliable path.
 
-## Worked recipe: fill a template with structured content
+## Combining standardize + edits in one call
 
-When the user supplies a template + content (markdown / prose / structured input), produce a well-formed filled docx in **one** `apply` call:
+A template-fill task usually needs both shapes: install the style system AND insert content. Compose them into one `apply` config:
 
 ```jsonc
 {
-  "source": "template.docx",
-  "output": "filled.docx",
-
-  "styles": [
-    { "id": "Heading1", "name": "heading 1", "fontCJK": "黑体", "size": 14, "bold": true,
-      "overrides": { "outlineLevel": 0 } },
-    { "id": "Heading2", "name": "heading 2", "fontCJK": "黑体", "size": 13, "bold": true,
-      "overrides": { "outlineLevel": 1 } },
-    { "id": "Heading3", "name": "heading 3", "fontCJK": "黑体", "size": 12, "bold": true,
-      "overrides": { "outlineLevel": 2 } },
-    { "id": "Heading4", "name": "heading 4", "fontCJK": "黑体", "size": 12, "bold": true,
-      "overrides": { "outlineLevel": 3 } },
-    { "id": "ListNumber", "name": "List Number", "fontCJK": "宋体", "size": 12 }
-  ],
-
-  "numbering": [
-    {
-      "levels": [
-        { "level": 0, "numFmt": "chineseCounting", "lvlText": "%1、",     "suff": "nothing", "styleId": "Heading1" },
-        { "level": 1, "numFmt": "chineseCounting", "lvlText": "（%2）",    "suff": "nothing", "styleId": "Heading2" },
-        { "level": 2, "numFmt": "decimal",          "lvlText": "%3.",      "suff": "space",   "styleId": "Heading3" },
-        { "level": 3, "numFmt": "decimal",          "lvlText": "（%4）",    "suff": "nothing", "styleId": "Heading4" }
-      ]
-    },
-    { "levels": [{ "level": 0, "numFmt": "decimal", "lvlText": "%1.", "suff": "space", "styleId": "ListNumber" }] }
-  ],
-
-  "pattern_rules": [
-    { "regex": "^[一二三四五六七八九十百千]+、",   "style": "Heading1",   "stripMatch": true },
-    { "regex": "^（[一二三四五六七八九十百千]+）", "style": "Heading2",   "stripMatch": true },
-    { "regex": "^\\d+\\.\\d+\\s",                "style": "Heading3",   "stripMatch": true },
-    { "regex": "^\\d+\\.\\s",                    "style": "ListNumber", "stripMatch": true }
-  ],
-
-  "exclude": [/* cover-page instruction paragraphs that look like chrome but aren't */],
-
-  "edits": [
-    { "op": "replace", "at": {...slot locator...}, "with": [
-      { "type": "paragraph", "styleId": "Heading3", "text": "理论意义" },
-      { "type": "paragraph", "text": "本研究在理论层面..." }
-    ] }
-  ]
+  "source": "...", "output": "...",
+  "styles":        [ /* Heading1..N + ListNumber + ... */ ],
+  "numbering":     [ /* multi-level heading scheme + single-level list scheme */ ],
+  "pattern_rules": [ /* one entry per typed chrome shape */ ],
+  "edits":         [ /* content insertion ops */ ]
 }
 ```
 
-One config, one `apply` call. The engine:
+Pipeline order: install styles + numbering → run edits (referencing the just-installed styleIds) → re-fingerprint → run rules (cleans BOTH pre-existing chrome AND any typed prefixes the agent emitted in content) → validate, write.
 
-- Installs Heading1–4 and ListNumber styles.
-- Installs the multi-level heading scheme + the single-level list scheme.
-- Runs the edit ops (inserting content with semantic styleId references).
-- Re-fingerprints (new paragraphs participate in fingerprint analysis).
-- Runs `pattern_rules` — converts BOTH the template's hand-typed chrome (`一、` / `（一）` / `1.1`) AND any typed list markers in agent-emitted content (`1.` / `（1）`). Same mechanism, one pass.
-- Validates and writes.
-
-The agent's job during edit ops: insert content with semantic `styleId` and `numbering` bindings when convenient; if it's easier to type list markers in `text`, that's also fine — the post-edit `pattern_rules` cleanup catches them. Both paths produce the same well-formed output.
+Block-level details: [`references/standardize.md`](references/standardize.md) for `styles[]` / `numbering` / `pattern_rules` / `bulk_rules` / `assignments` / `exclude`. [`references/edit.md`](references/edit.md) for `edits[]` (locators, ops, MDF, track-changes). [`references/numbering-formats.md`](references/numbering-formats.md) for level-shape recipes. [`references/config-schema.md`](references/config-schema.md) for full field reference.
 
 ## Out of Phase 1 scope
 
@@ -185,6 +142,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 | `inspect_table` | `node scripts/inspect_table.js <file>` | Top-level tables with cell text snippets at `[row,col]`. Use before composing a `cell` locator on the `edit` path. |
 | `inspect_blockers` | `node scripts/inspect_blockers.js <file>` | Paragraphs `apply`'s edit phase will refuse — existing tracked changes, complex fields, SDT controls. |
 | `find_paragraphs` | `node scripts/find_paragraphs.js <file> --regex <pat> [--flags <flags>] [--limit N] [--fingerprint X]` | Cross-document text search. **Use to validate `pattern_rules` regex coverage before applying** — see exactly which paragraphs your regex catches. |
+| `validate` | `node scripts/validate.js <file>` | Schema-aware OOXML check. Surfaces element-ordering / required-element issues that make Word prompt to "repair" the file. `apply` runs this automatically on every write; use the standalone CLI to spot-check arbitrary .docx files. |
 | `apply --dry-run` | `node scripts/apply.js --dry-run <config.json>` | Iterate on a config without writing the output file. **Use between every config edit.** |
 | `apply` | `node scripts/apply.js <config.json>` | Unified writer. Accepts styles + numbering + template + theme + rules + edits in one config. **Default for any write task** — including pure-edit (just `edits[]`) and pure-restyle. |
 | `restyle` | `node scripts/restyle.js [--dry-run] <config.json>` | Narrow: paragraph restyle only. |

@@ -5,8 +5,8 @@ import { DocumentParser } from "@lib/document-parser.ts"
 import { StyleResolver } from "@lib/style-resolver.ts"
 
 /**
- * `inspect_blockers` — list paragraphs that `apply_edits` will refuse to
- * touch. Causes: existing tracked changes, complex field regions
+ * `inspect_blockers` — list paragraphs that `apply`'s edit phase will refuse
+ * to touch. Causes: existing tracked changes, complex field regions
  * (TOC / STYLEREF / cross-references), SDT content controls.
  *
  * Use before composing `edits[]` so locators can be chosen to avoid

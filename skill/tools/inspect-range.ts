@@ -49,9 +49,9 @@ function renderPara(p: ParsedParagraph): string[] {
 
 function formatRPr(r: ComputedRunStyle): string {
   const parts: string[] = []
-  // Output field names match the apply_styles config schema (fontCJK /
-  // fontLatin), so an agent reading inspect_range can drop names directly
-  // into config without translation.
+  // Output field names match the apply config schema (fontCJK / fontLatin),
+  // so an agent reading inspect_range can drop names directly into config
+  // without translation.
   if (r.fontEastAsia) parts.push(`fontCJK: "${r.fontEastAsia}"`)
   const latin = r.fontAscii ?? r.fontHAnsi
   if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: "${latin}"`)
