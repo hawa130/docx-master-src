@@ -29,8 +29,7 @@ Tools present visible facts — computed styles, element positions, document str
 
 | Command | When | Reference |
 |---|---|---|
-| **`apply`** | Reshape a docx — install / override styles, install numbering, set theme, import template styles, restyle paragraphs by pattern / fingerprint, insert content. **Single config, single call**, even when the task spans installing structure + filling content. | [references/standardize.md](references/standardize.md) |
-| `edit` | Surgical changes at specific locations on an already-clean docx (no style installation). | [references/edit.md](references/edit.md) |
+| **`apply`** | The unified writer. Install / override styles, install numbering, set theme, import templates, restyle by pattern / fingerprint, insert content via edits. Single config, single call — even when task spans installing structure + filling content. Pure-edit tasks (locator-based, no style install) also use `apply` with just `edits[]` in the config. | [references/standardize.md](references/standardize.md) + [references/edit.md](references/edit.md) |
 | `audit` | Read-only conformance check; no file output. | [references/audit.md](references/audit.md) |
 
 The `apply` command is the unified writer. It accepts every block — `styles[]`, `numbering`, `template`, `theme`, `pattern_rules`, `bulk_rules`, `assignments`, `exclude`, `edits[]`, `trackChanges` — in one config and runs them in the correct internal order:
@@ -47,14 +46,13 @@ install styles + numbering + theme + template
 
 **Sparse by design** — only declared blocks apply. Untouched styles, numbering, paragraphs, theme stay as they are.
 
-For tasks that want a narrower surface (and a narrower config schema to learn), the focused CLIs accept subsets:
+For tasks that want a narrower surface, focused CLIs accept subsets — all share the same engine, just filtered views:
 
 - `restyle` — paragraph restyle only (rejects `template` / `numbering` / `edits`)
 - `migrate_numbering` — numbering install only
 - `import_template` — template style import only
-- `apply_edits` — content edits only (rejects style installation)
 
-These all share the same engine; they're filtered views.
+Pure content-only edits (no style installation) go through `apply` with `edits[]` and nothing else; there is no separate edit-only CLI. This is deliberate: when a fill task needs both styles and edits, the agent picks `apply` once and writes one config — not "edit, then maybe standardize, then maybe cleanup".
 
 ## How to apply (the default workflow)
 
@@ -185,14 +183,13 @@ All tools invoked via `node <script> <args>`, output to stdout.
 | `inspect_style_def` | `node scripts/inspect_style_def.js <file> <styleId>` | Pre-defined styles in `styles.xml` and their `basedOn` chain. Use before reusing or overriding an existing styleId. |
 | `inspect_section` | `node scripts/inspect_section.js <file> <index>` | Page setup differences between sections. |
 | `inspect_table` | `node scripts/inspect_table.js <file>` | Top-level tables with cell text snippets at `[row,col]`. Use before composing a `cell` locator on the `edit` path. |
-| `inspect_blockers` | `node scripts/inspect_blockers.js <file>` | Paragraphs `apply_edits` will refuse — existing tracked changes, complex fields, SDT controls. |
+| `inspect_blockers` | `node scripts/inspect_blockers.js <file>` | Paragraphs `apply`'s edit phase will refuse — existing tracked changes, complex fields, SDT controls. |
 | `find_paragraphs` | `node scripts/find_paragraphs.js <file> --regex <pat> [--flags <flags>] [--limit N] [--fingerprint X]` | Cross-document text search. **Use to validate `pattern_rules` regex coverage before applying** — see exactly which paragraphs your regex catches. |
 | `apply --dry-run` | `node scripts/apply.js --dry-run <config.json>` | Iterate on a config without writing the output file. **Use between every config edit.** |
-| `apply` | `node scripts/apply.js <config.json>` | Unified orchestrator. Accepts styles + numbering + template + theme + edits + rules in one config. |
+| `apply` | `node scripts/apply.js <config.json>` | Unified writer. Accepts styles + numbering + template + theme + rules + edits in one config. **Default for any write task** — including pure-edit (just `edits[]`) and pure-restyle. |
 | `restyle` | `node scripts/restyle.js [--dry-run] <config.json>` | Narrow: paragraph restyle only. |
 | `migrate_numbering` | `node scripts/migrate_numbering.js [--dry-run] <config.json>` | Narrow: numbering install only. |
 | `import_template` | `node scripts/import_template.js [--dry-run] <config.json>` | Narrow: template style import only. |
-| `apply_edits` | `node scripts/apply_edits.js <config.json>` | Narrow: content edits only (no style installation). |
 
 ## Cross-command invariants
 

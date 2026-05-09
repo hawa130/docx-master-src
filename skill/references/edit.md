@@ -1,23 +1,26 @@
-# Command: `edit`
+# `edits` block (used inside `apply`)
 
-Surgical content + format changes at specific locations on an existing docx — replace / insert / delete paragraphs, swap a table cell, embed an image, restyle a paragraph or range. Optional Word tracked-changes mode.
+`edits` is a sub-block of `apply`'s config — it covers surgical content + format changes at specific locations: replace / insert / delete paragraphs, swap a table cell, embed an image, restyle a paragraph or range. Optional Word tracked-changes mode.
 
-*Illustrative phrasings: "把第 3 段改成 ...", "在 X 章后面插一段", "这个表格第 2 行换成 ...", "删掉那段开题摘要", "给第 5 段加粗", "在结论后插张图". Same words can land in `standardize` when the user wants role-based whole-doc reshape — ask one focused question if intent is genuinely ambiguous.*
+*Illustrative phrasings: "把第 3 段改成 ...", "在 X 章后面插一段", "这个表格第 2 行换成 ...", "删掉那段开题摘要", "给第 5 段加粗", "在结论后插张图". For role-based whole-doc reshape, drive the change via `pattern_rules` / `bulk_rules` in the same config; for surgical location-based work, use this `edits` block.*
+
+There's no separate `apply_edits` CLI — pure content-only edits go through `apply` with `edits[]` and nothing else. When the task also needs style installation (template fill, missing Heading levels), the same `apply` config gets `styles[]` + `numbering` + `pattern_rules` blocks alongside `edits`. **One config, one call.**
 
 ## Reconnaissance first
 
 Always inspect before composing edits.
 
 - `inspect_table` — top-level tables with `[row,col]` cell snippets (before composing a `cell` locator).
-- `inspect_blockers` — paragraphs `apply_edits` will refuse (existing tracked changes / fields / SDT controls).
+- `inspect_blockers` — paragraphs `apply` will refuse to touch in the edit phase (existing tracked changes / fields / SDT controls).
 - `overview` / `find_paragraphs` / `inspect_range` / `inspect_neighbors` — same as the standardize path.
 
-## Config shape
+## Config shape (within an `apply` config)
 
 ```json
 {
   "source": "input.docx",
   "output": "output.docx",
+  // ... styles[], numbering, pattern_rules, etc. as needed ...
   "edits": [
     { "op": "...", "at": { "type": "..." } /* op-specific fields */ }
   ],
@@ -25,7 +28,7 @@ Always inspect before composing edits.
 }
 ```
 
-`edits[]` runs in array order. Failures abort atomically; the original file is never modified.
+`edits[]` runs in array order during `apply`'s pipeline (after style/numbering install, before pattern_rules cleanup). Failures abort atomically; the original file is never modified.
 
 ### Locators (`at`)
 

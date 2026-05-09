@@ -29,8 +29,6 @@ const tools: Record<string, string> = {
   restyle: "restyle.ts",
   migrate_numbering: "migrate-numbering.ts",
   import_template: "import-template.ts",
-  // edit sub-command
-  apply_edits: "apply-edits.ts",
 }
 
 export default defineConfig({
