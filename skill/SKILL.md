@@ -16,7 +16,7 @@ Tools present facts — computed styles, element positions, document structure. 
 For any task touching new or restructured content, work the survey-then-plan loop:
 
 1. **Survey the content** — hierarchy depth, list usage, inline emphasis, tables / images / code / captions.
-2. **Survey the document** — which styles + numbering schemes exist; whether existing typed prefixes (e.g. `一、` / `（一）` / `1.1`) are real auto-numbering or hand-typed.
+2. **Survey the document** — which styles + numbering schemes exist; whether existing typed prefixes are real auto-numbering or hand-typed (any pattern: decimal hierarchy, parenthesized markers, chapter sentinels, locale-specific numerals).
 3. **Plan toward Target state** (next section) — install missing styles / numbering via `standardize`, then `edit` to fill with semantic styleIds and numbering bindings.
 4. **Ask only on genuine ambiguity** (Ask section below). Most defaults are pinned by Target state — apply them.
 
@@ -37,7 +37,7 @@ If content has hierarchy or lists the document doesn't have styles / numbering f
 
 1. Survey: content shape + document's existing styles + numbering schemes + manually-typed structural prefixes anywhere in the doc.
 2. `standardize`: install missing Heading styles, list-bound styles, captions, etc. The `numbering` field accepts an array — install **all** numbering schemes the doc needs in one pass (multi-level heading scheme + single-level list scheme + any list-bullet scheme), not one at a time.
-3. `standardize` (same call or chained): **convert the template's hand-typed chrome** — `一、…` `（一）…` `第N章 …` `1.1 …` — to the unified numbering via `assignments` (paragraph → heading style) + `stripPrefixPatterns` (manual prefix → auto-numbered). This is not optional. Visual rendering is preserved (Word renders auto-numbered `一、` the same as typed `一、`); logical structure is gained.
+3. `standardize` (same call or chained): **convert the template's hand-typed chrome** — any structural prefix the designer typed instead of using auto-numbering — to the unified numbering via `assignments` (paragraph → heading style) + `stripPrefixPatterns` (manual prefix → auto-numbered). This is not optional. Visual rendering is preserved (auto-numbering produces the same glyphs); logical structure is gained.
 4. `edit`: insert source content with semantic styleIds and numbering bindings. Before composing each Block, `inspect_range` the anchor paragraph; if its rPr carries unwanted formatting (typically bold pMark inherited from the preceding label), override per-Block via `runFormat: { bold: false }` so Match-Destination-Formatting doesn't propagate it. Skipping this leaves the entire body bold.
 
 Skipping step 3 because the chrome "looks fine as-is" or "would change the form's identity" is the most common failure mode. Don't.
@@ -46,16 +46,16 @@ Skipping step 3 because the chrome "looks fine as-is" or "would change the form'
 
 | Source content shape | Word styleId |
 |---|---|
-| Top-level heading (MD `#`, document `第N章`, form section label `一、`) | `Heading1` |
-| Second level (`##`, `1.`, `（一）`) | `Heading2` |
-| Third level (`###`, `1.1`) | `Heading3` |
-| Fourth level (`####`, `1.1.1`) | `Heading4` |
+| Top-level heading | `Heading1` |
+| Second-level heading | `Heading2` |
+| Third-level heading | `Heading3` |
+| Fourth-level heading | `Heading4` |
 | Ordered list item | `ListNumber` |
 | Bulleted list item | `ListBullet` |
 | Code block | `Code` |
-| Body paragraph | existing body style (`BodyText` / `a` / Normal-equivalent) |
+| Body paragraph | existing body style (`BodyText` / `Normal`-equivalent) |
 
-The destination document type — form, report, thesis, contract — doesn't change this mapping. If the document lacks any of these styles, `standardize` installs them. **Never substitute "bold paragraph in Normal style" for a Heading style; never substitute "typed `1.` in Normal" for a ListNumber binding.**
+The destination document type — form, report, thesis, contract, business memo, etc. — doesn't change this mapping. The mapping holds across locales and template idioms; specific markers (`#` / `第N章` / `1.1` / `一、` / `（一）` / `Chapter N` / Roman numerals) are surface variations on the same hierarchy. If the document lacks any of these styles, `standardize` installs them. **Never substitute a bold paragraph in body style for a Heading style; never substitute a typed marker in body style for a list-bound binding.**
 
 Common rationalizations to recognize and reject:
 
@@ -67,19 +67,19 @@ Common rationalizations to recognize and reject:
 - Any "disproportionate / minimal disruption / not worth it / over-engineering for this case" framing → wrong shape of argument. Target state is the spec; correctness is not weighed against effort.
 - "Heading3 / Heading4 are content-internal, they don't need outline numbers like the chrome does" → Wrong. The unified scheme covers every installed Heading level, not just the chrome levels. Heading3 binds to numLevel 2 + outlineLevel 2; Heading4 to numLevel 3 + outlineLevel 3. Missing this gives paragraphs styled as Heading3/4 but with the wrong outline level — Word's nav pane and any TOC will misrender.
 - "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier, not because the doc should stay that way.
-- "Form chrome is in a layout table, so it's out of Phase 1 scope" → No. The layout *table* is out of scope (don't restructure it). The chrome paragraphs inside its cells are indexed paragraphs, fully restyleable. `一、论文概况` becomes a `Heading1` paragraph; the table holding it stays a table.
-- "Migrating chrome would change the form's visual identity beyond the request" → No. After conversion, Word renders the auto-numbered `一、` the same as the typed one. Visual identity is preserved; logical structure is gained. "Beyond the request" assumes a minimal-disruption interpretation of fill — see Target state's redefinition above.
+- "Chrome is in a layout table, so it's out of Phase 1 scope" → No. The layout *table* is out of scope (don't restructure it). The chrome paragraphs inside its cells are indexed paragraphs, fully restyleable.
+- "Migrating chrome would change the document's visual identity beyond the request" → No. Auto-numbering produces the same glyphs the designer typed by hand. Visual identity is preserved; logical structure is gained. "Beyond the request" assumes a minimal-disruption interpretation of fill — see Target state's redefinition above.
 - "The user asked for a fill, not a restyle of chrome" → "Fill" includes producing a well-formed document. If the template's chrome blocks well-formed-ness, converting it is part of fill.
 - "I'll surface this as a strategy choice for the user" → Target state pins the answer. Surfacing it as a question is a stall.
 
-**Locale defaults**:
+**Locale defaults** (apply when the document is in the named locale; pin otherwise via user instruction):
 
-- Chinese body text: 2-character first-line indent (`firstLineIndent: "2char"`). Standard CN typography. Apply to body-class styles (BodyText / `a` / Normal-equivalent) unless the user pins otherwise.
-- CJK-Latin spacing: strip literal spaces between Chinese and Western characters / digits before emitting `text`. Source content (markdown, copied prose, LLM output) routinely contains them for source readability; transcribing them verbatim into Word produces double gaps because `autoSpaceDE` / `autoSpaceDN` add their own. Concrete: `在 ImageNet` → `在ImageNet`, `约 38%` → `约38%`, `4-bit` → `4-bit` (Latin-only spans keep internal punctuation). This is a transcription transformation, not a "strip if they look wrong" judgment — apply unconditionally.
+- **Chinese (CN) body text**: 2-character first-line indent (`firstLineIndent: "2char"`). Apply to body-class styles unless the user pins otherwise.
+- **Chinese ↔ Latin spacing**: strip literal spaces between CJK characters and Western characters / digits before emitting `text`. Source content (markdown, copied prose) often contains them for source readability; transcribing verbatim produces double gaps because Word's `autoSpaceDE` / `autoSpaceDN` add their own. Apply unconditionally as a transcription transformation, not a per-case judgment. Latin-only spans keep their internal spaces (e.g. `4-bit`, `Edge TPU`).
 
 **Out of Phase 1 scope** (leave alone, surface to user if the limit blocks the task):
 
-- Layout-table **structure** — restructuring or removing the layout table itself. Paragraphs inside layout-table cells, including the form's typed-prefix labels like `一、论文概况` or `（一）选题意义`, are normal indexed paragraphs and fully subject to Target state — restyle them to `Heading1` / `Heading2` and convert the typed prefix via `stripPrefixPatterns`. The table holding them stays as a layout table; its contents get standardized.
+- Layout-table **structure** — restructuring or removing the layout table itself. Paragraphs inside layout-table cells, including any chrome the template designer typed by hand, are normal indexed paragraphs and fully subject to Target state — restyle to the right Heading level and convert typed prefixes via `stripPrefixPatterns`. The table holding them stays as a layout table; its contents get standardized.
 - TOC body content — Word regenerates the field on open after `outlineLevel` is set.
 - Cross-references, footnotes, comments, headers / footers — separate XML parts.
 
@@ -87,7 +87,7 @@ Common rationalizations to recognize and reject:
 
 Most strategy choices have a default — Target state. Apply the default; don't ask just because a choice technically exists. Ask only when even the right semantic mapping is unclear:
 
-- A typed `第N章` inside body prose — structural chapter heading, or rhetorical citation?
+- A typed chapter / section sentinel inside body prose — structural heading, or rhetorical citation? (e.g. `第N章` / `Chapter N` mentioned mid-paragraph vs. as a paragraph start.)
 - A bold paragraph that could be a sub-heading or in-paragraph emphasis.
 - Source content lacks coverage for some template slots — leave empty, generate, or surface to user?
 - Content has tables / footnotes / math / cross-references with no clean Phase 1 mapping.

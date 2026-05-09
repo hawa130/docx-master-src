@@ -106,7 +106,7 @@ If you face a genuine choice — flatten H4 to H3 vs install Heading4? install b
 - For sub-headings within content, use `styleId: "Heading3"` — don't approximate with bold + bigger font.
 - Match-Destination-Formatting picks up the slot's pPr by default. `inspect_range` the slot first to confirm its formatting is what you want; override per-Block when it isn't.
 
-Anti-pattern: replacing the **label paragraph** ("选题来源：") instead of the **empty body slot** that follows it. The label's heading style inherits onto your prose and renders wrong.
+Anti-pattern: replacing the **label paragraph** instead of the **empty body slot** that follows it. The label's heading style inherits onto your prose and renders wrong.
 
 Inverse anti-pattern (just as common): `insert-after` on a label whose paragraph-mark `<w:rPr>` carries unwanted formatting — typically bold left over from the label's text. Match-Destination-Formatting picks up that pMark rPr and makes your inserted prose bold. Two ways to handle:
 
