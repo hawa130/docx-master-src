@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs"
-import JSZip from "jszip"
 import { DOMParser } from "@xmldom/xmldom"
 import type { DocxReader } from "@lib/reader.ts"
 import { NS } from "@lib/types.ts"
@@ -46,31 +44,3 @@ export async function ensureNumberingRelationship(
   replacements.set(path, updated)
 }
 
-/* ------------- validation ------------- */
-
-export async function validateOutput(
-  outputPath: string,
-  modifiedEntries: string[],
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const buf = readFileSync(outputPath)
-    const zip = await JSZip.loadAsync(buf)
-    for (const entry of modifiedEntries) {
-      const file = zip.file(entry)
-      if (!file) continue
-      const text = await file.async("string")
-      let parseError: string | null = null
-      const parser = new DOMParser({
-        onError: (level: any, msg: any) => {
-          if (level === "error" || level === "fatalError") parseError = String(msg)
-        },
-      } as any)
-      const doc = parser.parseFromString(text, "text/xml")
-      if (parseError) return { ok: false, error: `${entry}: ${parseError}` }
-      if (!doc || !(doc as any).documentElement) return { ok: false, error: `${entry}: empty doc` }
-    }
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, error: (err as Error).message }
-  }
-}

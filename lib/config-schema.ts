@@ -92,6 +92,11 @@ export const NumLevelSchema = z
     stripPrefixPatterns: z.optional(z.array(z.string())),
     suff: z.optional(z.enum(["tab", "space", "nothing"])),
     numRPr: z.optional(NumRPrSchema),
+    // Force every cross-level placeholder in this lvl's lvlText to render as
+    // arabic numerals regardless of the referenced level's numFmt. Required
+    // for "X.X" style headings where Heading1 uses chineseCounting (一、) but
+    // Heading3's lvlText "%1.%3" should display "1.1" not "一.1".
+    isLgl: z.optional(z.boolean()),
   })
   // Strip patterns are tried in array order, first match wins. If a shorter
   // pattern (fewer %N placeholders) appears before a longer one, the shorter

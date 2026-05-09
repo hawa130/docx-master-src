@@ -16,24 +16,18 @@
  * non-overlapping edits — but cheaper to catch than to debug.
  */
 
-import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs"
-import { dirname } from "node:path"
-import { DocxReader, serializeXml } from "@lib/reader.ts"
-import { DocumentParser } from "@lib/document-parser.ts"
-import { StyleResolver } from "@lib/style-resolver.ts"
+import { DocxReader } from "@lib/reader.ts"
 import { NS } from "@lib/types.ts"
 import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml-utils.ts"
-import { validateOutput } from "./docx-plumbing.ts"
+import { PPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
 import {
   assertNever,
   makeTrackContext,
-  type EditConfig,
   type EditOp,
   type ResolvedEdit,
   type ResolvedTarget,
   type TrackContext,
 } from "./edit-types.ts"
-import { parseEditConfig } from "./edit-config-schema.ts"
 import {
   buildResolverContext,
   resolveLocator,
@@ -72,65 +66,6 @@ export interface ApplyEditsReport {
   trackChanges: boolean
   blockerCounts: Record<"tracked-change" | "field" | "sdt", number>
   perOp: Array<{ index: number; op: EditOp["op"]; touched: number }>
-}
-
-export async function applyEdits(
-  source: string,
-  output: string,
-  rawConfig: unknown,
-): Promise<ApplyEditsReport> {
-  const config = parseEditConfig(rawConfig)
-
-  // 1. Stage output (copy original; we mutate the copy so a failure leaves
-  // the source untouched).
-  mkdirSync(dirname(output), { recursive: true })
-  copyFileSync(source, output)
-
-  try {
-    return await runOnCopy(output, config)
-  } catch (err) {
-    if (existsSync(output)) {
-      try {
-        unlinkSync(output)
-      } catch {}
-    }
-    throw err
-  }
-}
-
-async function runOnCopy(outputPath: string, config: EditConfig): Promise<ApplyEditsReport> {
-  const reader = await DocxReader.open(outputPath)
-  const documentDoc = await reader.readXml("word/document.xml")
-  if (!documentDoc) throw new Error("word/document.xml not found")
-  const stylesDoc = await reader.readXml("word/styles.xml")
-  const themeDoc = await reader.readXml("word/theme/theme1.xml")
-  const numberingDoc = await reader.readXml("word/numbering.xml")
-
-  const resolver = new StyleResolver(stylesDoc, themeDoc)
-  if (stylesDoc) resolver.expandThemedFontsInStyles(stylesDoc)
-  const parser = new DocumentParser(documentDoc, resolver, numberingDoc)
-  const parsed = parser.parse()
-
-  const { imageRegistry, report } = await runEditOps({
-    documentDoc,
-    parsedParagraphs: parsed.paragraphs,
-    reader,
-    edits: config.edits,
-    trackChanges: config.trackChanges ?? false,
-  })
-
-  const replacements = new Map<string, string | Uint8Array>()
-  replacements.set("word/document.xml", serializeXml(documentDoc))
-  imageRegistry.flushTo(replacements)
-  await reader.copyAndModify(outputPath, replacements)
-  const xmlKeys = Array.from(replacements.keys()).filter(
-    (k) => k.endsWith(".xml") || k.endsWith(".rels"),
-  )
-  const validation = await validateOutput(outputPath, xmlKeys)
-  if (!validation.ok) {
-    throw new Error(`output failed XML validation: ${validation.error}`)
-  }
-  return report
 }
 
 /* ------------- exported in-memory entry (for apply-styles integration) ------------- */
@@ -352,9 +287,11 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
     newPPr = ownerDoc.createElementNS(w, "w:pPr")
     newP.insertBefore(newPPr, newP.firstChild)
   }
-  // Append rather than re-sort — Word reads mis-ordered pPr children
-  // tolerantly, same convention as style-mutation.ts elsewhere in this repo.
-  for (const c of toInherit) newPPr.appendChild(c)
+  // CT_PPr schema requires a specific child order — Word's strict validator
+  // rejects mis-ordered children with "needs repair". Naive appendChild here
+  // produces sequences like [spacing, jc, ind] (jc came from buildPPrChildren,
+  // ind inherited from anchor) which violate the schema.
+  for (const c of toInherit) insertChildInOrder(newPPr, c, PPR_CHILD_ORDER)
 }
 
 function inheritFormatForNewParagraphs(
@@ -571,7 +508,8 @@ function applyFormat(
             pPr.removeChild(c)
           }
         }
-        for (const c of buildPPrChildren(op.paraFormat, documentDoc)) pPr.appendChild(c)
+        for (const c of buildPPrChildren(op.paraFormat, documentDoc))
+          insertChildInOrder(pPr, c, PPR_CHILD_ORDER)
       }
       attachPPrChange(pPr, snapshot, documentDoc, trackContext)
     }

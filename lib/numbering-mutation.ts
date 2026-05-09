@@ -1,6 +1,7 @@
 import { NS } from "@lib/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import type { NumberingConfig } from "./config-types.ts"
+import { insertPPrIntoStyle } from "./style-mutation.ts"
 
 /* ------------- numbering.xml manipulation ------------- */
 
@@ -27,7 +28,10 @@ export function resolveSuff(
   }
 }
 
-export function injectNumbering(numberingDoc: Document, config: NumberingConfig): string {
+export function injectNumbering(
+  numberingDoc: Document,
+  config: NumberingConfig,
+): { numId: string; abstractNumId: string } {
   const w = NS.w
   const root = numberingDoc.documentElement!
   // pick fresh abstractNumId and numId
@@ -42,6 +46,11 @@ export function injectNumbering(numberingDoc: Document, config: NumberingConfig)
 
   const abs = numberingDoc.createElementNS(w, "w:abstractNum")
   abs.setAttributeNS(w, "w:abstractNumId", String(nextAbs))
+  // Word and other renderers require <w:multiLevelType>; without it numbering
+  // silently fails to render even though the bindings resolve.
+  const multiLevelType = numberingDoc.createElementNS(w, "w:multiLevelType")
+  multiLevelType.setAttributeNS(w, "w:val", config.levels.length > 1 ? "multilevel" : "singleLevel")
+  abs.appendChild(multiLevelType)
   for (const lvl of config.levels) {
     const lvlEl = numberingDoc.createElementNS(w, "w:lvl")
     lvlEl.setAttributeNS(w, "w:ilvl", String(lvl.level))
@@ -51,6 +60,21 @@ export function injectNumbering(numberingDoc: Document, config: NumberingConfig)
     const numFmtEl = numberingDoc.createElementNS(w, "w:numFmt")
     numFmtEl.setAttributeNS(w, "w:val", lvl.numFmt)
     lvlEl.appendChild(numFmtEl)
+    // CT_Lvl child order matters: start, numFmt, lvlRestart?, pStyle?, isLgl?,
+    // suff?, lvlText, lvlPicBulletId?, legacy?, lvlJc?, pPr?, rPr?. Word
+    // ignores pStyle silently when written out of order, breaking the
+    // style→numbering binding even though the file otherwise validates.
+    const pStyle = numberingDoc.createElementNS(w, "w:pStyle")
+    pStyle.setAttributeNS(w, "w:val", lvl.styleId)
+    lvlEl.appendChild(pStyle)
+    if (lvl.isLgl) {
+      // <w:isLgl/> forces every cross-level placeholder in lvlText to render
+      // as arabic regardless of the referenced level's numFmt. Required for
+      // "X.X" headings where Heading1 uses chineseCounting (一、) but
+      // Heading3's "%1.%3" should display "1.1" not "一.1".
+      const isLgl = numberingDoc.createElementNS(w, "w:isLgl")
+      lvlEl.appendChild(isLgl)
+    }
     const { suff, effectiveLvlText } = resolveSuff(lvl.lvlText, lvl.suff)
     const suffEl = numberingDoc.createElementNS(w, "w:suff")
     suffEl.setAttributeNS(w, "w:val", suff)
@@ -61,9 +85,6 @@ export function injectNumbering(numberingDoc: Document, config: NumberingConfig)
     const lvlJc = numberingDoc.createElementNS(w, "w:lvlJc")
     lvlJc.setAttributeNS(w, "w:val", "left")
     lvlEl.appendChild(lvlJc)
-    const pStyle = numberingDoc.createElementNS(w, "w:pStyle")
-    pStyle.setAttributeNS(w, "w:val", lvl.styleId)
-    lvlEl.appendChild(pStyle)
     if (lvl.numRPr) {
       const rPr = buildLvlRPr(numberingDoc, lvl.numRPr)
       if (rPr) lvlEl.appendChild(rPr)
@@ -82,7 +103,7 @@ export function injectNumbering(numberingDoc: Document, config: NumberingConfig)
   num.appendChild(absRef)
   root.appendChild(num)
 
-  return String(nextNum)
+  return { numId: String(nextNum), abstractNumId: String(nextAbs) }
 }
 
 function buildLvlRPr(
@@ -123,6 +144,71 @@ function buildLvlRPr(
   return getChildren(rPr).length > 0 ? rPr : null
 }
 
+/**
+ * Mint a fresh `<w:num>` pointing to `abstractNumId`, with
+ * `<w:lvlOverride><w:startOverride val="1"/></w:lvlOverride>` so Word resets
+ * the counter to 1. Returns the new numId. Used by the per-instance restart
+ * pass for single-level (list-shaped) schemes — every "list instance" in the
+ * document gets its own counter via this fork, so a `1.` `2.` `3.` list in
+ * Chapter 1 doesn't continue as `4.` `5.` `6.` in Chapter 2.
+ */
+export function forkNumWithStartOverride(
+  numberingDoc: Document,
+  abstractNumId: string,
+  level: number,
+): string {
+  const w = NS.w
+  const root = numberingDoc.documentElement!
+  const existingNumIds = getChildrenNS(root, w, "num").map((e) =>
+    parseInt(wAttr(e, "numId") || "0", 10),
+  )
+  const nextNum = (existingNumIds.length ? Math.max(...existingNumIds) : 0) + 1
+  const num = numberingDoc.createElementNS(w, "w:num")
+  num.setAttributeNS(w, "w:numId", String(nextNum))
+  const absRef = numberingDoc.createElementNS(w, "w:abstractNumId")
+  absRef.setAttributeNS(w, "w:val", abstractNumId)
+  num.appendChild(absRef)
+  const lvlOverride = numberingDoc.createElementNS(w, "w:lvlOverride")
+  lvlOverride.setAttributeNS(w, "w:ilvl", String(level))
+  const startOverride = numberingDoc.createElementNS(w, "w:startOverride")
+  startOverride.setAttributeNS(w, "w:val", "1")
+  lvlOverride.appendChild(startOverride)
+  num.appendChild(lvlOverride)
+  root.appendChild(num)
+  return String(nextNum)
+}
+
+/**
+ * Set (or replace) paragraph-level `<w:numPr>` on a `<w:p>` element. Inserted
+ * at the correct position per CT_PPr schema (after `<w:pStyle>`, before the
+ * formatting children). Used by the per-instance restart pass to override the
+ * style-level numId binding with a per-run forked numId.
+ */
+export function setParagraphNumPr(pEl: Element, numId: string, level: number): void {
+  const w = NS.w
+  const ownerDoc = pEl.ownerDocument!
+  let pPr = firstChildNS(pEl, w, "pPr")
+  if (!pPr) {
+    pPr = ownerDoc.createElementNS(w, "w:pPr")
+    pEl.insertBefore(pPr, pEl.firstChild)
+  }
+  const existing = firstChildNS(pPr, w, "numPr")
+  if (existing) pPr.removeChild(existing)
+
+  const numPr = ownerDoc.createElementNS(w, "w:numPr")
+  const ilvl = ownerDoc.createElementNS(w, "w:ilvl")
+  ilvl.setAttributeNS(w, "w:val", String(level))
+  numPr.appendChild(ilvl)
+  const numIdEl = ownerDoc.createElementNS(w, "w:numId")
+  numIdEl.setAttributeNS(w, "w:val", numId)
+  numPr.appendChild(numIdEl)
+
+  const pStyle = firstChildNS(pPr, w, "pStyle")
+  if (pStyle && pStyle.nextSibling) pPr.insertBefore(numPr, pStyle.nextSibling)
+  else if (pStyle) pPr.appendChild(numPr)
+  else pPr.insertBefore(numPr, pPr.firstChild)
+}
+
 export function attachNumberingToStyle(
   stylesDoc: Document,
   styleId: string,
@@ -137,7 +223,7 @@ export function attachNumberingToStyle(
   let pPr = firstChildNS(styleEl, w, "pPr")
   if (!pPr) {
     pPr = stylesDoc.createElementNS(w, "w:pPr")
-    styleEl.appendChild(pPr)
+    insertPPrIntoStyle(styleEl, pPr)
   }
   // remove existing numPr
   const existing = firstChildNS(pPr, w, "numPr")

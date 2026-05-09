@@ -1,6 +1,25 @@
 import { NS, type ParsedParagraph } from "@lib/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import type { StyleConfigEntry } from "./config-types.ts"
+import { PPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
+
+/**
+ * Insert a freshly-created `<w:pPr>` into a `<w:style>` at the schema-correct
+ * position. CT_Style requires `pPr` before `rPr` / `tblPr` / `trPr` / `tcPr` /
+ * `tblStylePr`. A naive `appendChild` would land it after an existing `rPr`,
+ * which Word's strict validator rejects with "file needs repair".
+ */
+export function insertPPrIntoStyle(styleEl: Element, pPr: Element): void {
+  const w = NS.w
+  for (const name of ["rPr", "tblPr", "trPr", "tcPr", "tblStylePr"]) {
+    const el = firstChildNS(styleEl, w, name)
+    if (el) {
+      styleEl.insertBefore(pPr, el)
+      return
+    }
+  }
+  styleEl.appendChild(pPr)
+}
 
 /* ------------- fromParagraph resolution ------------- */
 
@@ -212,9 +231,12 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
   if (pPrAdditions.length > 0) {
     if (!pPr) {
       pPr = stylesDoc.createElementNS(w, "w:pPr")
-      target.appendChild(pPr)
+      insertPPrIntoStyle(target, pPr)
     }
-    for (const c of pPrAdditions) pPr.appendChild(c)
+    // Build order is local convenience (outlineLevel → jc → spacing → ind);
+    // CT_PPr's actual schema order is spacing → ind → jc → outlineLvl. Insert
+    // each at its schema-correct position rather than appending blind.
+    for (const c of pPrAdditions) insertChildInOrder(pPr, c, PPR_CHILD_ORDER)
   }
 
   // rPr: same mutate-in-place pattern. Removes only the run properties this

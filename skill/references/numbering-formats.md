@@ -47,6 +47,14 @@ Level 3: （1）  / （2）  / （3）       numFmt=decimal          lvlText="�
 Level 4: ①     / ②     / ③           numFmt=decimal          lvlText=special      suff="nothing"
 ```
 
+### Mixed Counting Schemes (Chinese outer, Arabic inner)
+```
+Level 0: 一、   / 二、   / 三、        numFmt=chineseCounting  lvlText="%1、"       suff="nothing"
+Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText="（%2）"     suff="nothing"
+Level 2: 1.1    / 1.2    / 2.1         numFmt=decimal          lvlText="%1.%3"      suff="space"  isLgl=true
+```
+A level mixing arabic counters with cross-references to a non-arabic outer level needs `isLgl=true`. Without it, Word renders each `%N` placeholder using *that level's* `numFmt` — so `%1.%3` on level 2 above would display `一.1`, not `1.1`. `isLgl` overrides cross-level placeholders to arabic regardless of the referenced level's format.
+
 ### Legal Document
 ```
 Level 0: 第一条 / 第二条 / 第三条      numFmt=chineseCounting  lvlText="第%1条"     suff="space"
@@ -61,4 +69,5 @@ Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%1."    
 - `%1.%2` = "1.2" (composite reference to multiple levels)
 - Literal text wraps the variables: `第%1章` = "第1章"
 - Each level can only reference its own level and higher levels
+- `isLgl: true` on a level forces every cross-level `%N` to render as arabic, regardless of the referenced level's `numFmt` (use when an outer level is chineseCounting / roman / etc. but you want it to appear as a digit inside this level's marker)
 

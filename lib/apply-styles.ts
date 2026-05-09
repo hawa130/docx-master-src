@@ -12,10 +12,11 @@ import {
   blankStylesDoc,
   ensureNumberingContentType,
   ensureNumberingRelationship,
-  validateOutput,
 } from "./docx-plumbing.ts"
 import { applyToBody } from "./para-mutation.ts"
 import { attachNumberingToStyle, injectNumbering, resolveSuff } from "./numbering-mutation.ts"
+import { applyListRestartPass } from "./list-restart.ts"
+import { validateDocxFile } from "./docx-validate.ts"
 import { extractDisplayFields, printReport } from "./report.ts"
 import { reorderAgentTouchedStylesFirst, resolveStyleDef, upsertStyle } from "./style-mutation.ts"
 import { runEditOps } from "./edit-engine.ts"
@@ -204,6 +205,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // (multi-level heading scheme + a separate single-level list-bound scheme
   // is the canonical multi-scheme case). Each scheme allocates a fresh
   // numId and binds its levels independently.
+  const installedSchemes: Array<{
+    levels: ReadonlyArray<{ level: number; styleId: string }>
+    numId: string
+    abstractNumId: string
+  }> = []
   if (config.numbering) {
     const numberingSchemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
     const declaredIds = new Set(config.styles.map((s) => s.id))
@@ -250,10 +256,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
           )
         }
       }
-      const newNumId = injectNumbering(numberingDoc, scheme)
+      const { numId, abstractNumId } = injectNumbering(numberingDoc, scheme)
       for (const lvl of scheme.levels) {
-        attachNumberingToStyle(stylesDoc, lvl.styleId, newNumId, lvl.level)
+        attachNumberingToStyle(stylesDoc, lvl.styleId, numId, lvl.level)
       }
+      installedSchemes.push({
+        levels: scheme.levels.map((l) => ({ level: l.level, styleId: l.styleId })),
+        numId,
+        abstractNumId,
+      })
     }
   }
 
@@ -445,6 +456,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   }
   applyToBody(documentDoc, ctx)
 
+  // 7b. List-restart pass. Single-level schemes (list-shaped) fork a fresh
+  // numId per contiguous run of paragraphs with the bound styleId, so each
+  // separate list instance restarts at 1 instead of continuing the shared
+  // counter. Multi-level schemes (heading-shaped) skip — they use lvlRestart
+  // for cross-level resets. See lib/list-restart.ts.
+  if (installedSchemes.length > 0) {
+    applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
+  }
+
   // 8. Serialize and write
   const replacements = new Map<string, string | Uint8Array>()
   replacements.set("word/styles.xml", serializeXml(stylesDoc))
@@ -466,23 +486,22 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // Image registry from edit-pass flushes its staged binaries + rels +
   // content-type updates. No-op when no images were embedded.
   if (imageRegistry) imageRegistry.flushTo(replacements)
-  // 8b. Dry-run skips both write and validation; the agent iterates on the
-  // report alone. Otherwise: write, then re-parse the modified entries to
-  // catch malformed XML before claiming success.
+  // 8b. Dry-run skips write + post-write validation; the agent iterates on
+  // the in-memory report alone. Otherwise: write, then run the comprehensive
+  // bundle check (XML well-formedness, CT_* schema, whitespace preservation,
+  // cross-part references, content types, relationship Ids).
   if (!config.dryRun) {
     await reader.copyAndModify(output, replacements)
-    // Only validate XML/rels entries — image binaries trip the parser.
-    const xmlKeys = Array.from(replacements.keys()).filter(
-      (k) => k.endsWith(".xml") || k.endsWith(".rels"),
-    )
-    const validation = await validateOutput(output, xmlKeys)
-    if (!validation.ok) {
+    const errors = await validateDocxFile(output)
+    if (errors.length > 0) {
       if (existsSync(output)) {
         try {
           unlinkSync(output)
         } catch {}
       }
-      console.error(`Validation FAILED: ${validation.error}`)
+      const lines = errors.slice(0, 20).map((e) => `  ${e.part}: ${e.message}`)
+      const more = errors.length > 20 ? `\n  …${errors.length - 20} more` : ""
+      console.error(`Validation FAILED:\n${lines.join("\n")}${more}`)
       process.exit(1)
     }
   }
