@@ -82,6 +82,10 @@ function processOneParagraph(pEl: Element, para: ParsedParagraph, ctx: ApplyCont
     // so the change report can show which fingerprints were not covered;
     // makes "where did the rest go?" verification cheap.
     if (!a) {
+      // Skip recording paragraphs the edits[] pass will replace or delete:
+      // they won't survive past the edit phase, so showing them in
+      // implicit-keep would read as false-positive coverage gaps.
+      if (ctx.editTouchedIndices?.has(para.index)) return
       const isEmpty = para.text.trim().length === 0
       const cur = ctx.implicitKeepByFingerprint.get(para.fingerprint) ?? {
         empty: 0,
@@ -171,7 +175,13 @@ function processOneParagraph(pEl: Element, para: ParsedParagraph, ctx: ApplyCont
     // script doesn't classify the shape; agents are far better at reading
     // typed text and the script's hardcoded shape list would always lag
     // real-doc variety (附录 A, I., a), 任务一, ⒈, ...).
-    if (!stripped) {
+    //
+    // Skip when the paragraph was already stripped by a pattern_rule
+    // (matchedPattern.stripMatch): the prefix is gone, so lvlPatterns
+    // finding nothing is expected, not a missed shape. Reporting it would
+    // double-count and read as a false-positive coverage gap.
+    const alreadyStrippedByPatternRule = !!matchedPattern?.rule.stripMatch
+    if (!stripped && !alreadyStrippedByPatternRule) {
       let perStyle = ctx.unstrippedByStyle.get(targetStyle)
       if (!perStyle) {
         perStyle = { count: 0, samples: [] }

@@ -19,7 +19,7 @@ import { applyListRestartPass } from "./list-restart.ts"
 import { validateDocxFile } from "./docx-validate.ts"
 import { extractDisplayFields, printReport } from "./report.ts"
 import { reorderAgentTouchedStylesFirst, resolveStyleDef, upsertStyle } from "./style-mutation.ts"
-import { runEditOps } from "./edit-engine.ts"
+import { previewEditOps, runEditOps, type EditsPreviewEntry } from "./edit-engine.ts"
 import type { ImageAssetRegistry } from "./image-asset.ts"
 import type {
   ApplyConfig,
@@ -288,27 +288,43 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let imageRegistry: ImageAssetRegistry | null = null
   let editsApplied = 0
   let editsTrackChanges = false
-  if (config.edits && config.edits.length > 0 && !config.dryRun) {
-    const result = await runEditOps({
-      documentDoc,
-      parsedParagraphs: parsed.paragraphs,
-      reader,
-      edits: config.edits,
-      trackChanges: config.trackChanges ?? false,
-    })
-    imageRegistry = result.imageRegistry
-    editsApplied = result.report.applied
-    editsTrackChanges = result.report.trackChanges
+  let editsPreview: EditsPreviewEntry[] = []
+  let editTouchedIndices: Set<number> | undefined
+  if (config.edits && config.edits.length > 0) {
+    if (config.dryRun) {
+      // Dry-run: resolve locators + blocker check, but don't mutate. Lets the
+      // change report show predicted edit effect alongside style + rule effect,
+      // and lets implicit-keep accounting subtract paragraphs the edits will
+      // replace/delete (otherwise those read as false-positive coverage gaps).
+      const preview = previewEditOps({
+        documentDoc,
+        parsedParagraphs: parsed.paragraphs,
+        edits: config.edits,
+      })
+      editsPreview = preview.entries
+      editTouchedIndices = preview.replacedOrDeletedIndices
+    } else {
+      const result = await runEditOps({
+        documentDoc,
+        parsedParagraphs: parsed.paragraphs,
+        reader,
+        edits: config.edits,
+        trackChanges: config.trackChanges ?? false,
+      })
+      imageRegistry = result.imageRegistry
+      editsApplied = result.report.applied
+      editsTrackChanges = result.report.trackChanges
 
-    // Re-parse documentDoc — paragraph indices have shifted since edits inserted
-    // new paragraphs. The rules pass below uses parsed.paragraphs directly, so it
-    // needs the post-edit state.
-    const reParser = new DocumentParser(documentDoc, resolver, numberingDoc)
-    parsed = reParser.parse()
-    fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
-    hashToLetter.clear()
-    for (const s of fpResult.summary) {
-      hashToLetter.set(s.hash, s.label)
+      // Re-parse documentDoc — paragraph indices have shifted since edits inserted
+      // new paragraphs. The rules pass below uses parsed.paragraphs directly, so it
+      // needs the post-edit state.
+      const reParser = new DocumentParser(documentDoc, resolver, numberingDoc)
+      parsed = reParser.parse()
+      fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
+      hashToLetter.clear()
+      for (const s of fpResult.summary) {
+        hashToLetter.set(s.hash, s.label)
+      }
     }
   }
 
@@ -453,6 +469,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     samplesPerStyleCap: 5,
     implicitKeepByFingerprint,
     unstrippedByStyle,
+    editTouchedIndices,
   }
   applyToBody(documentDoc, ctx)
 
@@ -546,6 +563,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     unstrippedByStyle: ctx.unstrippedByStyle,
     numberingBindings,
     templateImport,
+    editsPreview,
   })
 
   if (editsApplied > 0) {

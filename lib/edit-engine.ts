@@ -68,6 +68,102 @@ export interface ApplyEditsReport {
   perOp: Array<{ index: number; op: EditOp["op"]; touched: number }>
 }
 
+/** Per-op summary returned by the dry-run preview path: locator resolution
+ * only, no mutation. The agent reads this to verify edits will land where
+ * intended (and which paragraphs they'll touch — so implicit-keep counts
+ * can subtract them and stop reading as false-positive coverage gaps). */
+export interface EditsPreviewEntry {
+  index: number
+  op: EditOp["op"]
+  /** Resolved target paragraphs. For replace / delete / format these are
+   * the paragraphs that will be mutated or removed. For insert-* this is
+   * the anchor (no mutation; new paragraphs land before/after). */
+  targetParaIndices: number[]
+  /** Paragraphs that will be replaced or deleted (subset of targetParaIndices
+   * for replace/delete; empty for insert/format). */
+  willReplaceOrDeleteIndices: number[]
+  /** Number of new paragraphs the op will insert. Approximate for image /
+   * page-break / hr blocks (each emits one paragraph). */
+  willInsertCount: number
+  /** Container kind — body or table cell. */
+  container: "body" | "cell"
+}
+
+export interface PreviewEditsInput {
+  documentDoc: Document
+  parsedParagraphs: import("@lib/types.ts").ParsedParagraph[]
+  edits: EditOp[]
+}
+
+export interface PreviewEditsOutput {
+  entries: EditsPreviewEntry[]
+  /** Paragraph indices that edits will replace/delete — used by apply-styles
+   * dry-run path to subtract from implicit-keep so the count reflects
+   * post-edits state. */
+  replacedOrDeletedIndices: Set<number>
+}
+
+/**
+ * Resolve all edit locators against the (pre-edits) document and report what
+ * each op will touch — without mutating. Used by `apply-styles --dry-run` so
+ * the change report can show predicted edit effect alongside style /
+ * pattern_rule effects.
+ *
+ * Throws on locator-resolution errors and on blocker conflicts (same checks
+ * the real apply path does pre-mutation).
+ */
+export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
+  const { documentDoc, parsedParagraphs, edits } = input
+  const resolverCtx = buildResolverContext(documentDoc, parsedParagraphs)
+  const blockers = detectBlockers(documentDoc, resolverCtx.indexByElement)
+
+  const resolved: ResolvedEdit[] = []
+  for (const [i, op] of edits.entries()) {
+    let target: ResolvedTarget
+    try {
+      target = resolveLocator(op.at, resolverCtx)
+    } catch (err) {
+      throw new Error(`edits[${i}] (${op.op}): ${(err as Error).message}`, { cause: err })
+    }
+    resolved.push({ op, target })
+  }
+  validateAgainstBlockers(resolved, blockers, resolverCtx.indexByElement)
+
+  const replacedOrDeletedIndices = new Set<number>()
+  const entries: EditsPreviewEntry[] = []
+  for (const [i, edit] of resolved.entries()) {
+    const targetParaIndices = edit.target.paragraphs.map(
+      (p) => resolverCtx.indexByElement.get(p) ?? -1,
+    )
+    const op = edit.op.op
+    let willReplaceOrDeleteIndices: number[] = []
+    let willInsertCount = 0
+    if (op === "replace") {
+      willReplaceOrDeleteIndices = [...targetParaIndices]
+      willInsertCount = edit.op.with.length
+      for (const idx of targetParaIndices) if (idx >= 0) replacedOrDeletedIndices.add(idx)
+    } else if (op === "delete") {
+      willReplaceOrDeleteIndices = [...targetParaIndices]
+      for (const idx of targetParaIndices) if (idx >= 0) replacedOrDeletedIndices.add(idx)
+    } else if (op === "insert-before" || op === "insert-after") {
+      willInsertCount = edit.op.content.length
+    }
+    const container: "body" | "cell" =
+      edit.target.container.namespaceURI === w && edit.target.container.localName === "tc"
+        ? "cell"
+        : "body"
+    entries.push({
+      index: i,
+      op,
+      targetParaIndices,
+      willReplaceOrDeleteIndices,
+      willInsertCount,
+      container,
+    })
+  }
+  return { entries, replacedOrDeletedIndices }
+}
+
 /* ------------- exported in-memory entry (for apply-styles integration) ------------- */
 
 export interface RunEditOpsInput {

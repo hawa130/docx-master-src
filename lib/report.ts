@@ -1,3 +1,4 @@
+import type { EditsPreviewEntry } from "@lib/edit-engine.ts"
 import type { ImportResult } from "@lib/template-import.ts"
 import type {
   FlagRecord,
@@ -79,6 +80,8 @@ export function printReport(args: {
     suff: "tab" | "space" | "nothing"
   }>
   templateImport: ImportResult | null
+  /** dry-run only: per-op preview of edits[] (locator-resolved, not mutated). */
+  editsPreview: EditsPreviewEntry[]
 }) {
   const lines: string[] = []
   lines.push(
@@ -241,6 +244,35 @@ export function printReport(args: {
       }
       lines.push(`    Agent resolved: ${formatResolvedFields(r.resolved)}`)
     }
+    lines.push("")
+  }
+  if (args.editsPreview.length > 0) {
+    lines.push("=== Edits Preview (locator-resolved; not yet applied in dry-run) ===")
+    let totalReplaceDelete = 0
+    let totalInsert = 0
+    for (const e of args.editsPreview) {
+      const targetSpan =
+        e.targetParaIndices.length === 0
+          ? "(end-of-body)"
+          : e.targetParaIndices.length === 1
+            ? `#${e.targetParaIndices[0]}`
+            : `#${e.targetParaIndices[0]}–#${e.targetParaIndices[e.targetParaIndices.length - 1]} (${e.targetParaIndices.length})`
+      const insertNote = e.willInsertCount > 0 ? `; +${e.willInsertCount} new` : ""
+      const replaceNote =
+        e.willReplaceOrDeleteIndices.length > 0
+          ? `; -${e.willReplaceOrDeleteIndices.length} replaced/deleted`
+          : ""
+      const containerNote = e.container === "cell" ? " [in cell]" : ""
+      lines.push(`  edits[${e.index}] ${e.op} → ${targetSpan}${containerNote}${replaceNote}${insertNote}`)
+      totalReplaceDelete += e.willReplaceOrDeleteIndices.length
+      totalInsert += e.willInsertCount
+    }
+    lines.push(
+      `  Total: ${args.editsPreview.length} ops; ${totalReplaceDelete} paragraphs replaced/deleted, ${totalInsert} new paragraphs inserted.`,
+    )
+    lines.push(
+      "  Note: implicit-keep counts above already exclude paragraphs the edits[] pass will replace/delete.",
+    )
     lines.push("")
   }
   if (args.samples.size > 0) {

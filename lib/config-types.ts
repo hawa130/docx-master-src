@@ -111,4 +111,9 @@ export interface ApplyContext {
    * decide: is this a missed shape that needs adding to stripPrefixPatterns,
    * or a clean heading without a manual prefix (no action)? */
   unstrippedByStyle: Map<string, { count: number; samples: string[] }>
+  /** Paragraph indices the edits[] pass will replace or delete. Used in
+   * dry-run to skip implicit-keep accounting for paragraphs that won't
+   * survive past the edit phase — otherwise the report shows them as
+   * "untouched" and the agent reads false positives in coverage gaps. */
+  editTouchedIndices?: Set<number>
 }
