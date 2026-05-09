@@ -57,8 +57,8 @@ For any task that produces output:
    - Where typed structural prefixes appear (chrome `一、` / `（一）` / `第N章` / `1.1`, etc.).
    - What the source content carries (when filling).
 
-2. **Design ONE config** combining everything the pass needs:
-   - `styles[]` — every Heading level the doc + content combined need; List/Caption/Body styles as required.
+2. **Design ONE config** combining everything the pass needs. When filling, sketch the content's structural outline first — `styles[]` follows that outline, not the other way around. Reactive style additions mid-write accrete debt that later edits have to re-untangle.
+   - `styles[]` — every Heading level the doc + content combined need; List/Caption/Body styles as required. Adjacent levels need a visible typographic gradient (size / weight / spacing); identical styling defeats the structural signal.
    - `numbering` — array of schemes: multi-level for headings, single-level per list-bound style.
    - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Engine applies uniformly to every match — you can't selectively skip matched paragraphs.
    - `edits[]` — content insertion if needed (when filling a template).
