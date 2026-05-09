@@ -36,7 +36,7 @@ A well-formed Word document expresses structural decisions through styles + numb
 
 - Every paragraph carrying a semantic styleId. Direct paragraph format only as one-off exceptions.
 - Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Every installed Heading level binds to its corresponding scheme level (Heading1 → numLevel 0 + outlineLevel 0, …, HeadingN → numLevel N-1 + outlineLevel N-1). Manually-typed structural prefixes inside heading text — decimal hierarchy, locale numerals, parenthesized markers, chapter sentinels — converted via `stripPrefixPatterns`.
-- Body lists bound to list-bound styles + a separate single-level numbering scheme. List markers never written as typed text.
+- Body lists bound to list-bound styles + a separate single-level numbering scheme. List markers never written as typed text. **If the source content has any list (even one occurrence, even 3 items), `ListNumber` / `ListBullet` styles + their numbering scheme are installed in the same `standardize` pass — `apply_styles`'s `numbering` field accepts an array, so there's no second-pass cost to economize on.** "List is short, doesn't warrant a style" / "feels disproportionate for one occurrence" are not valid reasons to substitute typed `1.` markers.
 - Heading levels nesting without skipping.
 
 This applies to pre-existing chrome the template designer typed by hand and to source content the agent transcribes in. Manual structural prefixes are conversion targets, not chrome to preserve. Visual rendering is preserved (auto-numbering produces the same glyphs); logical structure is gained.
