@@ -47,6 +47,42 @@ if (existsSync(refsSrc)) {
   cpSync(refsSrc, refsDst, { recursive: true })
 }
 
+// 2b. Copy OOXML XSDs into scripts/_shared/schemas. xmllint-wasm needs the
+// full ECMA-376 + OPC + MCE schema set at runtime to validate; loading from
+// disk under the bundle keeps the skill a single self-contained drop-in.
+const schemasSrc = join(ROOT, "vendor", "ooxml-schemas")
+const schemasDst = join(SCRIPTS_DIR, "_shared", "schemas")
+rmSync(schemasDst, { recursive: true, force: true })
+if (existsSync(schemasSrc)) {
+  cpSync(schemasSrc, schemasDst, { recursive: true })
+}
+
+// 2b'. Drop the NOTICE.md from the staged copy — it's source-tree
+// provenance documentation, not a runtime artifact. The original lives at
+// vendor/ooxml-schemas/NOTICE.md in the source repo.
+const stagedNotice = join(schemasDst, "NOTICE.md")
+if (existsSync(stagedNotice)) rmSync(stagedNotice)
+
+// 2c. Copy xmllint-wasm runtime files (index-node.js + xmllint-node.js +
+// xmllint.wasm) into scripts/_shared/xmllint-wasm. The package can't be
+// bundled by tsdown because its index does `require("./xmllint-node.js")`
+// and references the .wasm by relative path; bundling rewrites those paths
+// out of existence. Copying the runtime tree preserves the require chain.
+const xmllintSrc = join(ROOT, "node_modules", "xmllint-wasm")
+const xmllintDst = join(SCRIPTS_DIR, "_shared", "xmllint-wasm")
+rmSync(xmllintDst, { recursive: true, force: true })
+if (!existsSync(xmllintSrc)) {
+  console.error(`xmllint-wasm not installed; run \`bun install\` first.`)
+  process.exit(1)
+}
+cpSync(xmllintSrc, xmllintDst, {
+  recursive: true,
+  filter: (src) => {
+    const base = src.split("/").pop() ?? ""
+    return !["README.md", "COPYING", ".npmignore"].includes(base)
+  },
+})
+
 // 3. Zip the staged dir
 await zipDir(STAGE_DIR, ZIP_PATH, SKILL_NAME)
 

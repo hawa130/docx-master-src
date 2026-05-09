@@ -34,6 +34,16 @@ export class DocxReader {
     return this.parser.parseFromString(text, "text/xml") as unknown as Document
   }
 
+  /** Path-only list of every entry in the archive. Used by the validator to
+   * enumerate XML / .rels parts without hard-coding the part list. */
+  listEntries(): string[] {
+    const out: string[] = []
+    this.zip.forEach((relativePath: string) => {
+      out.push(relativePath)
+    })
+    return out
+  }
+
   /**
    * Copy zip to outputPath, replacing the listed entries. Values are either
    * XML/text strings (most cases) or binary `Uint8Array` (image assets).

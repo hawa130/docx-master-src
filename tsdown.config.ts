@@ -24,6 +24,7 @@ const tools: Record<string, string> = {
   inspect_table: "inspect-table.ts",
   inspect_blockers: "inspect-blockers.ts",
   find_paragraphs: "find-paragraphs.ts",
+  validate: "validate.ts",
   // standardize sub-command
   apply: "apply.ts",
   restyle: "restyle.ts",
@@ -46,6 +47,11 @@ export default defineConfig({
   shims: true,
   sourcemap: false,
   minify: false,
+  // Bundle every dep except xmllint-wasm — its index-node.js loads the
+  // sibling `xmllint-node.js` and `xmllint.wasm` via `require`, paths that
+  // can't survive bundling. build-skill.ts copies the package's runtime
+  // files into _shared/ alongside the bundled scripts.
+  external: ["xmllint-wasm"],
   deps: { alwaysBundle: [/.*/] },
   outputOptions: {
     chunkFileNames: "_shared/[name].js",

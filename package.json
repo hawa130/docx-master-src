@@ -16,6 +16,7 @@
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",
     "jszip": "^3.10.1",
+    "xmllint-wasm": "^5.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
