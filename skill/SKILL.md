@@ -48,7 +48,7 @@ install styles + numbering + theme + template
   → validate, write
 ```
 
-Sparse by design — only declared blocks apply. Untouched styles / numbering / paragraphs / theme stay as they are. **Declare only what's wrong, missing, or the user explicitly asked to change** — existing chrome already aligned with the user's request and the document's own conventions is not your business to normalize. Match existing conventions; fill gaps; route unrouted body fingerprints. Don't rewrite what already works.
+Sparse by design — only declared blocks apply; untouched styles / numbering / paragraphs / theme stay as they are. **Declare only what's wrong, missing, or what the user explicitly asks to change.**
 
 ## Workflow
 
@@ -66,8 +66,8 @@ Sparse by design — only declared blocks apply. Untouched styles / numbering / 
 
 Sketch the content's structural outline first; `styles[]` follows that outline, not the other way around. Reactive style additions accrete debt later edits have to re-untangle.
 
-- `styles[]` — every Heading level the combined doc + content needs; `BodyText`; **`ListNumber` + single-level numbering scheme for any body list content**. The scheme's `lvlText` defines the marker shape — agent picks the form to match document convention or user request (decimal, parenthesized, CJK 序号, bullet, ...). Inserted text contains only the item content; markers always come from the scheme, never typed into the run. **Sizes follow the document's existing chrome** (visual style summary in `overview`): if heading-shaped paragraphs share a uniform size with hierarchy signalled by weight / spacing / indent, preserve that — differentiate levels on the same axes the chrome uses. Invent sizes only when the document has no chrome convention.
-- `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style.
+- `styles[]` — install the styles the doc + content combined need: every Heading level; `BodyText`; `ListNumber` if there's any body list content. **Sizes follow the document's existing chrome** (visual style summary in `overview`): when heading-shaped paragraphs share a uniform size and hierarchy is signalled via weight / spacing / indent, preserve that — differentiate levels on the same axes. Invent sizes only when no chrome convention exists.
+- `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style. The scheme's `lvlText` chooses the marker shape (decimal / parenthesized / CJK 序号 / bullet / ...) — pick to match document convention or user request. Inserted text holds only item content; markers always come from the scheme, never typed.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
 - `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use cell-content insert or run-level surgery, not whole-paragraph `replace`.
 - `bulk_rules` — fingerprint-keyed routing. **Every body-content fingerprint not matched by `pattern_rules` needs a `bulk_rules` entry** — otherwise existing direct-formatted paragraphs won't pick up the new style cascade and your `firstLineIndent` / `fontCJK` etc. won't apply to them.
@@ -88,7 +88,7 @@ Output is a fresh docx; the original is never modified.
 
 ## Asking the user
 
-Most strategy choices have a default — Target state pins them. Apply the default. Ask only when the right semantic mapping is genuinely unclear: typed sentinel mid-prose vs. heading; bold paragraph as sub-heading vs. emphasis; missing source content for template slots; unsupported structures (footnotes, math, cross-references). Send one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
+Apply the default per the Authority order above. Ask only when the right semantic mapping is genuinely unclear: typed sentinel mid-prose vs. heading; bold paragraph as sub-heading vs. emphasis; missing source content for template slots; unsupported structures (footnotes, math, cross-references). Send one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
 
 ## Out of Phase 1 scope
 
