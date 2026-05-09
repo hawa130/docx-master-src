@@ -32,11 +32,19 @@ const w14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 
 /**
  * Decorate a freshly-created `<w:p>` with the revision-tracking attributes
- * Word writes on every paragraph: `w14:paraId` (unique 8-hex per paragraph,
- * used for collaborative editing) and `w14:textId` (text-change tracking;
- * "77777777" means no recorded changes). Word's loader compensates for
- * missing IDs by injecting them on open and surfacing the "needs repair"
- * dialog — emit them at write time to avoid that prompt.
+ * Word writes on every paragraph:
+ *
+ * - `w14:paraId` — unique 8-hex per paragraph, used for collaborative editing.
+ * - `w14:textId` — text-change tracking; "77777777" = no recorded changes.
+ * - `w:rsidR` / `w:rsidRDefault` — 8-hex revision-save IDs. Word emits one
+ *   on every paragraph and on most run rPr's. Missing rsids signal "this
+ *   paragraph wasn't touched in any tracked save," which Word treats as
+ *   damage and offers to repair.
+ *
+ * Word's loader compensates for missing IDs by injecting them on open and
+ * surfacing the "needs repair" dialog — emit them at write time to avoid
+ * that prompt. Using "00000000" rsid keeps the value out of any real
+ * tracked-save lineage.
  */
 function decorateParagraphIds(p: Element): void {
   const hex = Math.floor(Math.random() * 0xffffffff)
@@ -45,6 +53,8 @@ function decorateParagraphIds(p: Element): void {
     .padStart(8, "0")
   p.setAttributeNS(w14, "w14:paraId", hex)
   p.setAttributeNS(w14, "w14:textId", "77777777")
+  p.setAttributeNS(w, "w:rsidR", "00000000")
+  p.setAttributeNS(w, "w:rsidRDefault", "00000000")
 }
 
 /** OOXML toggle element: presence-only when `on=true`, val="0" when false. */
