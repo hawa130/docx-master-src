@@ -18,9 +18,7 @@ The required output shape:
 - Body lists bound to list-bound styles (`ListNumber` / `ListBullet`) + a separate single-level numbering scheme.
 - **All hierarchy and list markers come from auto-numbering — never typed text, in either direction.** Pre-existing typed chrome is converted via `stripPrefixPatterns`. Newly inserted heading or list content omits the prefix from its `text` — Word renders the marker from the bound numbering level. The display format follows the `lvlText` pattern (`%1` references the level's own counter; composite forms like `%1.%2` reference multiple levels). See `references/numbering-formats.md` for level-shape recipes covering common patterns.
 - Heading levels nest without skipping.
-- Locale typography defaults applied (CN body: 2-character first-line indent; CJK ↔ Latin literal spaces stripped — Word's autoSpace handles the gap).
-
-Everything that follows — commands, configs, workflow — serves this destination. When in doubt about a decision, ask "does this move the doc closer to Target state?"
+- Locale typography defaults applied (CN body: 2-character first-line indent; CJK ↔ Latin literal spaces stripped — Word's autoSpace handles the gap). For Chinese font-size names (初号 / 一号 / … / 小六) see [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Tools you are the analyst
 
@@ -33,7 +31,7 @@ Tools present visible facts — computed styles, element positions, document str
 | **`apply`** | The unified writer. Install / override styles, install numbering, set theme, import templates, restyle by pattern / fingerprint, insert content via edits. Single config, single call — even when task spans installing structure + filling content. Pure-edit tasks (locator-based, no style install) also use `apply` with just `edits[]` in the config. | [references/standardize.md](references/standardize.md) + [references/edit.md](references/edit.md) |
 | `audit` | Read-only conformance check; no file output. | [references/audit.md](references/audit.md) |
 
-The `apply` command is the unified writer. It accepts every block — `styles[]`, `numbering`, `template`, `theme`, `pattern_rules`, `bulk_rules`, `assignments`, `exclude`, `edits[]`, `trackChanges` — in one config and runs them in the correct internal order:
+`apply` runs config blocks in this internal order:
 
 ```
 install styles + numbering + theme + template
@@ -47,13 +45,7 @@ install styles + numbering + theme + template
 
 **Sparse by design** — only declared blocks apply. Untouched styles, numbering, paragraphs, theme stay as they are.
 
-For tasks that want a narrower surface, focused CLIs accept subsets — all share the same engine, just filtered views:
-
-- `restyle` — paragraph restyle only (rejects `template` / `numbering` / `edits`)
-- `migrate_numbering` — numbering install only
-- `import_template` — template style import only
-
-Pure content-only edits (no style installation) go through `apply` with `edits[]` and nothing else; there is no separate edit-only CLI. This is deliberate: when a fill task needs both styles and edits, the agent picks `apply` once and writes one config — not "edit, then maybe standardize, then maybe cleanup".
+Pure content-only edits (no style install) still go through `apply` with `edits[]` only; there is no separate edit-only CLI. The narrower CLIs (`restyle` / `migrate_numbering` / `import_template`) are filtered views of the same engine — see Tool Reference below.
 
 ## How to apply (the default workflow)
 
@@ -80,14 +72,6 @@ For any task that produces output:
    - Implicit-keep: any non-empty fingerprint not yet routed?
 
 4. **Apply.** Output is a fresh docx; the original is never modified.
-
-### Pattern-driven over enumeration
-
-`pattern_rules` and `bulk_rules` describe *categories* of paragraphs by visible facts (text shape, fingerprint). The engine matches uniformly to every member. You can't selectively skip matched paragraphs.
-
-`assignments` lists individual paragraph indices. Reserved for outliers — single paragraphs that don't fit any pattern, or one-off corrections.
-
-For chrome conversion specifically: write one `pattern_rules` entry per hierarchy shape (e.g. `^[一二三...]+、` → Heading1, `^（[一二三...]）` → Heading2, `^\d+\.\d+\s` → Heading3). Don't enumerate the chrome paragraphs by index — pattern matching is the more reliable path.
 
 ## Combining standardize + edits in one call
 
