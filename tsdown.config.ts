@@ -25,7 +25,7 @@ const tools: Record<string, string> = {
   inspect_blockers: "inspect-blockers.ts",
   find_paragraphs: "find-paragraphs.ts",
   // standardize sub-command
-  apply_styles: "apply-styles.ts",
+  apply: "apply.ts",
   restyle: "restyle.ts",
   migrate_numbering: "migrate-numbering.ts",
   import_template: "import-template.ts",

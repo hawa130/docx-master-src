@@ -32,6 +32,11 @@ void runCli({
         "migrate_numbering: config.numbering must contain at least one scheme with levels",
       )
     }
+    if (config.edits) {
+      throw new Error(
+        "migrate_numbering: `edits` is not allowed here. Use `apply` for numbering + content insertion in one pass.",
+      )
+    }
     // styles[] is optional on this path; the engine defaults it to [].
   },
 })

@@ -99,7 +99,6 @@ export async function applyEdits(
 }
 
 async function runOnCopy(outputPath: string, config: EditConfig): Promise<ApplyEditsReport> {
-  // 2. Open + parse for index/style awareness.
   const reader = await DocxReader.open(outputPath)
   const documentDoc = await reader.readXml("word/document.xml")
   if (!documentDoc) throw new Error("word/document.xml not found")
@@ -112,15 +111,60 @@ async function runOnCopy(outputPath: string, config: EditConfig): Promise<ApplyE
   const parser = new DocumentParser(documentDoc, resolver, numberingDoc)
   const parsed = parser.parse()
 
-  // 3. Resolver + blockers. indexByElement is built inside resolverCtx; reuse
-  // it for blocker scanning so the blocker map can echo paragraph indices.
-  const resolverCtx = buildResolverContext(documentDoc, parsed.paragraphs)
+  const { imageRegistry, report } = await runEditOps({
+    documentDoc,
+    parsedParagraphs: parsed.paragraphs,
+    reader,
+    edits: config.edits,
+    trackChanges: config.trackChanges ?? false,
+  })
+
+  const replacements = new Map<string, string | Uint8Array>()
+  replacements.set("word/document.xml", serializeXml(documentDoc))
+  imageRegistry.flushTo(replacements)
+  await reader.copyAndModify(outputPath, replacements)
+  const xmlKeys = Array.from(replacements.keys()).filter(
+    (k) => k.endsWith(".xml") || k.endsWith(".rels"),
+  )
+  const validation = await validateOutput(outputPath, xmlKeys)
+  if (!validation.ok) {
+    throw new Error(`output failed XML validation: ${validation.error}`)
+  }
+  return report
+}
+
+/* ------------- exported in-memory entry (for apply-styles integration) ------------- */
+
+export interface RunEditOpsInput {
+  documentDoc: Document
+  parsedParagraphs: import("@lib/types.ts").ParsedParagraph[]
+  reader: DocxReader
+  edits: EditOp[]
+  trackChanges: boolean
+}
+
+export interface RunEditOpsOutput {
+  imageRegistry: ImageAssetRegistry
+  report: ApplyEditsReport
+}
+
+/**
+ * In-memory edit-ops application — for callers that already have the docx
+ * open and parsed (e.g. `apply_styles` integrating edits into its single
+ * pipeline). The caller owns file I/O, validation, and writing.
+ *
+ * Mutates `documentDoc` in place. Returns the image registry (caller
+ * flushes its staged binaries / rels / content-type updates into its
+ * own replacement map) plus the applied-ops report.
+ */
+export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutput> {
+  const { documentDoc, parsedParagraphs, reader, edits, trackChanges } = input
+
+  const resolverCtx = buildResolverContext(documentDoc, parsedParagraphs)
   const blockers = detectBlockers(documentDoc, resolverCtx.indexByElement)
 
-  // 4. Pre-resolve every op's locator. Resolution failures throw with the
-  // locator-specific message from locator.ts.
   const resolved: ResolvedEdit[] = []
-  for (const [i, op] of config.edits.entries()) {
+  for (const [i, op] of edits.entries()) {
     let target: ResolvedTarget
     try {
       target = resolveLocator(op.at, resolverCtx)
@@ -130,16 +174,9 @@ async function runOnCopy(outputPath: string, config: EditConfig): Promise<ApplyE
     resolved.push({ op, target })
   }
 
-  // 5. Blocker validation. A target paragraph that's blocked rejects the op
-  // before any mutation. Field / SDT / existing-tracked-change zones each
-  // surface their reason.
   validateAgainstBlockers(resolved, blockers, resolverCtx.indexByElement)
 
-  // 6. Apply ops. Track stale Elements so a later op that targets a removed
-  // paragraph fails loudly. Image asset registry is opened lazily — most
-  // edit passes don't touch images, and lazy init keeps the rels / content-
-  // types XML untouched in the output zip when no images are added.
-  const trackContext = makeTrackContext(config.trackChanges ?? false)
+  const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
   const imageRegistry = await ImageAssetRegistry.open(reader)
   const emitCtx: EmitContext = {
@@ -162,27 +199,14 @@ async function runOnCopy(outputPath: string, config: EditConfig): Promise<ApplyE
     perOp.push({ index: i, op: edit.op.op, touched })
   }
 
-  // 7. Serialize, validate, write. Image registry pushes any new media /
-  // rels / content-type updates into the replacements map; flushTo is a
-  // no-op when no images were added in this pass.
-  const replacements = new Map<string, string | Uint8Array>()
-  replacements.set("word/document.xml", serializeXml(documentDoc))
-  imageRegistry.flushTo(replacements)
-  await reader.copyAndModify(outputPath, replacements)
-  // Only validate XML/rels entries — image binaries will trip the parser.
-  const xmlKeys = Array.from(replacements.keys()).filter(
-    (k) => k.endsWith(".xml") || k.endsWith(".rels"),
-  )
-  const validation = await validateOutput(outputPath, xmlKeys)
-  if (!validation.ok) {
-    throw new Error(`output failed XML validation: ${validation.error}`)
-  }
-
   return {
-    applied: resolved.length,
-    trackChanges: trackContext.enabled,
-    blockerCounts: summarizeBlockers(blockers),
-    perOp,
+    imageRegistry,
+    report: {
+      applied: resolved.length,
+      trackChanges: trackContext.enabled,
+      blockerCounts: summarizeBlockers(blockers),
+      perOp,
+    },
   }
 }
 

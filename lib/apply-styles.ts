@@ -18,6 +18,8 @@ import { applyToBody } from "./para-mutation.ts"
 import { attachNumberingToStyle, injectNumbering, resolveSuff } from "./numbering-mutation.ts"
 import { extractDisplayFields, printReport } from "./report.ts"
 import { reorderAgentTouchedStylesFirst, resolveStyleDef, upsertStyle } from "./style-mutation.ts"
+import { runEditOps } from "./edit-engine.ts"
+import type { ImageAssetRegistry } from "./image-asset.ts"
 import type {
   ApplyConfig,
   ApplyContext,
@@ -71,11 +73,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   }
   resolver.expandThemedFontsInStyles(stylesDoc)
   const parser = new DocumentParser(documentDoc, resolver, numberingDoc)
-  const parsed = parser.parse()
+  let parsed = parser.parse()
   // DocumentParser doesn't fingerprint — that's a fingerprinter pass run by
   // load.ts (which we don't use here, since we want the in-memory mutated
   // documentDoc, not a fresh re-open via loadDocx). Run it ourselves.
-  const fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
+  let fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
   // Build hash → letter map so bulk_rules can reference fingerprints by
   // either the in-session letter (A, B, ...) or the content-derived hash
   // (stable across runs / edits — survives doc changes that shuffle
@@ -267,6 +269,38 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     ...config.styles.map((s) => s.id),
   ])
 
+  // 5c. Apply edits (if config.edits present). Runs *after* style + numbering
+  // install (so edit ops can reference styleIds + numIds we just created) and
+  // *before* the rules pass (so pattern_rules / bulk_rules / assignments see
+  // both pre-existing chrome paragraphs AND the agent-inserted content
+  // uniformly — one regex match cleans both kinds of typed prefixes).
+  let imageRegistry: ImageAssetRegistry | null = null
+  let editsApplied = 0
+  let editsTrackChanges = false
+  if (config.edits && config.edits.length > 0 && !config.dryRun) {
+    const result = await runEditOps({
+      documentDoc,
+      parsedParagraphs: parsed.paragraphs,
+      reader,
+      edits: config.edits,
+      trackChanges: config.trackChanges ?? false,
+    })
+    imageRegistry = result.imageRegistry
+    editsApplied = result.report.applied
+    editsTrackChanges = result.report.trackChanges
+
+    // Re-parse documentDoc — paragraph indices have shifted since edits inserted
+    // new paragraphs. The rules pass below uses parsed.paragraphs directly, so it
+    // needs the post-edit state.
+    const reParser = new DocumentParser(documentDoc, resolver, numberingDoc)
+    parsed = reParser.parse()
+    fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
+    hashToLetter.clear()
+    for (const s of fpResult.summary) {
+      hashToLetter.set(s.hash, s.label)
+    }
+  }
+
   // 6. Build action map for paragraphs. Cross-check that every styleId
   // referenced from rules actually exists in the styles array — catching
   // typos here is much friendlier than producing a broken docx that Word
@@ -412,7 +446,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   applyToBody(documentDoc, ctx)
 
   // 8. Serialize and write
-  const replacements = new Map<string, string>()
+  const replacements = new Map<string, string | Uint8Array>()
   replacements.set("word/styles.xml", serializeXml(stylesDoc))
   if (numberingDoc) replacements.set("word/numbering.xml", serializeXml(numberingDoc))
   replacements.set("word/document.xml", serializeXml(documentDoc))
@@ -429,12 +463,19 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     await ensureNumberingContentType(reader, replacements)
     await ensureNumberingRelationship(reader, replacements)
   }
+  // Image registry from edit-pass flushes its staged binaries + rels +
+  // content-type updates. No-op when no images were embedded.
+  if (imageRegistry) imageRegistry.flushTo(replacements)
   // 8b. Dry-run skips both write and validation; the agent iterates on the
   // report alone. Otherwise: write, then re-parse the modified entries to
   // catch malformed XML before claiming success.
   if (!config.dryRun) {
     await reader.copyAndModify(output, replacements)
-    const validation = await validateOutput(output, Array.from(replacements.keys()))
+    // Only validate XML/rels entries — image binaries trip the parser.
+    const xmlKeys = Array.from(replacements.keys()).filter(
+      (k) => k.endsWith(".xml") || k.endsWith(".rels"),
+    )
+    const validation = await validateOutput(output, xmlKeys)
     if (!validation.ok) {
       if (existsSync(output)) {
         try {
@@ -487,6 +528,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     numberingBindings,
     templateImport,
   })
+
+  if (editsApplied > 0) {
+    console.error(
+      `\nEdit pass: ${editsApplied} op(s) applied${editsTrackChanges ? " (track-changes)" : ""}. New paragraphs participated in pattern_rules / bulk_rules cleanup uniformly with the original chrome.`,
+    )
+  }
 }
 
 /**

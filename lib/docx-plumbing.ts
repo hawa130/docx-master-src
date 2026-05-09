@@ -20,7 +20,7 @@ export function blankNumberingDoc(): Document {
 
 export async function ensureNumberingContentType(
   reader: DocxReader,
-  replacements: Map<string, string>,
+  replacements: Map<string, string | Uint8Array>,
 ): Promise<void> {
   const ctText = await reader.readText("[Content_Types].xml")
   if (!ctText) return
@@ -32,7 +32,7 @@ export async function ensureNumberingContentType(
 
 export async function ensureNumberingRelationship(
   reader: DocxReader,
-  replacements: Map<string, string>,
+  replacements: Map<string, string | Uint8Array>,
 ): Promise<void> {
   const path = "word/_rels/document.xml.rels"
   const text = await reader.readText(path)

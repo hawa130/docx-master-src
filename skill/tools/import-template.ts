@@ -32,6 +32,11 @@ void runCli({
         "import_template: `numbering` is not allowed here. Imported styles' numbering references are migrated automatically; for a new numbering scheme, run `migrate_numbering` after.",
       )
     }
+    if (config.edits) {
+      throw new Error(
+        "import_template: `edits` is not allowed here. Use `apply` for combined operations.",
+      )
+    }
     // styles[] is optional; the engine defaults it to [].
   },
 })

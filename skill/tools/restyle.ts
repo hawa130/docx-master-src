@@ -24,7 +24,12 @@ void runCli({
     }
     if (config.numbering) {
       throw new Error(
-        "restyle: `numbering` is not allowed here. Use `migrate_numbering` (or `apply_styles` for combined operations).",
+        "restyle: `numbering` is not allowed here. Use `migrate_numbering` (or `apply` for combined operations).",
+      )
+    }
+    if (config.edits) {
+      throw new Error(
+        "restyle: `edits` is not allowed here. Use `apply` for restyle + content insertion in one pass, or `apply_edits` for pure content edits.",
       )
     }
     if (!Array.isArray(config.styles) || config.styles.length === 0) {

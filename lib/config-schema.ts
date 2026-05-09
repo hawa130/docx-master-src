@@ -177,6 +177,14 @@ export const PatternRuleSchema = z.strictObject({
 
 /* ------------- top-level apply config ------------- */
 
+// edits live in lib/edit-config-schema.ts; reference by import to avoid circular
+// engine dependencies. The schema is reused as-is, just embedded inside
+// ApplyConfig as an optional block. When present, the engine runs edit ops
+// after style + numbering install and before pattern_rules / bulk_rules /
+// assignments — so the rules pass sees both pre-existing chrome paragraphs
+// and any agent-inserted content uniformly.
+import { EditOpSchema } from "./edit-config-schema.ts"
+
 export const ApplyConfigSchema = z.strictObject({
   source: NonEmptyString,
   output: NonEmptyString,
@@ -194,6 +202,8 @@ export const ApplyConfigSchema = z.strictObject({
   pattern_rules: z.optional(z.array(PatternRuleSchema)),
   requirements: z.optional(z.record(z.string(), z.string())),
   exclude: z.optional(z.array(z.number())),
+  edits: z.optional(z.array(EditOpSchema)),
+  trackChanges: z.optional(z.boolean()),
 })
 
 export type ApplyConfig = z.infer<typeof ApplyConfigSchema>
