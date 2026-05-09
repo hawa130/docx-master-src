@@ -39,6 +39,7 @@ Always inspect before composing edits.
 | `cell` | `{ ..., "table": T, "row": R, "col": C }`, 0-based. Only way to reach data/form-table cell paragraphs (those are unindexed). |
 | `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose outline level is L. Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
 | `whole-body` | Every body paragraph. Pairs naturally with `format`; rarely with `replace`. |
+| `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. With `blank: K`, targets the Kth run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth run by 0-based index. Default: `blank: 0`. Pair only with `set-run`. |
 
 ### Ops
 
@@ -46,12 +47,13 @@ Always inspect before composing edits.
 - **`insert-before` / `insert-after`** — `{ ..., "content": [Block, ...] }`. Inserts fragment immediately before / after the target.
 - **`delete`** — `{ ... }`. Removes the targeted paragraph(s).
 - **`format`** — `{ ..., "styleId"?, "runFormat"?, "paraFormat"? }`. Mutates existing paragraphs without changing their content. At least one of styleId / runFormat / paraFormat required.
+- **`set-run`** — `{ "at": <run-locator>, "with": "value text", "format"?: { ... } }`. Replaces the targeted run's text while preserving its rPr (font / underline / size carry through). Use for filling form-fill placeholder runs without manually reconstructing label + value runs. `format` overrides specific rPr fields when needed; absent, the run's existing rPr stays verbatim.
 
 ### Match-destination formatting (default)
 
 `replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` — same semantics as Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
 
-**Bold-pMark trap**: a label paragraph (heading-style) often has bold paragraph-mark rPr; the empty placeholder row beneath it inherits that bold. When you `replace` or `insert-after` against either, the new content inherits bold via Match-Destination-Formatting and renders wrong for prose. **Inspect the anchor's rPr first.** If it carries unwanted bold, override per-Block with `runFormat: { bold: false }` (the emitter writes `<w:b w:val="0"/>` for explicit-off, distinct from omitting the field). For systemic template defects (slot-rows uniformly bold-styled), the cleaner fix is to add `styles[]` / `bulk_rules` to the same `apply` config to reset the slot's pStyle.
+**Bold-pMark trap**: a label paragraph (heading-style) often has bold paragraph-mark rPr; the empty placeholder row beneath it inherits that bold. When you `replace` or `insert-after` against either, MDF would propagate the bold into your new paragraph's pPr-mark — and Word's style cascade can't undo it (it's not run rPr, not paragraph rPr). The engine handles the common case: when the new paragraph carries an explicit `styleId`, the anchor's pPr-mark rPr is skipped on inheritance and the style cascade governs. If you skip styleId (rare; Block uses MDF fallback), explicit `runFormat: { bold: false }` on each run is the override (writes `<w:b w:val="0"/>`).
 
 ### Blocks (in `with` / `content`)
 
@@ -64,7 +66,11 @@ Always inspect before composing edits.
 
 `text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required.
 
-**Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. List items use `numbering: { numId, level }`; sub-headings use `styleId: "Heading3"`. If the styleId or numId you reference doesn't exist in the doc, add `styles[]` / `numbering` to the same `apply` config so they get installed before `edits[]` runs (see SKILL.md Target state).
+**Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. Two paths to numbering:
+- **styleId-bound** (preferred): if the styleId you set is bound to a numbering scheme via `numbering[].levels[].styleId`, the binding handles auto-numbering automatically — don't supply a `numbering` field on the block. Use for headings (`Heading1..N`) and list-bound styles (`ListNumber` / `ListBullet`).
+- **ad-hoc** `numbering: { numId, level }`: for one-off paragraph-level numbering not tied to a style. Rare; used when you want a paragraph numbered without committing the style to a scheme.
+
+If the styleId or numId you reference doesn't exist in the doc, add `styles[]` / `numbering` to the same `apply` config so they get installed before `edits[]` runs (see SKILL.md Target state).
 
 ### Quote handling
 

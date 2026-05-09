@@ -59,7 +59,7 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 - Existing Heading levels, numbering schemes, fingerprints, document skeleton
 - **Typography requirements baked into the document** — paragraphs that prescribe formatting (fonts, sizes, line spacing, alignment). Often live in front matter, instruction blocks, footnotes, or "filling guidelines" sections. These override any defaults you would invent. Skim before designing styles.
 - Typed structural prefixes in chrome — chapter / section markers like `Chapter N.`, `第N章`, `一、`, `1.1`, `（一）`, etc. List the patterns you see; one regex per shape will go into `pattern_rules`.
-- **Form-fill paragraphs** — paragraphs whose visible text looks like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run carrying `<w:u/>`. Run `inspect_runs` on these before deciding the edit shape; whole-paragraph `replace` destroys the placeholder structure.
+- **Form-fill paragraphs** — paragraphs whose visible text looks like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run carrying `<w:u/>`. Use the `set-run` op (run-level locator with `blank` heuristic) to fill the value while preserving the placeholder rPr — this is the right primitive; whole-paragraph `replace` would force you to manually reconstruct each label run's format.
 - (Filling) What content the source carries
 
 ### 2. Design ONE config
@@ -69,7 +69,7 @@ Sketch the content's structural outline first; `styles[]` follows that outline, 
 - `styles[]` — install the styles the doc + content combined need: every Heading level; `BodyText`; `ListNumber` for block enumerations. **Sizes follow the document's existing chrome** (visual style summary in `overview`): when heading-shaped paragraphs share a uniform size and hierarchy is signalled via weight / spacing / indent, preserve that — differentiate levels on the same axes. Invent sizes only when no chrome convention exists.
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style. The scheme's `lvlText` chooses the marker shape (decimal / parenthesized / CJK 序号 / bullet / ...) — pick to match document convention or user request. Inserted text holds only item content; markers always come from the scheme, never typed.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
-- `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use cell-content insert or run-level surgery, not whole-paragraph `replace`.
+- `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use the `set-run` op with a `run` locator (`blank: K` for Kth blank placeholder) — preserves the placeholder run's rPr automatically. Whole-paragraph `replace` is the wrong tool here.
 - `bulk_rules` — fingerprint-keyed routing. **Every body-content fingerprint not matched by `pattern_rules` needs a `bulk_rules` entry** — otherwise existing direct-formatted paragraphs won't pick up the new style cascade and your `firstLineIndent` / `fontCJK` etc. won't apply to them.
 - `exclude` — false-positive corrections.
 - `assignments` — per-paragraph corrections, **last resort**, for outliers only.
@@ -80,7 +80,7 @@ Sketch the content's structural outline first; `styles[]` follows that outline, 
 
 - **Style Resolution** — each installed style matches user spec / extracted source / template-prescribed values
 - **Sample Affected Paragraphs** — `pattern_rules` hit the right targets (`find_paragraphs --regex` validates coverage before apply)
-- **Implicit-keep is a FAILURE signal** — non-empty fingerprints not routed by any rule. Add `bulk_rules` / `assignments` until implicit-keep is empty, OR until the remaining ones are intentional non-content (true spacers, blank-line slots).
+- **Implicit-keep is a FAILURE signal** — non-empty fingerprints not routed by any rule. Add `bulk_rules` / `assignments` until implicit-keep is empty, OR until the remaining ones are intentional non-content (true spacers, blank-line slots, reviewer signature blocks, evaluator-only sections that the user explicitly wants preserved).
 
 ### 4. Apply
 
@@ -122,6 +122,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 - Original file is never modified; every applying CLI writes a fresh copy + validates before keeping. Validation failure → discard, surface to user — don't silently retry.
 - Section properties (page size, margins, headers, footers, columns) never modified.
 - Paragraph indexing is 1-based, matching `#NNN` in skeleton. Layout-table paragraphs are indexed; data / form-table paragraphs aren't (reachable via cell locator on edit path).
+- All `edits[]` locators (paragraph indices, range, cell coordinates) resolve against the **pre-edits** document state — the `#NNN` you see in `overview` is what locators reference, regardless of whether earlier ops in the same `edits[]` array shift indices. Resolved Element refs survive subsequent mutations.
 - Paths resolve against CWD; use absolute paths if you may have changed directories.
 - Restyle: run-level direct formatting uniform across all runs gets stripped; per-run differences preserved as intentional inline emphasis.
 - Field codes (`STYLEREF` / `TOC` / `REF` / `DATE` / …) preserved as-is; not editable inside.

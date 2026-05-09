@@ -80,12 +80,16 @@ config; SKILL.md only carries a top-level summary.
                                //   round-trip a source's atLeast rule.
   spaceBefore:     12,         // optional. pt before paragraph.
   spaceAfter:      6,          // optional. pt after paragraph.
-  firstLineIndent: "2char",    // optional. "Nchar" / "Npt" / pt number.
+  firstLineIndent: "2char",    // optional. "Nchar" / "Npt" / pt number / null.
                                //   "Nchar" → emitted as `w:firstLineChars` (1/100 char),
                                //     auto-scales with run font size — required for the
                                //     standard "首行缩进 2 字符" academic convention.
                                //   "Npt" or number → emitted as `w:firstLine` (fixed
                                //     twips), does NOT scale with font.
+                               //   `null` (or omitted) → no indent emitted; for
+                               //     existing paragraphs the cascade decides.
+                               //   `0` / `"0pt"` → explicitly emit zero-indent
+                               //     (overrides an inherited indent to nothing).
                                //   Prefer "Nchar" for thesis/paper body text.
   hangingIndent:   null,       // optional. Same units as firstLineIndent. For
                                //   bibliography/reference entries use "2char" (or
