@@ -1,6 +1,6 @@
 # Command: `edit`
 
-Surgical content + format changes at specific locations on an existing docx — replace / insert / delete paragraphs, swap a table cell, embed an image, restyle a paragraph or range, optionally as Word tracked changes.
+Surgical content + format changes at specific locations on an existing docx — replace / insert / delete paragraphs, swap a table cell, embed an image, restyle a paragraph or range. Optional Word tracked-changes mode.
 
 *Illustrative phrasings: "把第 3 段改成 ...", "在 X 章后面插一段", "这个表格第 2 行换成 ...", "删掉那段开题摘要", "给第 5 段加粗", "在结论后插张图". Same words can land in `standardize` when the user wants role-based whole-doc reshape — ask one focused question if intent is genuinely ambiguous.*
 
@@ -8,9 +8,9 @@ Surgical content + format changes at specific locations on an existing docx — 
 
 Always inspect before composing edits.
 
-- `inspect_table` — top-level tables with `[row,col]` cell snippets (before composing a `cell` locator)
-- `inspect_blockers` — paragraphs `apply_edits` will refuse (existing tracked changes / fields / SDT controls)
-- `overview` / `find_paragraphs` / `inspect_range` / `inspect_neighbors` — same as the standardize path
+- `inspect_table` — top-level tables with `[row,col]` cell snippets (before composing a `cell` locator).
+- `inspect_blockers` — paragraphs `apply_edits` will refuse (existing tracked changes / fields / SDT controls).
+- `overview` / `find_paragraphs` / `inspect_range` / `inspect_neighbors` — same as the standardize path.
 
 ## Config shape
 
@@ -44,9 +44,11 @@ Always inspect before composing edits.
 - **`delete`** — `{ ... }`. Removes the targeted paragraph(s).
 - **`format`** — `{ ..., "styleId"?, "runFormat"?, "paraFormat"? }`. Mutates existing paragraphs without changing their content. At least one of styleId / runFormat / paraFormat required.
 
-#### Match-destination formatting (default)
+### Match-destination formatting (default)
 
 `replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` — same semantics as Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
+
+**Bold-pMark trap**: a label paragraph (heading-style) often has bold paragraph-mark rPr; the empty placeholder row beneath it inherits that bold. When you `replace` or `insert-after` against either, the new content inherits bold via Match-Destination-Formatting and renders wrong for prose. **Inspect the anchor's rPr first.** If it carries unwanted bold, override per-Block with `runFormat: { bold: false }` (the emitter writes `<w:b w:val="0"/>` for explicit-off, distinct from omitting the field). For systemic template defects (slot-rows uniformly bold-styled), the cleaner fix is a `standardize` pass that resets the slot's pStyle.
 
 ### Blocks (in `with` / `content`)
 
@@ -57,19 +59,17 @@ Always inspect before composing edits.
 { "type": "horizontal-rule" }
 ```
 
-`text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required — the tool does not infer from the file.
+`text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required.
 
-#### Express structure via styleId + numbering
+**Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. List items use `numbering: { numId, level }`; sub-headings use `styleId: "Heading3"`. If the styleId or numId you reference doesn't exist in the doc, `standardize` first to install it (see SKILL.md Target state).
 
-Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. If the styleId or numId you need doesn't exist, that's a `standardize` task before this `edit` runs (see SKILL.md Target state). Manually-typed structural prefixes anywhere in the doc — including pre-existing chrome the template designer typed — are conversion targets, not chrome to leave alone.
+### Quote handling
 
-#### Quote handling
-
-`text` is emitted verbatim. Default to smart quotes in prose (Chinese `"…"` / `「…」`, English `"…"` / `'…'`). Use ASCII `"` `'` only inside literal tokens (code, URLs, identifiers, shell commands). Smart quotes also bypass the JSON `\"` escape footgun.
+`text` is emitted verbatim. Default to smart quotes in prose (Chinese `“…”` / `「…」`, English `“…”` / `‘…’`). Use ASCII `"` `'` only inside literal tokens (code, URLs, identifiers, shell commands). Smart quotes also bypass the JSON `\"` escape footgun.
 
 ### Format fields
 
-`runFormat`: `bold` / `italic` / `underline` / `strike` (boolean), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (pt).
+`runFormat`: `bold` / `italic` / `underline` / `strike` (boolean, tri-state — `false` emits explicit off-toggle to override inherited true), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (pt).
 
 `paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (pt), `lineSpacing` + `lineRule` (same convention as `apply_styles`), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (`"Nchar"` / `"Npt"` / number), `outlineLevel` (0–9).
 
@@ -79,61 +79,27 @@ Mirrors the standardize style schema — what you'd put inside a style definitio
 
 `"trackChanges": true` emits edits as Word revision markup: text changes via `<w:ins>` / `<w:del>`, format changes via `<w:rPrChange>` / `<w:pPrChange>` snapshots. The user accepts / rejects in Word's Review tab. Author info is intentionally blank — this is a review affordance, not an authorship claim. Paragraphs that *already* contain tracked changes are blocked; ask the user to accept / reject existing revisions first.
 
-## Filling a template
+## Cell-fill strategy
 
-Plan first — see SKILL.md Core Principle. The plan-survey-execute loop for fill tasks:
+Form cells often hold a label paragraph + several empty placeholder rows (the form designer pre-allocates blanks for handwriting). Two strategies:
 
-**Step 1: Survey the content** to be inserted. Hierarchy depth (how many heading levels)? Lists (ordered, bulleted, nested)? Inline emphasis? Tables / images / code? If the content is markdown, read its AST shape, not just the text.
+- **`replace` a range** covering the empty placeholder rows: drops the placeholders, only the new content remains. Cleaner cell, no trailing blank rows.
+- **`insert-after` the label**: leaves the empty placeholder rows below the inserted content. Word auto-grows the cell; visually fine for most forms but trailing blank rows are visible.
 
-**Step 2: Survey the template's expressiveness** via `overview`. Note:
+Default to `replace` for content-bearing fills; `insert-after` for non-destructive additions where the original layout is meant to be preserved.
 
-- Defined styles: how many Heading levels? Body styles? List-bound styles (any pStyle with attached `<w:numPr>`)? Caption / Quote / Code styles?
-- Defined numbering schemes: how many levels does each cover? Are any pre-bound to heading styles?
-- Empty body slots inside cells: what's their pStyle, and is it actually styled for prose? Some templates leave bold or other surprising direct formatting on the empty rows.
-
-**Step 3: Compare**. If the template covers what the content needs, proceed. If it doesn't, **stop and run `standardize` first** to install the missing pieces. Examples that should trigger standardize:
-
-- Content has H3 / H4 but template defines only H1 / H2 → inject Heading3 / Heading4 styles + extend numbering to match.
-- Content has bullet lists but template has only ordered numbering → install a bullet-bound style.
-- Empty slot inherits unintended formatting (bold for prose, weird spacing) → either override at the source via standardize, or compensate per-Block — the trade-off is yours, ask the user when it matters.
-
-If you face a genuine choice — flatten H4 to H3 vs install Heading4? install bullet style vs reuse ordered? — ask one focused question. Don't pick a default silently.
-
-**Step 4: Execute edit ops**. With the style toolbox now complete:
-
-- Find the empty body slot for prose content (`text: ""` with a body-style pStyle, often `Normal` / `Body Text` / `a3`).
-- For list items, use `numbering: { numId, level }` on the Block — don't type `1.` / `（1）` in `text`.
-- For sub-headings within content, use `styleId: "Heading3"` — don't approximate with bold + bigger font.
-- Match-Destination-Formatting picks up the slot's pPr by default. `inspect_range` the slot first to confirm its formatting is what you want; override per-Block when it isn't.
-
-Anti-pattern: replacing the **label paragraph** instead of the **empty body slot** that follows it. The label's heading style inherits onto your prose and renders wrong.
-
-Inverse anti-pattern (just as common): `insert-after` on a label whose paragraph-mark `<w:rPr>` carries unwanted formatting — typically bold left over from the label's text. Match-Destination-Formatting picks up that pMark rPr and makes your inserted prose bold. Two ways to handle:
-
-- Prefer `replace`-ing the empty body slot beneath the label (its formatting is meant for prose).
-- If you must `insert-after` the label, override explicitly on each new Block: either `styleId: "Normal"` (clean opt-out of inheritance) or `runFormat: { bold: false }` (negates the inherited toggle — the emitter writes `<w:b w:val="0"/>` for explicit-off, distinct from omitting the field).
-
-When the empty slot is itself styled wrong (a "body" placeholder that's actually bold), this is a template defect surfacing as inheritance — surface it to the user; the right fix is usually a `standardize` pass to clean up the template's defaults rather than working around it per-Block.
-
-#### insert-after vs replace ranges in form cells
-
-Form cells often hold a label paragraph + several empty placeholder rows (the form designer pre-allocates blank rows for handwriting). Two strategies:
-
-- **`insert-after` the label**: appends content but leaves the empty placeholder rows below. Word auto-grows the cell; visually fine for most forms. Non-destructive; preserves the original layout.
-- **`replace` a range covering the label + placeholders**: drops the placeholders, only your content remains. Tighter result; risks losing the label if you include it in the range.
-
-Default to `insert-after` unless the user explicitly wants a clean cell (no remnants). For multi-paragraph content, pass multiple Blocks in the same op rather than chaining many `insert-after`s.
+For multi-paragraph content, pass multiple Blocks in one op rather than chaining many `insert-after`s — order is preserved and no stale-index issue.
 
 ## Edge cases
 
 - **Cross-container range**: `range` cannot span body ↔ table-cell. Split into two edits.
 - **Heading locator ambiguity**: returns first match. Use `find_paragraphs` to disambiguate, then refer by `paragraph` index.
 - **Stale element**: if op A removes paragraphs and op B targets one of them, op B fails. Reorder so deletes / replaces happen last, or split into separate runs.
-- **Empty body**: `whole-body` on a doc with zero paragraphs only accepts `insert-*` (which appends before the trailing `<w:sectPr>`).
+- **Empty body**: `whole-body` on a doc with zero paragraphs only accepts `insert-*` (appends before the trailing `<w:sectPr>`).
 
 ## Compose with other commands
 
-- **Messy template + content**: run `standardize` first to install a clean style system, then `edit` to fill — Match-Destination-Formatting on a dirty template propagates the mess.
-- **Whole-doc role-based reshape**: `standardize`, not `edit`. `edit` does not classify by role or fingerprint.
+- **Messy template + content**: `standardize` first to install / fix the style system, then `edit` to insert content. Match-Destination-Formatting on a dirty template propagates the mess.
+- **Whole-doc role-based reshape**: `standardize`, not `edit`.
 - **Read-only conformance check**: `audit`. `edit` always writes.
-- **Single-style change without locator inspection**: `standardize`'s targeted-edit shape — narrower than `edit`'s explicit locators when the change is "all paragraphs of role X."
+- **Single-style change covering all paragraphs of role X**: `standardize`'s targeted-restyle path — narrower than `edit`'s per-locator approach.

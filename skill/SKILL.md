@@ -11,36 +11,25 @@ Mutates Word (.docx) OOXML directly: classify paragraph roles, inject named styl
 
 **You are the analyst. The tools are your instruments.**
 
-Tools present facts — computed styles, element positions, document structure. They don't classify or judge. Semantic reasoning is yours.
+Tools present visible facts — computed styles, element positions, document structure. They don't classify or judge. Semantic reasoning is yours.
 
-For any task touching new or restructured content, work the survey-then-plan loop:
+Two workflows compose every real task:
 
-1. **Survey the content** — hierarchy depth, list usage, inline emphasis, tables / images / code / captions.
-2. **Survey the document** — which styles + numbering schemes exist; whether existing typed prefixes are real auto-numbering or hand-typed (any pattern: decimal hierarchy, parenthesized markers, chapter sentinels, locale-specific numerals).
-3. **Plan toward Target state** (next section) — install missing styles / numbering via `standardize`, then `edit` to fill with semantic styleIds and numbering bindings.
-4. **Ask only on genuine ambiguity** (Ask section below). Most defaults are pinned by Target state — apply them.
+- `standardize` — reshape the doc's style system + numbering + role assignments. Operates by **pattern**: you describe categories of paragraphs (matching this regex / matching this fingerprint / sitting in this style); the engine applies uniformly.
+- `edit` — surgical changes at **specific locations** (paragraph index, table cell, range). Used for content insertion and one-off corrections.
+
+Compose by intent. A real task often needs both: standardize to install or fix the style system, then edit to insert or adjust content. Each command's reference doc covers its own scope. There is no separate "fill" workflow — when a user asks to "fill this template with X content", that's `standardize` (if structure needs work) then `edit`.
 
 ## Target state: structure-driven, not text-driven
 
-A well-formed Word document expresses structural decisions through styles + numbering + sections, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) **This is the agent's required output shape, not an aspiration.** When the user hasn't pinned a contradicting choice, every pass produces a document with:
+A well-formed Word document expresses structural decisions through styles + numbering + sections, not through typed text that mimics structure. (Industry consensus: Microsoft, WebAIM, ECMA-376.) When the user has not pinned a contradicting choice, every standardize / edit pass produces a document with:
 
 - Every paragraph carrying a semantic styleId. Direct paragraph format only as one-off exceptions.
-- Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Every installed Heading level is bound to its corresponding scheme level — install Heading1–Heading4 → the scheme has 4 levels with `outlineLevel` 0/1/2/3 and `numLevel` 0/1/2/3 respectively. Don't bind only the chrome levels and leave content-internal Heading3/Heading4 unbound; the result has wrong outline levels and Word's nav pane / TOC sees holes. Manually-typed structural prefixes inside heading text — decimal hierarchy, locale numerals, parenthesized markers, chapter sentinels — converted via `stripPrefixPatterns`. Conversion is per-paragraph: only paragraphs that *are* section headings (prefix + section title) qualify. Inline labels — `Name:` / `Date:` style introductions to local content — are not structural prefixes; leave them.
-- Body lists bound to list-bound styles + a separate single-level numbering scheme. Never written as typed markers in `text`.
+- Structural hierarchy in **one unified multi-level numbering scheme** bound to Heading styles. Every installed Heading level binds to its corresponding scheme level (Heading1 → numLevel 0 + outlineLevel 0, …, HeadingN → numLevel N-1 + outlineLevel N-1). Manually-typed structural prefixes inside heading text — decimal hierarchy, locale numerals, parenthesized markers, chapter sentinels — converted via `stripPrefixPatterns`.
+- Body lists bound to list-bound styles + a separate single-level numbering scheme. List markers never written as typed text.
 - Heading levels nesting without skipping.
 
-This applies to pre-existing chrome the template designer typed by hand and to source content (markdown, prose) the agent is transcribing in. **Convert, don't preserve.** Manual structural prefixes are the conversion target.
-
-If content has hierarchy or lists the document doesn't have styles / numbering for, **`standardize` runs first to install them, then `edit` fills**. This is not optional.
-
-**"Fill a template"** is the standardize-then-edit sequence below. All four steps are mandatory; partial fills produce half-converted documents (some chrome auto-numbered, some typed) which are worse than either extreme.
-
-1. Survey: content shape + document's existing styles + numbering schemes + manually-typed structural prefixes anywhere in the doc.
-2. `standardize`: install missing Heading styles, list-bound styles, captions, etc. The `numbering` field accepts an array — install **all** numbering schemes the doc needs in one pass (multi-level heading scheme + single-level list scheme + any list-bullet scheme), not one at a time.
-3. `standardize` (same call or chained): **convert the template's hand-typed chrome** — any structural prefix the designer typed instead of using auto-numbering — to the unified numbering via `assignments` (paragraph → heading style) + `stripPrefixPatterns` (manual prefix → auto-numbered). This is not optional. Visual rendering is preserved (auto-numbering produces the same glyphs); logical structure is gained.
-4. `edit`: insert source content with semantic styleIds and numbering bindings. Before composing each Block, `inspect_range` the anchor paragraph; if its rPr carries unwanted formatting (typically bold pMark inherited from the preceding label), override per-Block via `runFormat: { bold: false }` so Match-Destination-Formatting doesn't propagate it. Skipping this leaves the entire body bold.
-
-Skipping step 3 because the chrome "looks fine as-is" or "would change the form's identity" is the most common failure mode. Don't.
+This applies to pre-existing chrome the template designer typed by hand and to source content the agent transcribes in. Manual structural prefixes are conversion targets, not chrome to preserve. Visual rendering is preserved (auto-numbering produces the same glyphs); logical structure is gained.
 
 **Source-content → styleId mapping** (fixed; install missing pieces, don't substitute):
 
@@ -55,74 +44,73 @@ Skipping step 3 because the chrome "looks fine as-is" or "would change the form'
 | Code block | `Code` |
 | Body paragraph | existing body style (`BodyText` / `Normal`-equivalent) |
 
-The destination document type — form, report, thesis, contract, business memo, etc. — doesn't change this mapping. The mapping holds across locales and template idioms; specific markers (`#` / `第N章` / `1.1` / `一、` / `（一）` / `Chapter N` / Roman numerals) are surface variations on the same hierarchy. If the document lacks any of these styles, `standardize` installs them. **Never substitute a bold paragraph in body style for a Heading style; never substitute a typed marker in body style for a list-bound binding.**
+The destination document type — form, report, thesis, contract, business memo — doesn't change this mapping. Specific surface markers (`#` / `1.1` / `一、` / `Chapter N` / Roman numerals) are variations on the same hierarchy.
 
-Common rationalizations to recognize and reject:
-
-- "Just a fill task — `standardize` is over-reaching" → If content has shape the template lacks, `standardize`-then-`edit` IS the fill task.
-- "This is an administrative form / fixed template, simpler typesetting matches its convention" → No. Document type doesn't override the mapping. The user's request to standardize / fill includes semantic structure.
-- "Sub-headings render fine as bold lead phrases inside body paragraphs" → That collapses two paragraphs (heading + body) into one and loses the Heading styleId. The mapping is per-source-paragraph, preserved.
-- "The list is short / trivially flat" → typed list markers are anti-pattern regardless of length.
-- "Installing a list-style for one occurrence is disproportionate / not worth it" → `apply_styles`'s `numbering` field accepts an array; install the heading multi-level scheme **and** the list single-level scheme in one pass. There is no second-pass cost to economize on. If the content has lists, install the list-style.
-- Any "disproportionate / minimal disruption / not worth it / over-engineering for this case" framing → wrong shape of argument. Target state is the spec; correctness is not weighed against effort.
-- "Heading3 / Heading4 are content-internal, they don't need outline numbers like the chrome does" → Wrong. The unified scheme covers every installed Heading level, not just the chrome levels. Heading3 binds to numLevel 2 + outlineLevel 2; Heading4 to numLevel 3 + outlineLevel 3. Missing this gives paragraphs styled as Heading3/4 but with the wrong outline level — Word's nav pane and any TOC will misrender.
-- "The template's chrome is inconsistent (some sections have structural markers, some have inline labels), so I can't unify them" → Conversion is per-paragraph, not all-or-nothing. Convert paragraphs that are section headings (structural marker + title); leave inline labels (e.g. `Name:` / `选题来源：` style label-with-colon introducing local content) as they are.
-- "Pre-existing chrome should be preserved as the template designer intended" → manually-typed structural prefixes are conversion targets. The designer typed them because Word's UI made it easier, not because the doc should stay that way.
-- "Chrome is in a layout table, so it's out of Phase 1 scope" → No. The layout *table* is out of scope (don't restructure it). The chrome paragraphs inside its cells are indexed paragraphs, fully restyleable.
-- "Migrating chrome would change the document's visual identity beyond the request" → No. Auto-numbering produces the same glyphs the designer typed by hand. Visual identity is preserved; logical structure is gained. "Beyond the request" assumes a minimal-disruption interpretation of fill — see Target state's redefinition above.
-- "The user asked for a fill, not a restyle of chrome" → "Fill" includes producing a well-formed document. If the template's chrome blocks well-formed-ness, converting it is part of fill.
-- "I'll surface this as a strategy choice for the user" → Target state pins the answer. Surfacing it as a question is a stall.
-
-**Locale defaults** (apply when the document is in the named locale; pin otherwise via user instruction):
+**Locale defaults** (apply when the doc is in the named locale; pin otherwise via user instruction):
 
 - **Chinese (CN) body text**: 2-character first-line indent (`firstLineIndent: "2char"`). Apply to body-class styles unless the user pins otherwise.
-- **Chinese ↔ Latin spacing**: strip literal spaces between CJK characters and Western characters / digits before emitting `text`. Source content (markdown, copied prose) often contains them for source readability; transcribing verbatim produces double gaps because Word's `autoSpaceDE` / `autoSpaceDN` add their own. Apply unconditionally as a transcription transformation, not a per-case judgment. Latin-only spans keep their internal spaces (e.g. `4-bit`, `Edge TPU`).
+- **CJK ↔ Latin spacing**: strip literal spaces between CJK characters and Western characters / digits before emitting `text`. Source content (markdown, copied prose) often carries them for source readability; transcribing verbatim produces double gaps because Word's `autoSpaceDE` / `autoSpaceDN` add their own. Latin-only spans keep their internal spaces.
 
 **Out of Phase 1 scope** (leave alone, surface to user if the limit blocks the task):
 
-- Layout-table **structure** — restructuring or removing the layout table itself. Paragraphs inside layout-table cells, including any chrome the template designer typed by hand, are normal indexed paragraphs and fully subject to Target state — restyle to the right Heading level and convert typed prefixes via `stripPrefixPatterns`. The table holding them stays as a layout table; its contents get standardized.
+- Layout-**table** structure — restructuring or removing the layout table itself. Paragraphs *inside* layout-table cells, including any chrome the template designer typed by hand, are normal indexed paragraphs and fully restyleable; the table holding them stays a table.
 - TOC body content — Word regenerates the field on open after `outlineLevel` is set.
 - Cross-references, footnotes, comments, headers / footers — separate XML parts.
 
-## Ask, don't decide (fallback for genuinely hard cases)
+## How to standardize: describe by pattern, not by enumeration
 
-Most strategy choices have a default — Target state. Apply the default; don't ask just because a choice technically exists. Ask only when even the right semantic mapping is unclear:
+The single most leveraged decision in `standardize`: **describe the change by category, not by listing paragraphs**.
 
-- A typed chapter / section sentinel inside body prose — structural heading, or rhetorical citation? (e.g. `第N章` / `Chapter N` mentioned mid-paragraph vs. as a paragraph start.)
+`apply_styles` accepts four levels of paragraph targeting, in increasing specificity:
+
+1. **`pattern_rules`** — regex matches paragraph text from the start. Engine applies to all matches uniformly. Best for chrome conversion (`^[一二三...]+、` / `^（[一二三...]）` / `^\d+\.\d+\s` / `^Chapter \d+` / etc.) and content-shape rules (`^Figure \d+` → `Caption`).
+2. **`bulk_rules`** — match by visual fingerprint (font + size + spacing). Best when chrome shares a styleId / direct format but no consistent text pattern.
+3. **`assignments`** — per-paragraph index. Reserved for **outliers** — single paragraphs that don't fit any pattern, or false-positive corrections.
+4. **`exclude`** — paragraph indices to skip (after pattern + bulk match). Reserved for **false positives** the regex caught wrongly.
+
+Default workflow for any standardize pass:
+
+1. **Survey** via `overview`. Read the visual fingerprint summary, style definitions, numbering schemes, and skeleton. Identify what kinds of chrome and structural prefixes exist.
+2. **Design ONE config** with `styles[]` (every Heading level the doc and content need), `numbering` as an array (multi-level heading scheme + single-level list scheme), `pattern_rules` (one rule per chrome shape, with `stripMatch: true`), and `bulk_rules` for fingerprint-keyed roles.
+3. **Dry-run**, read the change report, refine. The report names the affected paragraphs per rule — you'll see false positives and gaps.
+4. **Apply.** If filling content follows, hand off to `apply_edits`.
+
+Per-paragraph enumeration via `assignments` is the **last resort**, not the default. When agents enumerate by index, every paragraph becomes an opportunity to silently skip; pattern-based rules don't have that failure mode.
+
+See [references/standardize.md](references/standardize.md) for worked recipes and the full path catalogue.
+
+## How to edit: insert content with semantic bindings
+
+`apply_edits` operates at specific locators (paragraph index, range, cell, heading, whole-body). When inserting content:
+
+- **Express structure semantically.** List items use `numbering: { numId, level }`; sub-headings use `styleId: "Heading3"` / etc. Don't type list markers or heading numbers as `text`.
+- **Match-Destination-Formatting** picks up the anchor paragraph's pPr by default. Inspect the anchor's rPr first; if it carries unwanted bold (typically inherited from a label paragraph mark), override with `runFormat: { bold: false }` per Block.
+- The styleId / numId you reference must exist. If they don't, that's a `standardize` task before this `edit` runs.
+
+See [references/edit.md](references/edit.md) for locators, ops, blocks, and track-changes mode.
+
+## Ask, don't decide (genuinely hard cases only)
+
+Most strategy choices have a default — Target state pins them. Apply the default; don't ask just because a choice technically exists. Ask only when even the right semantic mapping is unclear:
+
+- A typed chapter / section sentinel inside body prose — structural heading, or rhetorical citation? (`第N章` / `Chapter N` mentioned mid-paragraph vs. as a paragraph start.)
 - A bold paragraph that could be a sub-heading or in-paragraph emphasis.
 - Source content lacks coverage for some template slots — leave empty, generate, or surface to user?
 - Content has tables / footnotes / math / cross-references with no clean Phase 1 mapping.
 
-For these, send one message naming the choice + your default, and yield. The next turn is the user's. (Subagents producing one final output: the output IS the question — return without executing.)
+For these, send one focused message naming the choice + your default, and yield. (Subagents producing one final output: the output IS the question — return without executing.)
 
-For everything Target state covers, the default is the answer. Don't surface the rationale ("I'll convert manual prefixes to auto-numbering") as a question; just do it.
+For everything else Target state covers, the default is the answer. Don't surface "I'll convert manual prefixes to auto-numbering" as a strategy question; just do it.
 
 ## Commands
 
-Pick the command that matches **what the user wants the document to become after the operation** — not what words they used. Same surface phrasing can land in different commands depending on intent; the examples illustrate, they're not triggers.
-
 | Command | Use when… | Reference |
 |---|---|---|
-| `standardize` | The user wants style / numbering / structural changes applied across the doc, by **role** (heading, body, caption …). Covers full-doc reshape, narrow style-system edits, and the manual-XML escape hatch. *Illustrative phrasings: "帮我排一下版", "套学校格式", "加个 X 样式 / 其他不动", "Heading2 字号改小一号".* | [references/standardize.md](references/standardize.md) |
-| `edit` | The user wants surgical changes at **specific locations** — replace/insert/delete a paragraph, change a table cell, embed an image, restyle one paragraph or range. Optional Word tracked-changes mode. *Illustrative phrasings: "把第 3 段改成 ...", "在第 X 章后面插一段", "这个表格第 2 行换成 ...", "给第 5 段加粗", "在结论后插张图".* | [references/edit.md](references/edit.md) |
-| `audit` | The user wants a read-only conformance check against a typography spec; no file output. *Illustrative phrasings: "看看这份合不合学校规范", "对照这个标准检查一下".* | [references/audit.md](references/audit.md) |
+| `standardize` | Style / numbering / structural changes applied across the doc, by **role** or **pattern**. *Illustrative phrasings: "帮我排一下版", "套学校格式", "Heading2 字号改小一号", "加个图注样式".* | [references/standardize.md](references/standardize.md) |
+| `edit` | Surgical changes at **specific locations** — replace/insert/delete a paragraph, change a table cell, embed an image. *Illustrative phrasings: "把第 3 段改成 ...", "在 X 章后面插一段", "改这个单元格".* | [references/edit.md](references/edit.md) |
+| `audit` | Read-only conformance check; no file output. *Illustrative phrasings: "看看这份合不合规范", "对照标准检查一下".* | [references/audit.md](references/audit.md) |
 
-When intent is genuinely ambiguous (mixed scope, broad request that could be standardize or edit), prefer asking one focused question over guessing.
-
-The split between `standardize` and `edit`: standardize works on **roles** (every H2 in the doc, every body paragraph, every figure caption); edit works on **locations** (paragraph #17, the cell at row 3 col 2 of table 1). If the user names specific paragraph indices or table cells, that's edit. If they describe a class of paragraphs, that's standardize.
-
-### Composing scopes
-
-Commands are **scopes of mutation, not exclusive paths**. The composition is decided by the planning step (Core Principle), not by pattern-matching the user's words. Common shapes:
-
-- **Content fits the template** (existing styles cover the content's hierarchy and lists): `edit` only.
-- **Content needs structure the template lacks** (deeper headings, list-bound styles, captions, code style): `standardize` installs the gap → `edit` fills. Don't improvise hierarchy by typing markers in `text` — bind to a real numbering scheme or a real Heading styleId.
-- **Manual numbering already in source content** that should become real auto-numbering: `standardize` with `pattern_rules` + `numbering.levels[].stripPrefixPatterns` strips the manual prefix during restyle.
-- **Messy template** (broken or bloated styles, hidden chrome, style-name collisions): `standardize` first to clean up, regardless of whether content fill follows.
-- **Audit then fix**: `audit` produces a violation list; `standardize` applies fixes. Don't auto-fix without permission.
-- **Spot fix on a clean doc**: `edit` only.
-
-Markdown content as input has no adapter yet — agent translates MD → Block JSON manually. Tables, footnotes, math, and cross-references in MD have no clean docx mapping in Phase 1; surface the limitation to the user rather than silently degrading.
+Real tasks often span both writing commands. Typical compositions: `standardize` first when the template's style system needs work, then `edit` to fill content; `audit` first to identify violations, then `standardize` to apply fixes.
 
 ## Tool Reference
 
@@ -130,34 +118,32 @@ All tools invoked via `node <script> <args>`, output to stdout.
 
 | Tool | Invocation | When to Use |
 |------|------------|-------------|
-| `overview` | `node scripts/overview.js <file>` | First call on Full Standardization or Audit. Returns metadata, page setup (mm), theme, style definitions, numbering schemes (clustered by pattern), visual style statistics, and document skeleton. |
+| `overview` | `node scripts/overview.js <file>` | First call on any task. Returns metadata, page setup (mm), theme, style definitions, numbering schemes (clustered by pattern), visual style statistics, and document skeleton. |
 | `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | Full text and computed styles for a paragraph range. |
-| `inspect_runs` | `node scripts/inspect_runs.js <file> <para>` | Per-run rPr dump when a paragraph has run-level mixed formatting (bold lead phrase, colored numbering prefix, inline emphasis). Tells you which properties are uniform vs. mixed across runs — critical for predicting what `apply_styles` will preserve vs. strip. |
-| `inspect_neighbors` | `node scripts/inspect_neighbors.js <file> <para> [--radius N]` | What surrounds a paragraph: nearby images, tables, equations, page breaks, sibling paragraphs. Default radius 4. **First choice for figure-caption / table-caption / first-after-heading classification.** |
-| `inspect_style` | `node scripts/inspect_style.js <file> <fingerprint>` | When you see a fingerprint in the overview and need to understand what role it plays across the document. |
-| `inspect_style_def` | `node scripts/inspect_style_def.js <file> <styleId>` | Pre-defined styles in `styles.xml` — what they currently are and what `basedOn` chain produces them. Use before reusing or overriding an existing styleId. |
-| `inspect_section` | `node scripts/inspect_section.js <file> <index>` | Page setup differences between sections (headers, footers, page numbering). |
-| `inspect_table` | `node scripts/inspect_table.js <file>` | Lists top-level tables with cell text snippets at `[row,col]` coordinates. Use before composing a `cell` locator on the `edit` path. Includes data/form tables (which paragraph indices skip). |
-| `inspect_blockers` | `node scripts/inspect_blockers.js <file>` | Lists paragraphs that `apply_edits` will refuse to touch — existing tracked changes, complex field regions (TOC / STYLEREF / cross-references), SDT content controls. Use before composing edit ops to plan around them. |
-| `find_paragraphs` | `node scripts/find_paragraphs.js <file> --regex <pat> [--flags <flags>] [--limit N] [--fingerprint X]` | Cross-document text search. Use to discover content-defined roles (figure/table captions, references, keywords) and to validate `pattern_rules` regex coverage before applying. **First choice on the Targeted Edit path** — it locates exactly the paragraphs you want to change, without requiring a full overview. |
-| `apply_styles --dry-run` | `node scripts/apply_styles.js --dry-run <config.json>` | Iterate on a config without writing the output file. Returns the full change report including sample affected paragraphs and the Style Resolution annotation block. **Use between every config edit** — it's seconds per cycle. |
-| `apply_styles` | `node scripts/apply_styles.js <config.json>` | Combined orchestrator. Accepts styles[] + numbering + template in one config and runs them in the correct order. Use on the Full Standardization path. |
-| `restyle` | `node scripts/restyle.js [--dry-run] <config.json>` | Narrow entry: paragraph restyle only — rejects `template` and `numbering`. Same config schema as `apply_styles` minus those blocks. **First choice on the Targeted Edit path** when the change is purely a style assignment. |
-| `migrate_numbering` | `node scripts/migrate_numbering.js [--dry-run] <config.json>` | Narrow entry: install / replace a numbering scheme. `styles[]` is optional — numbering levels can target heading styles already defined in the doc's `styles.xml` without redeclaration. Use to add or change heading numbering on a doc that's otherwise correctly styled. |
-| `import_template` | `node scripts/import_template.js [--dry-run] <config.json>` | Narrow entry: import named styles from a template doc. `styles[]` is optional. Use when you want to pull in a template's style system without simultaneously restyling — typical first step before chaining `restyle`. |
-| `apply_edits` | `node scripts/apply_edits.js <config.json>` | `edit` command entry. Applies an ordered list of `replace` / `insert-before` / `insert-after` / `delete` / `format` ops at specific locators (paragraph index, range, cell, heading, whole-body). Optional `trackChanges: true` emits Word revision markup. See [references/edit.md](references/edit.md). |
+| `inspect_runs` | `node scripts/inspect_runs.js <file> <para>` | Per-run rPr dump for paragraphs with run-level mixed formatting. Shows which properties are uniform vs. mixed across runs. |
+| `inspect_neighbors` | `node scripts/inspect_neighbors.js <file> <para> [--radius N]` | What surrounds a paragraph: nearby images, tables, equations, page breaks. **First choice for figure-caption / table-caption / first-after-heading classification.** |
+| `inspect_style` | `node scripts/inspect_style.js <file> <fingerprint>` | What role a fingerprint plays across the document. |
+| `inspect_style_def` | `node scripts/inspect_style_def.js <file> <styleId>` | Pre-defined styles in `styles.xml` and their `basedOn` chain. Use before reusing or overriding an existing styleId. |
+| `inspect_section` | `node scripts/inspect_section.js <file> <index>` | Page setup differences between sections. |
+| `inspect_table` | `node scripts/inspect_table.js <file>` | Top-level tables with cell text snippets at `[row,col]`. Use before composing a `cell` locator on the `edit` path. |
+| `inspect_blockers` | `node scripts/inspect_blockers.js <file>` | Paragraphs `apply_edits` will refuse — existing tracked changes, complex fields, SDT controls. |
+| `find_paragraphs` | `node scripts/find_paragraphs.js <file> --regex <pat> [--flags <flags>] [--limit N] [--fingerprint X]` | Cross-document text search. Use to **validate `pattern_rules` regex coverage before applying** — see exactly which paragraphs your regex catches. Also useful for content-defined role discovery. |
+| `apply_styles --dry-run` | `node scripts/apply_styles.js --dry-run <config.json>` | Iterate on a config without writing the output file. Returns the full change report. **Use between every config edit.** |
+| `apply_styles` | `node scripts/apply_styles.js <config.json>` | Combined orchestrator. Accepts styles[] + numbering (single or array of schemes) + template + pattern_rules + bulk_rules + assignments in one config. |
+| `restyle` | `node scripts/restyle.js [--dry-run] <config.json>` | Narrow entry: paragraph restyle only — rejects `template` and `numbering`. |
+| `migrate_numbering` | `node scripts/migrate_numbering.js [--dry-run] <config.json>` | Narrow entry: install / replace numbering. `styles[]` is optional. |
+| `import_template` | `node scripts/import_template.js [--dry-run] <config.json>` | Narrow entry: import named styles from a template doc. |
+| `apply_edits` | `node scripts/apply_edits.js <config.json>` | `edit` command entry. See [references/edit.md](references/edit.md). |
 
 ## Cross-command invariants
 
-These hold regardless of which command you're running:
-
 - **The original file is never modified.** Every applying CLI writes a fresh copy and validates it before keeping it; on validation failure the output is discarded and the original is untouched. Don't silently retry on validation errors — surface them.
 - **Section properties (page size, margins, headers, footers, columns) are never modified.**
-- **Paragraph indexing is 1-based**, matching `#NNN` labels in the skeleton. Layout-table paragraphs are indexed; data/form tables are not (reachable on the `edit` path via cell locator).
-- **Edit blockers**: the `edit` command refuses to touch paragraphs inside existing tracked changes / complex field regions (TOC/STYLEREF/REF) / SDT content controls. Run `inspect_blockers` to see which paragraphs are off-limits before composing edits.
-- **Paths resolve against current working directory.** `source` and `output` are passed through `path.resolve()` against cwd; absolute paths are passed through unchanged. If you may have changed directories during the session, use absolute paths to avoid surprises.
-- **Restyle behavior:** when a paragraph is restyled, run-level direct formatting that is *uniform across all runs* gets stripped (so the new style's defaults take effect). Direct formatting that *differs between runs* is preserved as intentional inline emphasis — bold lead phrase + non-bold body, colored numbering prefix + black title, etc. survive automatically.
+- **Paragraph indexing is 1-based**, matching `#NNN` labels in the skeleton. Layout-table paragraphs are indexed; data/form-table paragraphs are not (reachable on the `edit` path via cell locator).
+- **Paths resolve against current working directory.** Use absolute paths if you may have changed directories during the session.
+- **Restyle behavior:** run-level direct formatting that is *uniform across all runs* gets stripped on restyle; formatting that *differs between runs* is preserved as intentional inline emphasis.
 - **Field codes** (`STYLEREF`, `TOC`, `REF`, `DATE`, …) are preserved as-is; this skill does not edit content inside fields.
-- **TOC content is not regenerated.** Heading `outlineLevel` is set correctly, but the user must right-click → "Update Field" in Word after opening to refresh the TOC body.
+- **TOC content is not regenerated.** Heading `outlineLevel` is set; the user must right-click → "Update Field" in Word after opening.
+- **Edit blockers**: the `edit` command refuses to touch paragraphs inside existing tracked changes / complex field regions / SDT controls. Run `inspect_blockers` first.
 
-Iterating with `--dry-run` between edits is the supported workflow, not a fallback. Configs can be sparse: declare only what you're touching.
+Iterate with `--dry-run` between config edits — it's seconds per cycle and shows you the change report's effect.
