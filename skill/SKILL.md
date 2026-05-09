@@ -26,6 +26,25 @@ Compose by intent. A real task often needs both: standardize to install or fix t
 2. **`standardize`** — install everything the template lacks (Heading levels the content needs, list-bound styles, numbering schemes, locale defaults). Convert any typed structural prefixes the template's chrome carries to auto-numbering via `pattern_rules` + `stripPrefixPatterns`.
 3. **`edit`** — insert the content with semantic `styleId` references and `numbering` bindings.
 
+**Before composing the standardize config**, output a brief commit-plan to yourself listing each item the pass needs to do. Skipping this step is where rounds-of-LLM-runs diverge — the survey pulls up the data, the plan forces you to commit, then the config writes the plan. If any item isn't in your plan, it won't end up in the config; if it isn't in the config, the output is wrong.
+
+```
+Plan checklist (self-output before writing the config):
+- Heading styles to install: [Heading1, Heading2, ..., HeadingN] — every level
+  the doc + content combined need, none skipped
+- List-bound styles to install: [ListNumber? ListBullet? ...] — any list
+  occurrence in the source content qualifies, regardless of length
+- Numbering schemes: multi-level (Heading1..N) + separate single-level for
+  each list-bound style; install all in one numbering: [...] array
+- Chrome patterns to convert: one regex per chrome shape the doc has, with
+  stripMatch: true; explicit exclusions for cover-page false positives
+- Outliers (assignments / exclude): only paragraphs the patterns can't reach
+  cleanly
+- Body style updates: pStyle adjustments for inheritance defects (bold-pMark
+  on label rows, etc.)
+- Locale defaults: 2char first-line indent for CN body; CJK-Latin space strip
+```
+
 Edit alone is correct only when the template already has every style + numbering scheme the content needs. That's rare for real-world templates — verify via `inspect_style_def` before skipping standardize.
 
 **Typed prefixes in chrome paragraphs are NOT the same as semantic Heading styles.** A template with hand-typed `一、` / `（一）` / `第三章` text reads as "having hierarchy" visually, but if `inspect_style_def` shows no `Heading1` / `Heading2` style, the doc has zero installed Heading styles. The chrome's appearance of hierarchy is text, not structure. Don't conclude "the template's H1/H2 are its chrome labels, so the mapping is already satisfied" — that conflates visual hierarchy (typed chrome) with structural hierarchy (Heading styleIds + outline level + numbering bindings). Install the Heading styles, then convert the typed chrome to bind to them.
