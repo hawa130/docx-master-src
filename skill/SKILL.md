@@ -15,7 +15,8 @@ A well-formed Word document expresses structure through **styles + numbering + s
 - One unified multi-level numbering scheme bound to all heading styles; one separate single-level scheme per list-bound style.
 - Hierarchy and list markers come from auto-numbering — **never typed text** in either direction. Existing chrome stripped via `pattern_rules`; inserted content omits the prefix in `text`. Display follows the level's `lvlText` pattern (`%1` = own counter; `%1.%2` references multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
 - Heading levels nest without skipping.
-- Locale typography. CN **prose** body and list items: 2-char first-line indent (marker aligns with body's first character — flush-left looks foreign in CN academic context); body weight (bold only when source emphasizes); CJK↔Latin literal spaces stripped (Word's autoSpace handles the gap). **Inline value content** — short phrases filling labeled slots (`选题来源：xxx`, `学号：xxx`, `开题日期：xxx`) — inherit the slot's existing format; don't apply BodyText / first-line indent to them. Match each slot to its expected content shape: prose slots get prose styling, value slots get short value content. Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
+- **Match content shape to slot shape.** Prose slots (multi-line body, sections like abstract / introduction) take prose typography. Inline-value slots (single short phrase filling a labeled cell or single-line slot) inherit the slot's existing format — don't override with BodyText / first-line indent. List items default to body weight; bold only when the source explicitly emphasizes.
+- **Locale-specific typography.** CJK docs: prose body and list items typically take a 2-char first-line indent (so the list marker aligns with body's first character — flush-left looks foreign in CN academic conventions); literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Tools you are the analyst
 
@@ -48,8 +49,8 @@ Sparse by design — only declared blocks apply. Untouched styles / numbering / 
 `overview` first. From the output, note:
 
 - Existing Heading levels, numbering schemes, fingerprints, document skeleton
-- **Typography requirements baked into the document** — instruction paragraphs like `"正文字体宋体，字号小四，行间距固定值20磅"`. These override any defaults you would invent. Skim the front matter / 填写要求 / 操作规范 sections.
-- Typed structural prefixes in chrome (`一、` / `（一）` / `第N章` / `1.1`)
+- **Typography requirements baked into the document** — paragraphs that prescribe formatting (fonts, sizes, line spacing, alignment). Often live in front matter, instruction blocks, footnotes, or "filling guidelines" sections. These override any defaults you would invent. Skim before designing styles.
+- Typed structural prefixes in chrome — chapter / section markers like `Chapter N.`, `第N章`, `一、`, `1.1`, `（一）`, etc. List the patterns you see; one regex per shape will go into `pattern_rules`.
 - **Form-fill paragraphs** — paragraphs whose visible text looks like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run carrying `<w:u/>`. Run `inspect_runs` on these before deciding the edit shape; whole-paragraph `replace` destroys the placeholder structure.
 - (Filling) What content the source carries
 
@@ -57,7 +58,7 @@ Sparse by design — only declared blocks apply. Untouched styles / numbering / 
 
 Sketch the content's structural outline first; `styles[]` follows that outline, not the other way around. Reactive style additions accrete debt later edits have to re-untangle.
 
-- `styles[]` — every Heading level the combined doc + content needs; `BodyText`; **`ListNumber` + single-level numbering scheme for any body list content**. Do NOT type `(1)(2)(3)` / `①②③` in inserted text — Word renders nothing, the parens become literal characters. **Sizes follow the document's existing chrome** (visual style summary in `overview`). If all pre-existing heading-shaped paragraphs share a size — common in CN academic templates where everything is 小四 12pt and hierarchy is signalled via `Bold` + spacing + indent + auto-numbering — preserve that uniform size and differentiate levels along weight / spacing / indent axes instead. Invent new sizes only when the document has no chrome convention to match.
+- `styles[]` — every Heading level the combined doc + content needs; `BodyText`; **`ListNumber` + single-level numbering scheme for any body list content**. Do NOT type list markers (`(1)(2)(3)`, `①②③`, `1. 2.`, `- `) in inserted text — Word renders the literal characters, not a list. **Sizes follow the document's existing chrome** (visual style summary in `overview`): if heading-shaped paragraphs share a uniform size with hierarchy signalled by weight / spacing / indent, preserve that — differentiate levels on the same axes the chrome uses. Invent sizes only when the document has no chrome convention.
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
 - `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use cell-content insert or run-level surgery, not whole-paragraph `replace`.
