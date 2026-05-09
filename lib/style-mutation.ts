@@ -359,10 +359,17 @@ function parseIndent(v: string | number): { kind: "twip" | "char"; value: number
 }
 
 /**
- * Move the styles named in `orderedIds` to the top of styles.xml's <w:style>
- * entry list, preserving the given order. Styles not in the list keep their
+ * Surface the styles named in `orderedIds` near the top of styles.xml's
+ * <w:style> entry list, preserving the given order. Default-marked styles
+ * (`w:default="1"`) — Normal, Default Paragraph Font, Normal Table, No List —
+ * keep their original positions: Word's loader treats them as cascade roots,
+ * and placing a touched style with `basedOn="<default-style-id>"` *before*
+ * its default ancestor makes Word flag the file as needing repair on open.
+ *
+ * The result: `[default styles, ..., touched in agent order, ..., other
+ * untouched styles]`. Other (non-default) untouched styles keep their
  * relative positions. Non-style children of the root (<w:docDefaults>,
- * <w:latentStyles>) stay above all <w:style> entries — they're not touched.
+ * <w:latentStyles>) stay above all <w:style> entries — they're untouched.
  *
  * Each id appears at most once in `orderedIds`; duplicates are deduped (a
  * style can be both template-imported and re-declared in config.styles[]).
@@ -380,11 +387,10 @@ export function reorderAgentTouchedStylesFirst(stylesDoc: Document, orderedIds: 
   })
   const targetSet = new Set(dedupedIds)
 
-  // Find the touched style elements and the first non-touched <w:style> (our
-  // insertion anchor). Iterate once.
   const touchedById = new Map<string, Element>()
   let firstUntouched: Element | null = null
   for (const el of getChildrenNS(root, w, "style")) {
+    if (wAttr(el, "default") === "1") continue
     const id = wAttr(el, "styleId")
     if (id && targetSet.has(id)) {
       touchedById.set(id, el)
@@ -393,14 +399,10 @@ export function reorderAgentTouchedStylesFirst(stylesDoc: Document, orderedIds: 
     }
   }
 
-  // Detach touched elements (they'll be re-inserted in `dedupedIds` order).
   for (const el of touchedById.values()) {
     if (el.parentNode === root) root.removeChild(el)
   }
 
-  // Re-insert in the requested order, just before the first untouched style.
-  // If the doc has no other styles, append at the end of root (which sits
-  // after docDefaults / latentStyles per OOXML schema).
   for (const id of dedupedIds) {
     const el = touchedById.get(id)
     if (!el) continue
