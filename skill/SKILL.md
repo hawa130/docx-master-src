@@ -15,7 +15,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
 - One unified multi-level numbering scheme bound to all heading styles; one separate single-level scheme per list-bound style.
 - Hierarchy and list markers come from auto-numbering — **never typed text** in either direction. Existing chrome stripped via `pattern_rules`; inserted content omits the prefix in `text`. Display follows the level's `lvlText` pattern (`%1` = own counter; `%1.%2` references multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
 - Heading levels nest without skipping.
-- Locale typography (CN body: 2-char first-line indent; CJK↔Latin literal spaces stripped — Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
+- Locale typography. CN body **and list items**: 2-char first-line indent so the list marker aligns with body's first character — flush-left lists look foreign in CN academic context. List items default to **body weight (no bold)**; emphasis only when the source explicitly marks a run as emphasized. CJK↔Latin literal spaces stripped — Word's autoSpace handles the gap. Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Tools you are the analyst
 
