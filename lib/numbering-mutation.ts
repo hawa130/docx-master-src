@@ -92,27 +92,6 @@ export function injectNumbering(
     }
     abs.appendChild(lvlEl)
   }
-  // Word requires multiLevelType=multilevel to declare 9 levels (ilvl 0-8);
-  // missing levels make Word prompt to repair on open even when the schema
-  // validates. Pad with minimal CT_Lvl shape (numFmt + lvlText + lvlJc).
-  if (config.levels.length > 1) {
-    const declared = new Set(config.levels.map((l) => l.level))
-    for (let i = 0; i < 9; i++) {
-      if (declared.has(i)) continue
-      const lvlEl = numberingDoc.createElementNS(w, "w:lvl")
-      lvlEl.setAttributeNS(w, "w:ilvl", String(i))
-      const numFmtEl = numberingDoc.createElementNS(w, "w:numFmt")
-      numFmtEl.setAttributeNS(w, "w:val", "decimal")
-      lvlEl.appendChild(numFmtEl)
-      const lvlTextEl = numberingDoc.createElementNS(w, "w:lvlText")
-      lvlTextEl.setAttributeNS(w, "w:val", "")
-      lvlEl.appendChild(lvlTextEl)
-      const lvlJc = numberingDoc.createElementNS(w, "w:lvlJc")
-      lvlJc.setAttributeNS(w, "w:val", "left")
-      lvlEl.appendChild(lvlJc)
-      abs.appendChild(lvlEl)
-    }
-  }
   // abstractNum must come before num children — insert before any existing num
   const firstNum = getChildrenNS(root, w, "num")[0]
   if (firstNum) root.insertBefore(abs, firstNum)
