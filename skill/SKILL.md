@@ -7,9 +7,17 @@ description: "Standardize, edit, or audit a Word (.docx) document via direct OOX
 
 Mutates Word (.docx) OOXML directly: produce well-formed documents from messy templates, install styles + numbering, convert hand-typed prefixes to auto-numbering, insert content, audit conformance. Output is a new docx; the original is never touched.
 
-## Target state
+## Authority
 
-A well-formed Word document expresses structure through **styles + numbering + sections**, not typed text mimicking structure (Microsoft / WebAIM / ECMA-376 consensus). Every write moves the document toward this destination:
+When deciding what to write, follow this order:
+
+1. **User prompt** — explicit requirements override everything below.
+2. **Document's own conventions** — existing chrome (heading sizes, body typography, list shapes), prescribed typography from instruction paragraphs, slot layout. The doc tells you what it wants — match it.
+3. **Target state defaults** (below) — well-formed Word practice. Fall back here only when both above are silent.
+
+## Target state (default destination)
+
+A well-formed Word document expresses structure through **styles + numbering + sections**, not typed text mimicking structure (Microsoft / WebAIM / ECMA-376 consensus). When user prompt and document conventions don't specify, move toward this default:
 
 - Every paragraph carries a semantic styleId (Heading1..N / BodyText / ListNumber / Caption / etc.); direct paragraph format only as one-off exceptions.
 - One unified multi-level numbering scheme bound to all heading styles; one separate single-level scheme per list-bound style.
@@ -40,7 +48,7 @@ install styles + numbering + theme + template
   → validate, write
 ```
 
-Sparse by design — only declared blocks apply. Untouched styles / numbering / paragraphs / theme stay as they are. **Declare only what's wrong, missing, or the user explicitly asked to change** — existing chrome that already meets the target state (correct styles / numbering / typography) is not your business to normalize. Match existing conventions; fill gaps; route unrouted body fingerprints. Don't rewrite what already works.
+Sparse by design — only declared blocks apply. Untouched styles / numbering / paragraphs / theme stay as they are. **Declare only what's wrong, missing, or the user explicitly asked to change** — existing chrome already aligned with the user's request and the document's own conventions is not your business to normalize. Match existing conventions; fill gaps; route unrouted body fingerprints. Don't rewrite what already works.
 
 ## Workflow
 
@@ -58,7 +66,7 @@ Sparse by design — only declared blocks apply. Untouched styles / numbering / 
 
 Sketch the content's structural outline first; `styles[]` follows that outline, not the other way around. Reactive style additions accrete debt later edits have to re-untangle.
 
-- `styles[]` — every Heading level the combined doc + content needs; `BodyText`; **`ListNumber` + single-level numbering scheme for any body list content**. Do NOT type list markers (`(1)(2)(3)`, `①②③`, `1. 2.`, `- `) in inserted text — Word renders the literal characters, not a list. **Sizes follow the document's existing chrome** (visual style summary in `overview`): if heading-shaped paragraphs share a uniform size with hierarchy signalled by weight / spacing / indent, preserve that — differentiate levels on the same axes the chrome uses. Invent sizes only when the document has no chrome convention.
+- `styles[]` — every Heading level the combined doc + content needs; `BodyText`; **`ListNumber` + single-level numbering scheme for any body list content**. The scheme's `lvlText` defines the marker shape — agent picks the form to match document convention or user request (decimal, parenthesized, CJK 序号, bullet, ...). Inserted text contains only the item content; markers always come from the scheme, never typed into the run. **Sizes follow the document's existing chrome** (visual style summary in `overview`): if heading-shaped paragraphs share a uniform size with hierarchy signalled by weight / spacing / indent, preserve that — differentiate levels on the same axes the chrome uses. Invent sizes only when the document has no chrome convention.
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
 - `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use cell-content insert or run-level surgery, not whole-paragraph `replace`.
