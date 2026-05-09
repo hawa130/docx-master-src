@@ -345,6 +345,11 @@ function applyDelete(
   stale: Set<Element>,
 ): number {
   if (target.paragraphs.length === 0) return 0
+  // Track parents whose children we removed; after the pass we re-check any
+  // <w:tc> cells that became empty and insert a placeholder paragraph. ECMA-376
+  // 17.4.66 requires every table cell to contain at least one <w:p> — Word's
+  // loader prompts to repair on open when a cell is empty.
+  const touchedParents = new Set<Element>()
   for (const p of target.paragraphs) {
     if (trackContext.enabled) {
       // Strikethrough-mode: keep the paragraph in the tree, mark its content
@@ -353,12 +358,29 @@ function applyDelete(
       wrapParagraphContentInDel(p, documentDoc, trackContext)
       markParagraphMarkDeleted(p, documentDoc, trackContext)
     } else {
-      const parent = p.parentNode
-      if (parent) parent.removeChild(p)
+      const parent = p.parentNode as Element | null
+      if (parent) {
+        touchedParents.add(parent)
+        parent.removeChild(p)
+      }
       stale.add(p)
     }
   }
+  for (const parent of touchedParents) {
+    if (parent.namespaceURI === w && parent.localName === "tc") {
+      ensureCellHasParagraph(parent, documentDoc)
+    }
+  }
   return target.paragraphs.length
+}
+
+/** A `<w:tc>` must contain at least one `<w:p>` per ECMA-376 17.4.66. After
+ * deletes, if the cell has no paragraph child left, append an empty one so
+ * Word doesn't flag the file as needing repair. The placeholder lands at the
+ * end of the cell, after any existing `<w:tcPr>`. */
+function ensureCellHasParagraph(tc: Element, ownerDoc: Document): void {
+  if (firstChildNS(tc, w, "p")) return
+  tc.appendChild(ownerDoc.createElementNS(w, "w:p"))
 }
 
 /* ------------- insert ------------- */
