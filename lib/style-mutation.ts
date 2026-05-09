@@ -1,7 +1,7 @@
 import { NS, type ParsedParagraph } from "@lib/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import type { StyleConfigEntry } from "./config-types.ts"
-import { PPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
+import { PPR_CHILD_ORDER, RPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
 
 /**
  * Insert a freshly-created `<w:pPr>` into a `<w:style>` at the schema-correct
@@ -330,7 +330,7 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
       rPr = stylesDoc.createElementNS(w, "w:rPr")
       target.appendChild(rPr)
     }
-    for (const c of rPrAdditions) rPr.appendChild(c)
+    for (const c of rPrAdditions) insertChildInOrder(rPr, c, RPR_CHILD_ORDER)
   }
 
   return result

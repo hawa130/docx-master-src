@@ -2,6 +2,7 @@ import { NS } from "@lib/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import type { NumberingConfig } from "./config-types.ts"
 import { insertPPrIntoStyle } from "./style-mutation.ts"
+import { RPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
 
 /* ------------- numbering.xml manipulation ------------- */
 
@@ -133,6 +134,7 @@ function buildLvlRPr(
 ): Element | null {
   const w = NS.w
   const rPr = doc.createElementNS(w, "w:rPr")
+  const add = (el: Element) => insertChildInOrder(rPr, el, RPR_CHILD_ORDER)
   if (spec.fontLatin || spec.fontCJK) {
     const rFonts = doc.createElementNS(w, "w:rFonts")
     if (spec.fontLatin) {
@@ -140,27 +142,27 @@ function buildLvlRPr(
       rFonts.setAttributeNS(w, "w:hAnsi", spec.fontLatin)
     }
     if (spec.fontCJK) rFonts.setAttributeNS(w, "w:eastAsia", spec.fontCJK)
-    rPr.appendChild(rFonts)
+    add(rFonts)
   }
   if (spec.size !== undefined) {
     const sz = doc.createElementNS(w, "w:sz")
     sz.setAttributeNS(w, "w:val", String(Math.round(spec.size * 2)))
-    rPr.appendChild(sz)
+    add(sz)
   }
   if (spec.bold !== undefined) {
     const b = doc.createElementNS(w, "w:b")
     if (!spec.bold) b.setAttributeNS(w, "w:val", "0")
-    rPr.appendChild(b)
+    add(b)
   }
   if (spec.italic !== undefined) {
     const i = doc.createElementNS(w, "w:i")
     if (!spec.italic) i.setAttributeNS(w, "w:val", "0")
-    rPr.appendChild(i)
+    add(i)
   }
   if (spec.color) {
     const color = doc.createElementNS(w, "w:color")
     color.setAttributeNS(w, "w:val", spec.color)
-    rPr.appendChild(color)
+    add(color)
   }
   return getChildren(rPr).length > 0 ? rPr : null
 }

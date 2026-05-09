@@ -18,6 +18,52 @@
 import { NS } from "@lib/types.ts"
 import { getChildren } from "@lib/xml-utils.ts"
 
+/** EG_RPrBase child order, per ECMA-376 17.7.9.1 (children of CT_RPr inside
+ * style / run / paragraph mark). Truncated to the children this engine
+ * actually emits. Notably: `b` / `bCs` come BEFORE `sz` / `szCs` — Word's
+ * loader rejects mis-ordered run properties with "file needs repair" even
+ * though XSD validators (xmllint) often pass them via relaxed xs:all. */
+export const RPR_CHILD_ORDER = [
+  "rStyle",
+  "rFonts",
+  "b",
+  "bCs",
+  "i",
+  "iCs",
+  "caps",
+  "smallCaps",
+  "strike",
+  "dstrike",
+  "outline",
+  "shadow",
+  "emboss",
+  "imprint",
+  "noProof",
+  "snapToGrid",
+  "vanish",
+  "webHidden",
+  "color",
+  "spacing",
+  "w",
+  "kern",
+  "position",
+  "sz",
+  "szCs",
+  "highlight",
+  "u",
+  "effect",
+  "bdr",
+  "shd",
+  "fitText",
+  "vertAlign",
+  "rtl",
+  "cs",
+  "em",
+  "lang",
+  "eastAsianLayout",
+  "specVanish",
+] as const
+
 /** CT_PPr child order, per ECMA-376 17.3.1.26. Truncated to children we
  * encounter when building or mutating paragraph properties. */
 export const PPR_CHILD_ORDER = [

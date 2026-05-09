@@ -25,6 +25,7 @@ import {
   type RichText,
   type RunFormat,
 } from "./edit-types.ts"
+import { RPR_CHILD_ORDER } from "./xml-order.ts"
 
 const w = NS.w
 
@@ -84,6 +85,14 @@ export function buildRPrChildren(fmt: RunFormat, ownerDoc: Document): Element[] 
     c.setAttributeNS(w, "w:val", fmt.color)
     out.push(c)
   }
+  // CT_RPr children must appear in EG_RPrBase order (b/bCs before sz/szCs,
+  // etc.). Callers append in returned order, so sort here once instead of
+  // making each call site care.
+  const orderIdx = (el: Element) => {
+    const i = (RPR_CHILD_ORDER as ReadonlyArray<string>).indexOf(el.localName!)
+    return i < 0 ? RPR_CHILD_ORDER.length : i
+  }
+  out.sort((a, b) => orderIdx(a) - orderIdx(b))
   return out
 }
 
