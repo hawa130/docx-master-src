@@ -101,6 +101,37 @@ function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
 
 /* ------------- styles.xml manipulation ------------- */
 
+/**
+ * Resolve a style cross-reference (basedOn / link / next val) to an existing
+ * `w:styleId`. ECMA-376 says these refs must target a styleId; agents and
+ * defaults often write the conventional name ("Normal", "heading 1") instead.
+ * Falls back to case-insensitive `w:name` match when the literal val isn't a
+ * styleId. Returns null when neither matches (caller drops the ref rather
+ * than leaving it dangling).
+ *
+ * `selfId` is the styleId of the style currently being written; self-refs
+ * (`basedOn === id`) collapse the cascade and are silently dropped.
+ */
+function resolveStyleRef(stylesDoc: Document, val: string, selfId?: string): string | null {
+  const w = NS.w
+  const styles = getChildrenNS(stylesDoc.documentElement!, w, "style")
+  for (const s of styles) {
+    if (wAttr(s, "styleId") === val) {
+      return val === selfId ? null : val
+    }
+  }
+  const target = val.toLowerCase()
+  for (const s of styles) {
+    const id = wAttr(s, "styleId")
+    if (id === selfId) continue
+    const nameEl = firstChildNS(s, w, "name")
+    if (nameEl && (wAttr(nameEl, "val") || "").toLowerCase() === target) {
+      return id ?? null
+    }
+  }
+  return null
+}
+
 /** pPr / rPr children that this function manages (writes from def). Anything
  * else found in an existing style's pPr/rPr is preserved untouched. The pPr
  * list is critical: numPr (auto-numbering binding), keepNext, pBdr, shd,
@@ -146,17 +177,28 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
   // re-specifying its parent. Same in-place update pattern as name to keep
   // the element in its original DOM position (basedOn must come before pPr
   // per the OOXML schema).
+  //
+  // The val MUST be the target style's `w:styleId`, not its `w:name`. In
+  // Chinese-localized docs the Normal style typically has styleId="a" with
+  // name="Normal" — emitting `basedOn val="Normal"` then dangles to a
+  // non-existent id and Word prompts to repair. resolveStyleRef rewrites
+  // a name match to the matching styleId; if neither styleId nor name
+  // resolves, the basedOn is dropped rather than left dangling.
   if (def.basedOn) {
+    const resolved = resolveStyleRef(stylesDoc, def.basedOn, def.id)
     let bo = firstChildNS(target, w, "basedOn")
-    if (bo) {
-      bo.setAttributeNS(w, "w:val", def.basedOn)
-    } else {
-      bo = stylesDoc.createElementNS(w, "w:basedOn")
-      bo.setAttributeNS(w, "w:val", def.basedOn)
-      // OOXML: basedOn comes right after name. Insert there.
-      const afterName = nameEl.nextSibling
-      if (afterName) target.insertBefore(bo, afterName)
-      else target.appendChild(bo)
+    if (resolved) {
+      if (bo) {
+        bo.setAttributeNS(w, "w:val", resolved)
+      } else {
+        bo = stylesDoc.createElementNS(w, "w:basedOn")
+        bo.setAttributeNS(w, "w:val", resolved)
+        const afterName = nameEl.nextSibling
+        if (afterName) target.insertBefore(bo, afterName)
+        else target.appendChild(bo)
+      }
+    } else if (bo) {
+      target.removeChild(bo)
     }
   }
 
