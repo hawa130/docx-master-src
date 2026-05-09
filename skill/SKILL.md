@@ -26,7 +26,9 @@ Compose by intent. A real task often needs both: standardize to install or fix t
 2. **`standardize`** — install everything the template lacks (Heading levels the content needs, list-bound styles, numbering schemes, locale defaults). Convert any typed structural prefixes the template's chrome carries to auto-numbering via `pattern_rules` + `stripPrefixPatterns`.
 3. **`edit`** — insert the content with semantic `styleId` references and `numbering` bindings.
 
-Edit alone is correct only when the template already has every style + numbering scheme the content needs. That's rare for real-world templates — verify before skipping standardize.
+Edit alone is correct only when the template already has every style + numbering scheme the content needs. That's rare for real-world templates — verify via `inspect_style_def` before skipping standardize.
+
+**Typed prefixes in chrome paragraphs are NOT the same as semantic Heading styles.** A template with hand-typed `一、` / `（一）` / `第三章` text reads as "having hierarchy" visually, but if `inspect_style_def` shows no `Heading1` / `Heading2` style, the doc has zero installed Heading styles. The chrome's appearance of hierarchy is text, not structure. Don't conclude "the template's H1/H2 are its chrome labels, so the mapping is already satisfied" — that conflates visual hierarchy (typed chrome) with structural hierarchy (Heading styleIds + outline level + numbering bindings). Install the Heading styles, then convert the typed chrome to bind to them.
 
 ## Target state: structure-driven, not text-driven
 
