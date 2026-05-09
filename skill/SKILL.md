@@ -18,7 +18,15 @@ Two workflows compose every real task:
 - `standardize` — reshape the doc's style system + numbering + role assignments. Operates by **pattern**: you describe categories of paragraphs (matching this regex / matching this fingerprint / sitting in this style); the engine applies uniformly.
 - `edit` — surgical changes at **specific locations** (paragraph index, table cell, range). Used for content insertion and one-off corrections.
 
-Compose by intent. A real task often needs both: standardize to install or fix the style system, then edit to insert or adjust content. Each command's reference doc covers its own scope. There is no separate "fill" workflow — when a user asks to "fill this template with X content", that's `standardize` (if structure needs work) then `edit`.
+Compose by intent. A real task often needs both: standardize to install or fix the style system, then edit to insert or adjust content. Each command's reference doc covers its own scope.
+
+**Filling a template with content is the standardize-then-edit chain, not edit alone.** When the user supplies a template plus content (markdown, prose, structured input), the workflow is:
+
+1. Survey both: what hierarchy / list / caption shapes does the content carry, vs. which Heading / list-bound / caption styles + numbering schemes does the template already have?
+2. **`standardize`** — install everything the template lacks (Heading levels the content needs, list-bound styles, numbering schemes, locale defaults). Convert any typed structural prefixes the template's chrome carries to auto-numbering via `pattern_rules` + `stripPrefixPatterns`.
+3. **`edit`** — insert the content with semantic `styleId` references and `numbering` bindings.
+
+Edit alone is correct only when the template already has every style + numbering scheme the content needs. That's rare for real-world templates — verify before skipping standardize.
 
 ## Target state: structure-driven, not text-driven
 
@@ -45,6 +53,8 @@ This applies to pre-existing chrome the template designer typed by hand and to s
 | Body paragraph | existing body style (`BodyText` / `Normal`-equivalent) |
 
 The destination document type — form, report, thesis, contract, business memo — doesn't change this mapping. Specific surface markers (`#` / `1.1` / `一、` / `Chapter N` / Roman numerals) are variations on the same hierarchy.
+
+**Don't decide content's hierarchy is "too granular for this template" and fold sub-headings into bold lead-ins — that's the most common Class-3 failure**: agent overrides the mapping with its own typography opinion. The mapping is the spec. If the content has H3 / H4, the output has Heading3 / Heading4 paragraphs. If the template lacks those styles, install them via `standardize`. "Too granular" / "form's visual rhythm" / "doesn't match the template's level of detail" are not valid reasons to substitute.
 
 **Locale defaults** (apply when the doc is in the named locale; pin otherwise via user instruction):
 
