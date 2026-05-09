@@ -28,6 +28,24 @@ import {
 import { RPR_CHILD_ORDER } from "./xml-order.ts"
 
 const w = NS.w
+const w14 = "http://schemas.microsoft.com/office/word/2010/wordml"
+
+/**
+ * Decorate a freshly-created `<w:p>` with the revision-tracking attributes
+ * Word writes on every paragraph: `w14:paraId` (unique 8-hex per paragraph,
+ * used for collaborative editing) and `w14:textId` (text-change tracking;
+ * "77777777" means no recorded changes). Word's loader compensates for
+ * missing IDs by injecting them on open and surfacing the "needs repair"
+ * dialog — emit them at write time to avoid that prompt.
+ */
+function decorateParagraphIds(p: Element): void {
+  const hex = Math.floor(Math.random() * 0xffffffff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(8, "0")
+  p.setAttributeNS(w14, "w14:paraId", hex)
+  p.setAttributeNS(w14, "w14:textId", "77777777")
+}
 
 /** OOXML toggle element: presence-only when `on=true`, val="0" when false. */
 function toggleElement(ownerDoc: Document, qname: string, on: boolean): Element {
@@ -274,6 +292,7 @@ function emitParagraphBlock(
   ownerDoc: Document,
 ): Element {
   const p = ownerDoc.createElementNS(w, "w:p")
+  decorateParagraphIds(p)
   const needsPPr =
     block.styleId !== undefined || block.paraFormat !== undefined || block.numbering !== undefined
   if (needsPPr) {
@@ -311,6 +330,7 @@ function emitImageBlock(
   }
   const drawing = ctx.emitImage(block.src, block.widthPt, block.heightPt, block.alt, ownerDoc)
   const p = ownerDoc.createElementNS(w, "w:p")
+  decorateParagraphIds(p)
   const r = ownerDoc.createElementNS(w, "w:r")
   r.appendChild(drawing)
   p.appendChild(r)
@@ -319,6 +339,7 @@ function emitImageBlock(
 
 function emitPageBreakBlock(ownerDoc: Document): Element {
   const p = ownerDoc.createElementNS(w, "w:p")
+  decorateParagraphIds(p)
   const r = ownerDoc.createElementNS(w, "w:r")
   const br = ownerDoc.createElementNS(w, "w:br")
   br.setAttributeNS(w, "w:type", "page")
@@ -332,6 +353,7 @@ function emitHorizontalRuleBlock(ownerDoc: Document): Element {
   // as a horizontal line; keeps the structure as a single <w:p> like every
   // other block.
   const p = ownerDoc.createElementNS(w, "w:p")
+  decorateParagraphIds(p)
   const pPr = ensurePPr(p, ownerDoc)
   const pBdr = ownerDoc.createElementNS(w, "w:pBdr")
   const bottom = ownerDoc.createElementNS(w, "w:bottom")
