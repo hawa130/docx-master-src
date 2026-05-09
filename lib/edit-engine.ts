@@ -370,11 +370,23 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
       if (c.namespaceURI === w) existingByName.set(c.localName!, c)
     }
   }
+  // When the new paragraph has an explicit pStyle, the style cascade governs
+  // run-mark formatting (font, size, weight) — the anchor's paragraph-mark
+  // rPr is no longer the right inheritance source. Cloning it would shadow
+  // the style's intended values: a typical case is anchor.pPr-mark carrying
+  // `<w:b/>` (form template's bold label slot), which then bold-pollutes
+  // every body paragraph the agent inserts with `styleId: "BodyText"`.
+  // Style-level `bold: false` can't override pPr-mark rPr (it's not run rPr,
+  // not paragraph rPr — Word reads it as the carriage-return character's
+  // formatting). So when styleId is given, skip the pPr-mark rPr inheritance
+  // entirely and let the cascade do its job.
+  const newHasPStyle = !!firstChildNS(newP, w, "pStyle")
   const toClone: Element[] = []
   for (const c of getChildren(anchorPPr)) {
     if (c.namespaceURI !== w) continue
     // Skip the tracked-changes pPr snapshot — that's history, not content.
     if (c.localName === "pPrChange") continue
+    if (c.localName === "rPr" && newHasPStyle) continue
     const existing = existingByName.get(c.localName!)
     if (existing) {
       // MDF: agent's paraFormat overrides only the attrs it explicitly sets;

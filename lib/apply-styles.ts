@@ -28,6 +28,7 @@ import type {
   CompiledPatternRule,
   FlagRecord,
   RestyleSample,
+  StyleConfigEntry,
   StyleResolutionEntry,
 } from "./config-types.ts"
 
@@ -160,23 +161,44 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       sourceCanonicalToOriginalName.set(key, nm)
     }
   }
+  // Collect all collisions before failing — agents iterating with --dry-run
+  // benefit from seeing every conflict at once with the suggested override
+  // styleId, instead of fixing one and rerunning to discover the next.
+  const styleNameConflicts: Array<{ def: StyleConfigEntry; collidingId: string; existingName: string }> =
+    []
   for (const def of resolvedStyles) {
     const key = canonicalNameKey(def.name)
     const collidingId = sourceCanonicalToStyleId.get(key)
     if (collidingId && collidingId !== def.id) {
       const existingName = sourceCanonicalToOriginalName.get(key)!
+      styleNameConflicts.push({ def, collidingId, existingName })
+    }
+  }
+  if (styleNameConflicts.length > 0) {
+    const lines: string[] = []
+    lines.push(
+      `${styleNameConflicts.length} style name collision(s) — Word treats matching names (and locale aliases) as the same built-in identity and would silently drop the new style's rPr at render:`,
+    )
+    for (const c of styleNameConflicts) {
       const aliasNote =
-        existingName !== def.name ? ` (locale alias of existing "${existingName}")` : ""
-      throw new Error(
-        `name "${def.name}"${aliasNote} is already used by styleId="${collidingId}" in the source.\n` +
-          `  Word treats matching names (and their locale aliases) as the same built-in identity\n` +
-          `  and silently drops the new style's rPr at render time — the style would have no effect\n` +
-          `  even though dry-run looks correct. Either:\n` +
-          `    (a) override the existing style — set styles[].id="${collidingId}" instead of "${def.id}".\n` +
-          `        upsertStyle mutates in place, preserves the doc's wiring, and avoids the collision.\n` +
-          `    (b) use a non-aliasing name — typically the styleId's canonical English built-in name\n` +
-          `        (e.g., "Body Text" for id="BodyText", "heading 1" for id="Heading1", "Caption" for id="Caption").`,
+        c.existingName !== c.def.name ? ` (locale alias of existing "${c.existingName}")` : ""
+      lines.push(
+        `  styles[].id="${c.def.id}" name="${c.def.name}"${aliasNote} → already used by source styleId="${c.collidingId}"`,
       )
+    }
+    lines.push("")
+    lines.push("  Resolve each by either:")
+    lines.push(
+      `    (a) override the existing style: set styles[].id to the source styleId (shown above)`,
+    )
+    lines.push(
+      `    (b) use a non-aliasing name (e.g. "Body Text" for id="BodyText", "heading 1" for id="Heading1")`,
+    )
+    if (config.dryRun) {
+      lines.unshift("=== Style Name Conflicts (dry-run; would FAIL on real apply) ===")
+      console.error(lines.join("\n") + "\n")
+    } else {
+      throw new Error(lines.join("\n"))
     }
   }
 
