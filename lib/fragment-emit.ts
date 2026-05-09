@@ -77,14 +77,6 @@ export function buildRPrChildren(fmt: RunFormat, ownerDoc: Document): Element[] 
       rFonts.setAttributeNS(w, "w:hAnsi", ascii)
     }
     if (ea) rFonts.setAttributeNS(w, "w:eastAsia", ea)
-    // ECMA-376 17.3.2.26: when a run can resolve to multiple font slots
-    // (Latin via ascii/hAnsi + East Asian via eastAsia), w:hint disambiguates
-    // which slot Word should treat as the run's intended category. Without
-    // hint on a run that mixes Chinese and Latin text, Word's loader flags
-    // the file as needing repair on open even though XSDs validate. CJK is
-    // the dominant case for our use (Chinese docs); emit w:hint="eastAsia"
-    // whenever an East Asian font is set.
-    if (fmt.fontCJK) rFonts.setAttributeNS(w, "w:hint", "eastAsia")
     out.push(rFonts)
   }
   if (fmt.size !== undefined) {
