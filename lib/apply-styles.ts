@@ -118,7 +118,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       if (!declared.has(styleId)) {
         throw new Error(
           `requirements: style "${styleId}" is not declared in styles[].\n` +
-            `  Declared: [${[...declared].join(", ")}]`,
+            `  Declared: [${[...declared].join(", ")}]\n` +
+            `  Note: requirements is keyed by styleId (not a free-form label).\n` +
+            `  If you renamed a style (e.g. to bind to an existing id like "a3"),\n` +
+            `  update the requirements key to match — the side-by-side report\n` +
+            `  pairs entries by exact id.`,
         )
       }
     }
@@ -583,6 +587,23 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     ? detectManualNumbering(config.edits, new Set(numLvlTextByStyle.keys()))
     : undefined
 
+  // Dry-run only: echo the text of every excluded paragraph so the agent can
+  // verify the indices still point at what they intended. exclude entries are
+  // bare numbers — easy to drift silently when document order shifts.
+  const excludeSamples =
+    config.dryRun && excludeSet.size > 0
+      ? [...excludeSet]
+          .sort((a, b) => a - b)
+          .map((idx) => {
+            const p = parsed.paragraphs.find((q) => q.index === idx)
+            const text = p?.text.trim() ?? ""
+            return {
+              index: idx,
+              snippet: text ? text.slice(0, 60) + (text.length > 60 ? "…" : "") : "(empty)",
+            }
+          })
+      : undefined
+
   printReport({
     source,
     injected,
@@ -601,6 +622,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     implicitKeepByFingerprint: ctx.implicitKeepByFingerprint,
     unstrippedByStyle: ctx.unstrippedByStyle,
     manualNumberingDetected,
+    excludeSamples,
     numberingBindings,
     templateImport,
     editsPreview,

@@ -77,6 +77,9 @@ export function printReport(args: {
    * bound to auto-numbered styles (catches inserted-with-prefix paragraphs
    * that don't go through the rule-routing path unstrippedByStyle covers). */
   manualNumberingDetected?: Map<string, { count: number; samples: string[] }>
+  /** dry-run only: text snippet for each excluded paragraph so the agent can
+   * spot index drift after document edits (exclude entries are bare numbers). */
+  excludeSamples?: Array<{ index: number; snippet: string }>
   numberingBindings: Array<{
     styleId: string
     level: number
@@ -157,6 +160,22 @@ export function printReport(args: {
     }
   }
   lines.push("")
+  // Dry-run only: echo each excluded paragraph's leading text so the agent
+  // can verify the indices still point at what they intended. exclude is a
+  // bare number list and silently drifts when document order shifts.
+  if (args.excludeSamples && args.excludeSamples.length > 0) {
+    lines.push(`Excluded paragraphs (${args.excludeSamples.length}; will not be touched):`)
+    const cap = 15
+    for (const s of args.excludeSamples.slice(0, cap)) {
+      lines.push(`  #${s.index}  "${s.snippet}"`)
+    }
+    if (args.excludeSamples.length > cap) {
+      lines.push(`  … (${args.excludeSamples.length - cap} more)`)
+    }
+    lines.push("  → Verify these indices still match — if document order shifted,")
+    lines.push("    exclude entries silently aim at the wrong paragraphs.")
+    lines.push("")
+  }
   // Auto-numbering bindings: which lvlText each numbered style will gain at
   // render. We don't compute the actual rendered numbers (would require
   // walking H1/H2/H3 counters across the whole doc); the agent gets the
