@@ -24,6 +24,7 @@ const tools: Record<string, string> = {
   inspect_table: "inspect-table.ts",
   inspect_blockers: "inspect-blockers.ts",
   find_paragraphs: "find-paragraphs.ts",
+  find_text: "find-text.ts",
   validate: "validate.ts",
   // standardize sub-command
   apply: "apply.ts",
