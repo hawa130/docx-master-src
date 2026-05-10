@@ -41,9 +41,9 @@ Level 2: 1.1.1 / 1.1.2  / 2.1.1       numFmt=decimal          lvlText="%1.%2.%3"
 ### Government Document (Chinese)
 ```
 Level 0: 一、   / 二、   / 三、        numFmt=chineseCounting  lvlText="%1、"       suff="nothing"
-Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText="（%1）"     suff="nothing"
-Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%1."        suff="space"
-Level 3: （1）  / （2）  / （3）       numFmt=decimal          lvlText="（%1）"     suff="nothing"
+Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText="（%2）"     suff="nothing"
+Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."        suff="space"
+Level 3: （1）  / （2）  / （3）       numFmt=decimal          lvlText="（%4）"     suff="nothing"
 Level 4: ①     / ②     / ③           numFmt=decimal          lvlText=special      suff="nothing"
 ```
 
@@ -58,8 +58,8 @@ A level mixing arabic counters with cross-references to a non-arabic outer level
 ### Legal Document
 ```
 Level 0: 第一条 / 第二条 / 第三条      numFmt=chineseCounting  lvlText="第%1条"     suff="space"
-Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText="（%1）"     suff="nothing"
-Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%1."        suff="space"
+Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText="（%2）"     suff="nothing"
+Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."        suff="space"
 ```
 
 ## lvlText Syntax
