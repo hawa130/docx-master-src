@@ -116,18 +116,13 @@ export interface ApplyContext {
    * survive past the edit phase — otherwise the report shows them as
    * "untouched" and the agent reads false positives in coverage gaps. */
   editTouchedIndices?: Set<number>
-  /** styleId → set of pPr child localNames the style's cascade declares
+  /** styleId → set of pPr/rPr child localNames the style's cascade declares
    * (style itself + basedOn ancestors). Used by stripConflictingDirect-
-   * Formatting on restyle: a paragraph's direct pPr child is stripped only
-   * when the new style actually provides a value for it. Without this
-   * gate, restyling to a style that doesn't declare e.g. `<w:spacing>`
-   * would silently strip the paragraph's own spacing and fall back to
-   * docDefaults — losing template-prescribed values. */
+   * Formatting on restyle: a paragraph's direct pPr child / a run's rPr
+   * property is stripped only when the new style's cascade actually declares
+   * one for it. Without this gate the strip falls through to docDefaults
+   * (pPr) or the Normal cascade (rPr) and silently drops chrome-baked
+   * values like spacing, font, size, bold. */
   stylePPrCascade: Map<string, Set<string>>
-  /** styleId → set of rPr child localNames the style's cascade declares.
-   * Same gating purpose as stylePPrCascade but for run-level rPr — the
-   * uniform-strip pass on run formatting only removes a property when the
-   * new style actually provides one for it; otherwise chrome run formatting
-   * (font, size, bold) silently disappears and falls back to Normal cascade. */
   styleRPrCascade: Map<string, Set<string>>
 }

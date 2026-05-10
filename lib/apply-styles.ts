@@ -463,12 +463,10 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   }
 
   // 7. Walk document.xml in order and apply actions to each indexed paragraph.
-  // Build per-style pPr-child cascade so the rules pass strips a paragraph's
-  // direct spacing / ind / jc / outlineLvl only when the new style actually
-  // provides a value (style + basedOn chain). Without this gate, restyling
-  // to a style that doesn't declare spacing silently dropped the paragraph's
-  // own spacing — losing template-prescribed values like the kt-report's
-  // 行距固定值 20 磅 across all chrome.
+  // Pre-compute per-style pPr/rPr cascade (style + basedOn ancestors) so the
+  // selective-strip pass only removes a paragraph's direct property when the
+  // new style's cascade actually declares one for it. Without this gate the
+  // strip falls through to docDefaults and silently loses chrome-baked values.
   const stylePPrCascade = buildStyleChildCascade(stylesDoc, "pPr")
   const styleRPrCascade = buildStyleChildCascade(stylesDoc, "rPr")
   const samples = new Map<string, RestyleSample[]>()
