@@ -104,7 +104,7 @@ config; SKILL.md only carries a top-level summary.
 }
 ```
 
-You can mix modes in the same array. Mode A is preferred when a representative paragraph already exists in the source — `fromParagraph` extracts the full computed rPr+pPr faithfully (with the indent-unit and dominant-run rules described above). Use Mode B (or `overrides`) when the source has no clean exemplar or when the user spec calls for values the source doesn't currently have.
+You can mix modes in the same array. Mode A is preferred when a representative paragraph already exists in the source — `fromParagraph` extracts the full computed rPr+pPr faithfully (with the indent-unit and dominant-run rules described above). Use Mode B when the source has no clean exemplar. `overrides` is the companion to Mode A's `fromParagraph` — layer additions or replacements on top of the extracted shape; in Mode B the same fields just go at top-level (the engine accepts either location).
 
 ## Numbering
 

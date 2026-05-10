@@ -27,7 +27,13 @@ export function resolveStyleDef(
   def: StyleConfigEntry,
   paragraphs: ParsedParagraph[],
 ): StyleConfigEntry {
-  if (def.fromParagraph === undefined) return def
+  // Mode B (no fromParagraph): the schema accepts an `overrides` block on
+  // every style entry, but downstream emission reads top-level fields only —
+  // un-merged overrides drop silently. Spreading them up keeps Mode A and
+  // Mode B symmetric so agents can place fields in either location.
+  if (def.fromParagraph === undefined) {
+    return def.overrides ? { ...def, ...def.overrides } : def
+  }
   const para = paragraphs.find((p) => p.index === def.fromParagraph)
   if (!para) {
     const indices = paragraphs.map((p) => p.index)
