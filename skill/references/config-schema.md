@@ -26,7 +26,8 @@ config; SKILL.md only carries a top-level summary.
   requirements: { id: "..." },       // optional. Annotation only — see § "Requirements" below.
 
   // Paragraph-to-style mapping, in resolution order:
-  exclude:        [1, 2, 3],         // see § "Paragraph mapping"
+  exclude:        [1, 2, 3],         // array of paragraph indices (numbers, not objects);
+                                     //   see § "Paragraph mapping"
   assignments:    [ ... ],
   pattern_rules:  [ ... ],
   bulk_rules:     [ ... ],
@@ -74,7 +75,9 @@ config; SKILL.md only carries a top-level summary.
   italic:          false,      // optional. Default false.
   color:           "auto",     // optional. Hex ("2E75B6") or "auto". Default "auto".
   alignment:       "center",   // optional. "left" | "center" | "right" | "both".
-  lineSpacing:     1.5,        // optional. <10 → multiplier (auto rule); ≥10 → pt.
+  lineSpacing:     1.5,        // optional. *number only* (no string units like "20pt"
+                               //   — pt is implied by ≥10 / multiplier by <10).
+                               //   <10 → multiplier (auto rule); ≥10 → pt.
   lineRule:        "atLeast",  // optional. "auto" | "exact" | "atLeast". Overrides
                                //   the <10/≥10 heuristic. Use "atLeast" to faithfully
                                //   round-trip a source's atLeast rule.

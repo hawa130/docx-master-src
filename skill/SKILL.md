@@ -118,7 +118,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 | `inspect_style` | `node scripts/inspect_style.js <file> <fingerprint>` | What role a fingerprint plays across the document. |
 | `inspect_style_def` | `node scripts/inspect_style_def.js <file> <styleId>` | Pre-defined styles in `styles.xml` and their `basedOn` chain. Use before reusing or overriding an existing styleId. |
 | `inspect_section` | `node scripts/inspect_section.js <file> <index>` | Page setup differences between sections. |
-| `inspect_table` | `node scripts/inspect_table.js <file>` | Top-level tables with cell text snippets at `[row,col]`. Use before composing a `cell` locator. |
+| `inspect_table` | `node scripts/inspect_table.js <file>` | Top-level tables with cell text snippets at `[row,col]` and the paragraph-index span each cell occupies (`paras: 60–89`). Use before composing a `cell` locator or a `range` that touches table content — the para spans show where row boundaries fall so a `range` doesn't accidentally cross cells. |
 | `inspect_blockers` | `node scripts/inspect_blockers.js <file>` | Paragraphs `apply`'s edit phase will refuse — tracked changes, complex fields, SDT controls. |
 | `find_paragraphs` | `node scripts/find_paragraphs.js <file> --regex <pat> [--flags <flags>] [--limit N] [--fingerprint X]` | Cross-document text search. Validate `pattern_rules` regex coverage before applying. |
 | `validate` | `node scripts/validate.js <file>` | Schema-aware OOXML check. `apply` runs this automatically; standalone for spot-checking arbitrary .docx files. |

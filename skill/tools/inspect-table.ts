@@ -1,5 +1,5 @@
 import { DocxReader } from "@lib/reader.ts"
-import { walkTopLevelTables } from "@lib/locator.ts"
+import { walkIndexedParagraphs, walkTopLevelTables } from "@lib/locator.ts"
 import { NS } from "@lib/types.ts"
 import { getChildren, getChildrenNS, textContent } from "@lib/xml-utils.ts"
 import { summarizeTable } from "@lib/table-classifier.ts"
@@ -33,6 +33,14 @@ async function main() {
       console.log("(no top-level tables)")
       return
     }
+    // Build a paragraph-element → index map so each cell can report which
+    // #NNN range its paragraphs occupy. Only layout-table paragraphs are
+    // indexed; data/form-table cells return empty arrays here (cell
+    // locator addresses them anyway, no index needed).
+    const indexByElement = new Map<Element, number>()
+    for (const p of walkIndexedParagraphs(documentDoc)) {
+      indexByElement.set(p.element, p.index)
+    }
     const out: string[] = []
     for (const t of tables) {
       const summary = summarizeTable(t.element)
@@ -45,7 +53,8 @@ async function main() {
         for (let c = 0; c < cells.length; c++) {
           const text = cellText(cells[c]!)
           const snippet = text.length > 40 ? text.slice(0, 40) + "…" : text
-          out.push(`  [${r},${c}] ${JSON.stringify(snippet)}`)
+          const paraSpan = formatParaSpan(cells[c]!, indexByElement)
+          out.push(`  [${r},${c}] ${JSON.stringify(snippet)}${paraSpan}`)
         }
       }
       out.push("")
@@ -75,6 +84,27 @@ function paragraphText(p: Element): string {
     }
   }
   return out
+}
+
+/** "  paras: 58–89" / "  paras: 60" / "" (empty when cell paragraphs are
+ * unindexed, i.e. inside a data/form table — cell locator addresses them
+ * by [r,c] anyway). Layout-table paragraphs each have a #NNN; surfacing
+ * the span lets agents pick a non-cross-cell range locator. */
+function formatParaSpan(tc: Element, indexByElement: Map<Element, number>): string {
+  const indices: number[] = []
+  for (const p of getChildrenNS(tc, NS.w, "p")) {
+    const idx = indexByElement.get(p)
+    if (idx !== undefined) indices.push(idx)
+  }
+  if (indices.length === 0) return ""
+  if (indices.length === 1) return `  paras: ${indices[0]}`
+  // Indices are document-order so already sorted; emit a compact range when
+  // they're contiguous, otherwise list explicitly. (Layout-table cells
+  // typically have contiguous paragraphs; non-contiguous would be unusual.)
+  const first = indices[0]!
+  const last = indices[indices.length - 1]!
+  const contiguous = last - first + 1 === indices.length
+  return contiguous ? `  paras: ${first}–${last}` : `  paras: ${indices.join(", ")}`
 }
 
 void main()
