@@ -12,8 +12,10 @@ Mutates Word (.docx) OOXML directly: produce well-formed documents from messy te
 When deciding what to write, follow this order:
 
 1. **User prompt** — explicit requirements override everything below.
-2. **Document's own conventions** — existing chrome (heading sizes, body typography, list shapes), prescribed typography from instruction paragraphs, slot layout. The doc tells you what it wants — match it.
-3. **Target state defaults** (below) — well-formed Word practice. **When 1 and 2 are silent on a given attribute, apply the target state default for that attribute** — silence is not a reason to omit. The user's prompt covers the points they care to specify; everything else falls through to defaults.
+2. **Document's own conventions** — existing chrome, prescribed typography from instruction paragraphs, slot layout. Match what the doc already shows.
+3. **Target state defaults** (below) — well-formed Word practice. When 1 and 2 are silent on a given attribute, apply the target default for it. Silence is not a reason to omit.
+
+Tools surface visible facts; classification and judgment are yours.
 
 ## Target state (default destination)
 
@@ -23,12 +25,12 @@ A well-formed Word document expresses structure through **styles + numbering + s
 - One unified multi-level numbering scheme bound to all heading styles; one separate single-level scheme per list-bound style.
 - Hierarchy and list markers come from auto-numbering — **never typed text** in either direction. Existing chrome stripped via `pattern_rules`; inserted content omits the prefix in `text`. Display follows the level's `lvlText` pattern (`%N` = the counter at level N, 1-indexed; composite forms like `%1.%2` reference multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
 - Heading levels nest without skipping.
-- **Match content shape to slot shape.** **Prose** (multi-paragraph body): prose typography. **Inline-value** (single short phrase filling a labeled cell): inherit the slot's existing format. **Block enumeration** (items each on their own paragraph): `ListNumber` + single-level numbering scheme; the scheme renders the marker. **Inline enumeration** (items within a single prose paragraph, `"... covers (1) X, (2) Y, and (3) Z ..."`): stays as prose text. List items default to body weight; bold only when the source explicitly emphasizes.
-- **Locale-specific typography.** CJK docs: prose body and list items get a 2-char first-line indent by default — set `firstLineIndent: "2char"` on `BodyText` / `ListNumber` styles unless user prompt or document conventions override (flush-left looks foreign in CN academic context; the list marker should align with body's first character). Literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
-
-## Tools you are the analyst
-
-Tools surface visible facts; classification and judgment are yours.
+- **Match content shape to slot shape.** List items default to body weight; bold only when the source explicitly emphasizes:
+  - **Prose** (multi-paragraph body) → prose typography.
+  - **Inline-value** (short phrase filling a labeled cell) → inherit the slot's existing format.
+  - **Block enumeration** (items each on their own paragraph) → `ListNumber` + single-level numbering scheme; markers come from the scheme.
+  - **Inline enumeration** (items within one prose paragraph, e.g. `"... covers (1) X, (2) Y, (3) Z ..."`) → stays as prose text.
+- **Locale-specific typography.** CJK docs: prose body and list items get a 2-char first-line indent by default — set `firstLineIndent: "2char"` on `BodyText` / `ListNumber` unless user prompt or document conventions override. Literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Commands
 
@@ -56,17 +58,18 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 
 `overview` first. From the output, note:
 
-- Existing Heading levels, numbering schemes, fingerprints, document skeleton
-- **Typography requirements baked into the document** — paragraphs that prescribe formatting (fonts, sizes, line spacing, alignment). Often live in front matter, instruction blocks, footnotes, or "filling guidelines" sections. These override any defaults you would invent. Skim before designing styles.
-- Typed structural prefixes in chrome — chapter / section markers like `Chapter N.`, `第N章`, `一、`, `1.1`, `（一）`, etc. List the patterns you see; one regex per shape will go into `pattern_rules`.
-- **Form-fill paragraphs** — paragraphs whose visible text looks like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run carrying `<w:u/>`. Note their indices for Step 2.
-- (Filling) What content the source carries
+- **Existing structure** — Heading levels, numbering schemes, fingerprints, document skeleton.
+- **Prescribed typography** — paragraphs in the doc that fix fonts / sizes / line spacing / alignment (front matter, instruction blocks, footnotes, "filling guidelines" sections). These override any defaults you would invent.
+- **Typed structural prefixes** — chapter / section markers like `Chapter N.`, `第N章`, `一、`, `1.1`, `（一）`. List the shapes you see; one regex per shape feeds `pattern_rules`.
+- **Form-fill paragraphs** — text shaped like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run with `<w:u/>`. Note indices for Step 2.
+- **Source content** (fill tasks) — what the user-provided content actually carries.
 
 ### 2. Design ONE config
 
 Sketch the content's structural outline first; `styles[]` follows that outline, not the other way around. Reactive style additions accrete debt later edits have to re-untangle.
 
-- `styles[]` — install the styles the doc + content combined need: every Heading level; `BodyText`; `ListNumber` for block enumerations. **Sizes follow the document's existing chrome** (visual style summary in `overview`): when heading-shaped paragraphs share a uniform size and hierarchy is signalled via weight / spacing / indent, preserve that — differentiate levels on the same axes. Invent sizes only when no chrome convention exists.
+- `styles[]` — install the styles the doc + content combined need: every Heading level; `BodyText`; `ListNumber` for block enumerations.
+- **Sizes follow existing chrome** (visual style summary in `overview`). When heading-shaped paragraphs share a uniform size with hierarchy signalled via weight / spacing / indent, preserve that — differentiate levels on the same axes. Invent sizes only when no chrome convention exists.
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style. The scheme's `lvlText` chooses the marker shape (decimal / parenthesized / CJK 序号 / bullet / ...) — pick to match document convention or user request. Inserted text holds only item content; markers always come from the scheme, never typed.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
 - `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use the `set-run` op with a `run` locator (`blank: K` for Kth blank placeholder) — preserves the placeholder run's rPr automatically. Whole-paragraph `replace` is the wrong tool here.
@@ -88,7 +91,15 @@ Output is a fresh docx; the original is never modified.
 
 ## Asking the user
 
-Apply the default per the Authority order above. Ask only when the right semantic mapping is genuinely unclear: typed sentinel mid-prose vs. heading; bold paragraph as sub-heading vs. emphasis; missing source content for template slots; unsupported structures (footnotes, math, cross-references). Send one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
+Default first; apply per the Authority order above without asking.
+
+Ask only when the right semantic mapping is genuinely unclear:
+- typed sentinel mid-prose vs. heading
+- bold paragraph as sub-heading vs. emphasis
+- missing source content for template slots
+- unsupported structures (footnotes, math, cross-references)
+
+When you do ask: one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
 
 ## Out of Phase 1 scope
 
