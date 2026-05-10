@@ -19,6 +19,7 @@ config; SKILL.md only carries a top-level summary.
                                      // on the CLI. Use during config iteration.
 
   template: { ... },                 // optional. See § "Template import" below.
+  theme:    { fonts: {...} },        // optional. See § "Theme" below.
   styles:   [ ... ],                 // REQUIRED. See § "Style entries" below.
   numbering: { levels: [...] }       // optional. Single scheme, OR array of
             | [ {levels:[...]}, ... ], // schemes for parallel installations
@@ -184,6 +185,23 @@ template: {
 ```
 
 If a styleId already exists in source, the template's definition wins — the template is treated as the authoritative stylebook for the listed IDs. Other source styles are untouched.
+
+## Theme
+
+```jsonc
+theme: {
+  fonts: {
+    majorLatin:    "Times New Roman",  // optional. Heading/Title Latin font (Office major scheme).
+    majorEastAsia: "黑体",              // optional. Heading/Title CJK font.
+    minorLatin:    "Times New Roman",  // optional. Body Latin font (Office minor scheme).
+    minorEastAsia: "宋体",              // optional. Body CJK font.
+  },
+}
+```
+
+Modifies `word/theme/theme1.xml`. Any `docDefaults` / `styles[]` / direct rPr that references theme fonts (`<w:rFonts w:asciiTheme="majorHAnsi"/>` etc.) auto-resolves to the new values — the document-design layer instead of per-style declarations.
+
+Use when the user wants the doc's underlying font scheme changed ("把这份文档的主题字体改成 X / Y"), not when they want one specific style restyled. Sparse: declare only the slots being changed; omitted slots keep the source's existing theme value.
 
 ## Paragraph mapping
 
