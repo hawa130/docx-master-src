@@ -128,6 +128,10 @@ Modes can mix within one `styles` array.
 
 **Override existing styles before creating new ones.** Run `inspect_style_def` to discover what the source already has — POI / WPS / school templates often play the role of Normal / Heading 1 / etc. under short auto-generated styleIds (`a`, `a1`, `2`, `10`, ...). Override by their exact styleId: upsertStyle mutates in place, preserving everything you didn't specify (basedOn, default="1", numPr, link, etc.). Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first.
 
+**Override sparsely.** Declare only the fields the user's spec explicitly requires. Mode A `fromParagraph` and locale-default backfills (CJK 2-char indent, etc.) belong on *fresh* styles — piled onto an existing source definition they silently rewrite fields the user didn't ask to change. The template author's existing values stay where the user spec doesn't override them.
+
+**Exception: chaotic source.** When source styleIds don't separate roles — headings, body, captions all bound to the same `a` — override can't help; changing `a` would shift all of them at once. Install fresh semantic styles (`Heading1` / `BodyText` / ...) and route paragraphs to them via `pattern_rules` / `assignments`.
+
 **`name` must not alias any existing style's identity.** Word treats `<w:name>` as the built-in style identity marker, including locale aliases ("Normal" ≡ "正文" ≡ "標準"; "Heading 1" ≡ "标题 1"; "Body Text" ≡ "正文文本"). When two different styleIds claim the same identity, Word silently drops the second style's `rPr` at render time. Three safe approaches:
 
 - **Override existing by its styleId** so no new name enters the doc.

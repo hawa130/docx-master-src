@@ -194,10 +194,34 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     lines.push("")
     lines.push("  Resolve each by either:")
     lines.push(
-      `    (a) override the existing style: set styles[].id to the source styleId (shown above)`,
+      `    (a) override the existing style: set styles[].id to the source styleId`,
     )
     lines.push(
-      `    (b) use a non-aliasing name (e.g. "Body Text" for id="BodyText", "heading 1" for id="Heading1")`,
+      `        (above) — minimum-change default. Declare only fields the user`,
+    )
+    lines.push(
+      `        spec explicitly requires; Mode A fromParagraph or piled-on`,
+    )
+    lines.push(
+      `        locale defaults (CJK 2-char indent, etc.) rewrite more than`,
+    )
+    lines.push(
+      `        the user asked to change.`,
+    )
+    lines.push(
+      `    (b) use the canonical English built-in name when the conflict is a`,
+    )
+    lines.push(
+      `        locale alias (e.g. name="Body Text" for id="BodyText").`,
+    )
+    lines.push(
+      `    (c) use a fresh styleId + name pair (e.g. id="BodyMain", name="BodyMain")`,
+    )
+    lines.push(
+      `        when the source has no styleId for this role, or compresses many`,
+    )
+    lines.push(
+      `        roles onto one styleId so override can't separate them.`,
     )
     if (config.dryRun) {
       lines.unshift("=== Style Name Conflicts (dry-run; would FAIL on real apply) ===")
