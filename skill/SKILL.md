@@ -21,7 +21,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
 
 - Every paragraph carries a semantic styleId (Heading1..N / BodyText / ListNumber / Caption / etc.); direct paragraph format only as one-off exceptions.
 - One unified multi-level numbering scheme bound to all heading styles; one separate single-level scheme per list-bound style.
-- Hierarchy and list markers come from auto-numbering — **never typed text** in either direction. Existing chrome stripped via `pattern_rules`; inserted content omits the prefix in `text`. Display follows the level's `lvlText` pattern (`%1` = own counter; `%1.%2` references multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
+- Hierarchy and list markers come from auto-numbering — **never typed text** in either direction. Existing chrome stripped via `pattern_rules`; inserted content omits the prefix in `text`. Display follows the level's `lvlText` pattern (`%N` = the counter at level N, 1-indexed; composite forms like `%1.%2` reference multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
 - Heading levels nest without skipping.
 - **Match content shape to slot shape.** **Prose** (multi-paragraph body): prose typography. **Inline-value** (single short phrase filling a labeled cell): inherit the slot's existing format. **Block enumeration** (items each on their own paragraph): `ListNumber` + single-level numbering scheme; the scheme renders the marker. **Inline enumeration** (items within a single prose paragraph, `"... covers (1) X, (2) Y, and (3) Z ..."`): stays as prose text. List items default to body weight; bold only when the source explicitly emphasizes.
 - **Locale-specific typography.** CJK docs: prose body and list items get a 2-char first-line indent by default — set `firstLineIndent: "2char"` on `BodyText` / `ListNumber` styles unless user prompt or document conventions override (flush-left looks foreign in CN academic context; the list marker should align with body's first character). Literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
@@ -59,7 +59,7 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 - Existing Heading levels, numbering schemes, fingerprints, document skeleton
 - **Typography requirements baked into the document** — paragraphs that prescribe formatting (fonts, sizes, line spacing, alignment). Often live in front matter, instruction blocks, footnotes, or "filling guidelines" sections. These override any defaults you would invent. Skim before designing styles.
 - Typed structural prefixes in chrome — chapter / section markers like `Chapter N.`, `第N章`, `一、`, `1.1`, `（一）`, etc. List the patterns you see; one regex per shape will go into `pattern_rules`.
-- **Form-fill paragraphs** — paragraphs whose visible text looks like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run carrying `<w:u/>`. Use the `set-run` op (run-level locator with `blank` heuristic) to fill the value while preserving the placeholder rPr — this is the right primitive; whole-paragraph `replace` would force you to manually reconstruct each label run's format.
+- **Form-fill paragraphs** — paragraphs whose visible text looks like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run carrying `<w:u/>`. Note their indices for Step 2.
 - (Filling) What content the source carries
 
 ### 2. Design ONE config
@@ -70,7 +70,7 @@ Sketch the content's structural outline first; `styles[]` follows that outline, 
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style. The scheme's `lvlText` chooses the marker shape (decimal / parenthesized / CJK 序号 / bullet / ...) — pick to match document convention or user request. Inserted text holds only item content; markers always come from the scheme, never typed.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
 - `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use the `set-run` op with a `run` locator (`blank: K` for Kth blank placeholder) — preserves the placeholder run's rPr automatically. Whole-paragraph `replace` is the wrong tool here.
-- `bulk_rules` — fingerprint-keyed routing. **Every body-content fingerprint not matched by `pattern_rules` needs a `bulk_rules` entry** — otherwise existing direct-formatted paragraphs won't pick up the new style cascade and your `firstLineIndent` / `fontCJK` etc. won't apply to them.
+- `bulk_rules` — fingerprint-keyed routing for body paragraphs without a clean text pattern. Whether to route a given fingerprint is a Step 3 question — `dry-run` flags unrouted ones via implicit-keep, and you decide there.
 - `exclude` — false-positive corrections.
 - `assignments` — per-paragraph corrections, **last resort**, for outliers only.
 
@@ -128,5 +128,6 @@ All tools invoked via `node <script> <args>`, output to stdout.
 - Field codes (`STYLEREF` / `TOC` / `REF` / `DATE` / …) preserved as-is; not editable inside.
 - TOC content is not regenerated; user must right-click → "Update Field" in Word after opening.
 - Edit blockers: the edit phase refuses paragraphs inside existing tracked changes / complex fields / SDT controls. Run `inspect_blockers` first.
+- Style-name preflight: before any mutation, the engine catches `<w:name>` collisions (including en/zh-CN locale aliases) and aborts with a fix hint. In `--dry-run` collisions are listed as warnings so the agent can adjust all at once before committing.
 
 Block-level config details: [`references/standardize.md`](references/standardize.md) (styles / numbering / pattern_rules / bulk_rules / assignments / exclude), [`references/edit.md`](references/edit.md) (locators / ops / MDF / track-changes), [`references/config-schema.md`](references/config-schema.md) (full field reference).
