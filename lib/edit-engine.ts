@@ -397,7 +397,8 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
   // not paragraph rPr — Word reads it as the carriage-return character's
   // formatting). So when styleId is given, skip the pPr-mark rPr inheritance
   // entirely and let the cascade do its job.
-  const newHasPStyle = !!firstChildNS(newP, w, "pStyle")
+  // pStyle lives inside <w:pPr>, not as a direct child of <w:p>; check newPPr.
+  const newHasPStyle = !!(newPPr && firstChildNS(newPPr, w, "pStyle"))
   const toClone: Element[] = []
   for (const c of getChildren(anchorPPr)) {
     if (c.namespaceURI !== w) continue
