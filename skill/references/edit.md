@@ -39,7 +39,7 @@ Always inspect before composing edits.
 | `cell` | `{ ..., "table": T, "row": R, "col": C }`, 0-based. Only way to reach data/form-table cell paragraphs (those are unindexed). |
 | `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose outline level is L. Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
 | `whole-body` | Every body paragraph. Pairs naturally with `format`; rarely with `replace`. |
-| `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. With `blank: K`, targets the Kth run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth run by 0-based index. Default: `blank: 0`. Pair only with `set-run`. |
+| `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. With `blank: K`, targets the Kth run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth run by 0-based index. If neither `blank` nor `runIndex` is given, defaults to `blank: 0`. Pair only with `set-run`. |
 
 ### Ops
 

@@ -148,7 +148,7 @@ Bias toward the narrowest layer that captures the intent — wider layers risk s
 
 ## Designing numbering schemes
 
-When the document has typed heading prefixes (chrome chrome or content prefixes), migrate to automatic numbering. Skip only when the user explicitly opts out, or no numbered headings exist.
+When the document has typed heading prefixes (chrome or content prefixes), migrate to automatic numbering. Skip only when the user explicitly opts out, or no numbered headings exist.
 
 If the manual scheme itself is inconsistent across the document — e.g. H1 has numbers in chapter 1 but not chapter 2, or H2 uses chapter-prefixed `"1.1"` in some chapters and per-chapter-restart `"1."` in others — auto-migration is a normalization decision that may change author-intended semantics. Ask the user before applying rather than picking one scheme silently.
 

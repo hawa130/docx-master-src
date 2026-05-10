@@ -44,7 +44,6 @@ Level 0: 一、   / 二、   / 三、        numFmt=chineseCounting  lvlText="%1
 Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText="（%2）"     suff="nothing"
 Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."        suff="space"
 Level 3: （1）  / （2）  / （3）       numFmt=decimal          lvlText="（%4）"     suff="nothing"
-Level 4: ①     / ②     / ③           numFmt=decimal          lvlText=special      suff="nothing"
 ```
 
 ### Mixed Counting Schemes (Chinese outer, Arabic inner)
