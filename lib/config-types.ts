@@ -116,4 +116,12 @@ export interface ApplyContext {
    * survive past the edit phase — otherwise the report shows them as
    * "untouched" and the agent reads false positives in coverage gaps. */
   editTouchedIndices?: Set<number>
+  /** styleId → set of pPr child localNames the style's cascade declares
+   * (style itself + basedOn ancestors). Used by stripConflictingDirect-
+   * Formatting on restyle: a paragraph's direct pPr child is stripped only
+   * when the new style actually provides a value for it. Without this
+   * gate, restyling to a style that doesn't declare e.g. `<w:spacing>`
+   * would silently strip the paragraph's own spacing and fall back to
+   * docDefaults — losing template-prescribed values. */
+  stylePPrCascade: Map<string, Set<string>>
 }

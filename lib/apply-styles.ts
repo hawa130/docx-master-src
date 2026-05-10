@@ -6,7 +6,7 @@ import { StyleResolver, applyThemeFontOverrides } from "@lib/style-resolver.ts"
 import { DocumentParser } from "@lib/document-parser.ts"
 import { Fingerprinter } from "@lib/fingerprint.ts"
 import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import {
   blankNumberingDoc,
   blankStylesDoc,
@@ -462,7 +462,14 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     }
   }
 
-  // 7. Walk document.xml in order and apply actions to each indexed paragraph
+  // 7. Walk document.xml in order and apply actions to each indexed paragraph.
+  // Build per-style pPr-child cascade so the rules pass strips a paragraph's
+  // direct spacing / ind / jc / outlineLvl only when the new style actually
+  // provides a value (style + basedOn chain). Without this gate, restyling
+  // to a style that doesn't declare spacing silently dropped the paragraph's
+  // own spacing — losing template-prescribed values like the kt-report's
+  // 行距固定值 20 磅 across all chrome.
+  const stylePPrCascade = buildStylePPrCascade(stylesDoc)
   const samples = new Map<string, RestyleSample[]>()
   // Track implicit-keep paragraphs split by emptiness. Empty (whitespace-only)
   // paragraphs are usually intentional spacers — silently keeping them is the
@@ -492,6 +499,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     implicitKeepByFingerprint,
     unstrippedByStyle,
     editTouchedIndices,
+    stylePPrCascade,
   }
   applyToBody(documentDoc, ctx)
 
@@ -610,6 +618,49 @@ export async function applyStyles(source: string, output: string, config: ApplyC
  * real-doc collision surfaces; this is OOXML-spec data, not natural-
  * language enumeration.
  */
+/** Build styleId → set of pPr child localNames the style's cascade declares
+ * (style + every basedOn ancestor). The rules pass uses this to strip a
+ * paragraph's direct pPr child only when the new style actually provides a
+ * value for it; otherwise stripping would fall back to docDefaults and lose
+ * template-prescribed values (e.g. line=400 lineRule=exact baked into
+ * heading chrome). */
+function buildStylePPrCascade(stylesDoc: Document): Map<string, Set<string>> {
+  const w = NS.w
+  const styles = getChildrenNS(stylesDoc.documentElement!, w, "style")
+  const directChildren = new Map<string, Set<string>>()
+  const basedOn = new Map<string, string | null>()
+  for (const s of styles) {
+    const id = wAttr(s, "styleId")
+    if (!id) continue
+    const direct = new Set<string>()
+    const pPr = firstChildNS(s, w, "pPr")
+    if (pPr) {
+      for (const c of getChildren(pPr)) {
+        if (c.namespaceURI === w) direct.add(c.localName!)
+      }
+    }
+    directChildren.set(id, direct)
+    const bo = firstChildNS(s, w, "basedOn")
+    basedOn.set(id, bo ? wAttr(bo, "val") : null)
+  }
+  const cascade = new Map<string, Set<string>>()
+  const walk = (id: string, seen: Set<string>): Set<string> => {
+    const cached = cascade.get(id)
+    if (cached) return cached
+    if (seen.has(id)) return new Set()
+    seen.add(id)
+    const merged = new Set(directChildren.get(id) ?? [])
+    const parent = basedOn.get(id)
+    if (parent && directChildren.has(parent)) {
+      for (const n of walk(parent, seen)) merged.add(n)
+    }
+    cascade.set(id, merged)
+    return merged
+  }
+  for (const id of directChildren.keys()) walk(id, new Set())
+  return cascade
+}
+
 function makeCanonicalNameKey(): (name: string) => string {
   // English form is the canonical key for each pair. Pairs are stored
   // both directions in a single Map for O(1) lookup either way.

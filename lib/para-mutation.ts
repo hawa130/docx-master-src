@@ -112,7 +112,7 @@ function processOneParagraph(pEl: Element, para: ParsedParagraph, ctx: ApplyCont
   // apply restyle
   const oldPStyle = para.styleId
   setParagraphStyle(pEl, targetStyle)
-  stripConflictingDirectFormatting(pEl)
+  stripConflictingDirectFormatting(pEl, ctx.stylePPrCascade.get(targetStyle) ?? new Set())
   ctx.restyleStats.set(targetStyle, (ctx.restyleStats.get(targetStyle) ?? 0) + 1)
 
   // Record sample for the change report (cap per style to keep output bounded).
@@ -213,17 +213,24 @@ function setParagraphStyle(pEl: Element, styleId: string) {
 
 const RPR_CONFLICT_NAMES = ["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color"] as const
 
-function stripConflictingDirectFormatting(pEl: Element) {
+function stripConflictingDirectFormatting(pEl: Element, styleProvides: Set<string>) {
   const w = NS.w
   const pPr = firstChildNS(pEl, w, "pPr")
   if (pPr) {
-    // Strip direct paragraph-level overrides the style now controls. The
-    // paragraph-mark rPr is also wholesale-stripped of conflicts because it
-    // applies only to the trailing paragraph mark; nothing the user sees
-    // depends on its values that the new style can't provide.
+    // Strip direct paragraph-level overrides ONLY for properties the new
+    // style's cascade actually provides — those are the conflicts the style
+    // takes over. Properties the style cascade doesn't declare stay on the
+    // paragraph: they came from chrome convention (e.g. template-prescribed
+    // `<w:spacing line=400 lineRule=exact/>` baked into every chrome
+    // paragraph), and dropping them would silently fall back to docDefaults
+    // and lose the convention.
     const directConflicts = new Set(["jc", "spacing", "ind", "outlineLvl"])
     for (const c of Array.from(getChildren(pPr))) {
-      if (c.namespaceURI === w && directConflicts.has(c.localName!)) {
+      if (
+        c.namespaceURI === w &&
+        directConflicts.has(c.localName!) &&
+        styleProvides.has(c.localName!)
+      ) {
         pPr.removeChild(c)
       }
     }
