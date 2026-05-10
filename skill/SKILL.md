@@ -1,6 +1,6 @@
 ---
 name: docx-master
-description: "Standardize, edit, or audit a Word (.docx) document via direct OOXML mutation. Three commands: standardize (role-based whole-doc reshape — paragraph classification, named styles, multi-level auto-numbering, template import, content insertion), edit (location-based surgical changes — replace/insert/delete paragraphs, table cells, image embedding, optional Word tracked changes), audit (read-only conformance check, no file written). Use whenever the user wants to format / restyle / normalize / edit / audit a Word document. Illustrative phrasings: '排版 / 套模板 / 按学校格式', '统一样式 / 标题字号不对', '把第N段改成… / 插一段 / 改这个单元格', '看看合不合规范'. Do NOT use for: PDFs, spreadsheets, or plain-text / Markdown source files (unless the task is specifically to *output* a docx)."
+description: "Standardize, edit, or audit a Word (.docx) document via direct OOXML mutation. Two CLIs: `apply` (the unified writer — install styles + numbering + theme + template, restyle by pattern / fingerprint, insert content via edits, all in one config), `audit` (read-only conformance check, no file written). Common config shapes inside `apply`: standardize (role-based whole-doc reshape — paragraph classification, named styles, multi-level auto-numbering, template import), edit (location-based surgical changes — replace/insert/delete paragraphs, table cells, image embedding, optional tracked changes). Use whenever the user wants to format / restyle / normalize / edit / audit a Word document. Illustrative phrasings: '排版 / 套模板 / 按学校格式', '统一样式 / 标题字号不对', '把第N段改成… / 插一段 / 改这个单元格', '看看合不合规范'. Do NOT use for: PDFs, spreadsheets, or plain-text / Markdown source files (unless the task is specifically to *output* a docx)."
 ---
 
 # docx-master
@@ -40,7 +40,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
 | Command | When | Reference |
 |---|---|---|
 | **`apply`** | The unified writer. Install styles + numbering + theme + template, restyle by pattern / fingerprint, insert content via edits — single config, single call. | [standardize.md](references/standardize.md) + [edit.md](references/edit.md) |
-| `audit` | Read-only conformance check; no file output. | [audit.md](references/audit.md) |
+| `audit` | Read-only conformance check workflow. No CLI; uses the inspect tools to produce a violation report. | [audit.md](references/audit.md) |
 
 `apply` pipeline order:
 
@@ -93,9 +93,7 @@ Output is a fresh docx; the original is never modified.
 
 ## Asking the user
 
-Default first; apply per the Authority order above without asking.
-
-Ask only when the right semantic mapping is genuinely unclear:
+Default first. Don't ask unless one of the cases below applies:
 - typed sentinel mid-prose vs. heading
 - bold paragraph as sub-heading vs. emphasis
 - missing source content for template slots
@@ -103,7 +101,7 @@ Ask only when the right semantic mapping is genuinely unclear:
 
 When you do ask: one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
 
-## Out of Phase 1 scope
+## Out of scope
 
 Surface to the user when blocked by: layout-**table** restructuring, TOC body content, footnotes / comments / headers / footers content. Paragraphs *inside* layout-table cells ARE indexed and fully editable; only the table holding them is off-limits.
 
@@ -127,9 +125,6 @@ All tools invoked via `node <script> <args>`, output to stdout.
 | `validate` | `node scripts/validate.js <file>` | Schema-aware OOXML check. `apply` runs this automatically; standalone for spot-checking arbitrary .docx files. |
 | `apply --dry-run` | `node scripts/apply.js --dry-run <config.json>` | Iterate on a config without writing. **Use between every config edit.** |
 | `apply` | `node scripts/apply.js <config.json>` | Unified writer. Default for any write task. |
-| `restyle` | `node scripts/restyle.js [--dry-run] <config.json>` | Narrow: paragraph restyle only. |
-| `migrate_numbering` | `node scripts/migrate_numbering.js [--dry-run] <config.json>` | Narrow: numbering install only. |
-| `import_template` | `node scripts/import_template.js [--dry-run] <config.json>` | Narrow: template style import only. |
 
 ## Cross-command invariants
 
