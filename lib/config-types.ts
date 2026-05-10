@@ -124,4 +124,10 @@ export interface ApplyContext {
    * would silently strip the paragraph's own spacing and fall back to
    * docDefaults — losing template-prescribed values. */
   stylePPrCascade: Map<string, Set<string>>
+  /** styleId → set of rPr child localNames the style's cascade declares.
+   * Same gating purpose as stylePPrCascade but for run-level rPr — the
+   * uniform-strip pass on run formatting only removes a property when the
+   * new style actually provides one for it; otherwise chrome run formatting
+   * (font, size, bold) silently disappears and falls back to Normal cascade. */
+  styleRPrCascade: Map<string, Set<string>>
 }

@@ -112,7 +112,11 @@ function processOneParagraph(pEl: Element, para: ParsedParagraph, ctx: ApplyCont
   // apply restyle
   const oldPStyle = para.styleId
   setParagraphStyle(pEl, targetStyle)
-  stripConflictingDirectFormatting(pEl, ctx.stylePPrCascade.get(targetStyle) ?? new Set())
+  stripConflictingDirectFormatting(
+    pEl,
+    ctx.stylePPrCascade.get(targetStyle) ?? new Set(),
+    ctx.styleRPrCascade.get(targetStyle) ?? new Set(),
+  )
   ctx.restyleStats.set(targetStyle, (ctx.restyleStats.get(targetStyle) ?? 0) + 1)
 
   // Record sample for the change report (cap per style to keep output bounded).
@@ -213,7 +217,11 @@ function setParagraphStyle(pEl: Element, styleId: string) {
 
 const RPR_CONFLICT_NAMES = ["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color"] as const
 
-function stripConflictingDirectFormatting(pEl: Element, styleProvides: Set<string>) {
+function stripConflictingDirectFormatting(
+  pEl: Element,
+  stylePPrProvides: Set<string>,
+  styleRPrProvides: Set<string>,
+) {
   const w = NS.w
   const pPr = firstChildNS(pEl, w, "pPr")
   if (pPr) {
@@ -229,23 +237,27 @@ function stripConflictingDirectFormatting(pEl: Element, styleProvides: Set<strin
       if (
         c.namespaceURI === w &&
         directConflicts.has(c.localName!) &&
-        styleProvides.has(c.localName!)
+        stylePPrProvides.has(c.localName!)
       ) {
         pPr.removeChild(c)
       }
     }
     const paraRPr = firstChildNS(pPr, w, "rPr")
     if (paraRPr) {
-      removeRPrConflicts(paraRPr)
+      removeRPrConflicts(paraRPr, styleRPrProvides)
       if (getChildren(paraRPr).length === 0) pPr.removeChild(paraRPr)
     }
   }
 
-  // Run-level rPr: only strip a property when ALL runs in the paragraph carry
-  // the same value for it (it's redundant direct formatting that the style can
-  // safely take over). When runs disagree on a property, that disagreement is
-  // intentional mixed formatting (e.g. a bold lead phrase + non-bold body, or
-  // a colored numbering prefix + a bold title) and must be preserved.
+  // Run-level rPr: only strip a property when (a) ALL runs in the paragraph
+  // carry the same value for it AND (b) the new style's cascade actually
+  // declares that property. (a) is the uniform-vs-mixed rule (mixed-runs
+  // formatting like a colored numbering prefix or bold lead phrase is
+  // intentional and must survive). (b) is the same gate as the pPr-level
+  // strip: stripping a uniform run property the style cascade doesn't
+  // declare would fall back to docDefaults / Normal cascade and silently
+  // lose chrome's run-level conventions (font, size, bold). styleRPrProvides
+  // is the cascade set passed in.
   const runs = getChildrenNS(pEl, w, "r")
   if (runs.length === 0) return
 
@@ -260,7 +272,7 @@ function stripConflictingDirectFormatting(pEl: Element, styleProvides: Set<strin
   }
   const uniformToStrip = new Set<string>()
   for (const [name, vals] of valuesByProp) {
-    if (vals.size <= 1) uniformToStrip.add(name)
+    if (vals.size <= 1 && styleRPrProvides.has(name)) uniformToStrip.add(name)
   }
 
   for (const r of runs) {
@@ -275,11 +287,15 @@ function stripConflictingDirectFormatting(pEl: Element, styleProvides: Set<strin
   }
 }
 
-function removeRPrConflicts(rPr: Element) {
+function removeRPrConflicts(rPr: Element, styleProvides: Set<string>) {
   const w = NS.w
   const conflicts = new Set<string>(RPR_CONFLICT_NAMES)
   for (const c of Array.from(getChildren(rPr))) {
-    if (c.namespaceURI === w && conflicts.has(c.localName!)) {
+    if (
+      c.namespaceURI === w &&
+      conflicts.has(c.localName!) &&
+      styleProvides.has(c.localName!)
+    ) {
       rPr.removeChild(c)
     }
   }

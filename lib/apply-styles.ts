@@ -469,7 +469,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // to a style that doesn't declare spacing silently dropped the paragraph's
   // own spacing — losing template-prescribed values like the kt-report's
   // 行距固定值 20 磅 across all chrome.
-  const stylePPrCascade = buildStylePPrCascade(stylesDoc)
+  const stylePPrCascade = buildStyleChildCascade(stylesDoc, "pPr")
+  const styleRPrCascade = buildStyleChildCascade(stylesDoc, "rPr")
   const samples = new Map<string, RestyleSample[]>()
   // Track implicit-keep paragraphs split by emptiness. Empty (whitespace-only)
   // paragraphs are usually intentional spacers — silently keeping them is the
@@ -500,6 +501,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     unstrippedByStyle,
     editTouchedIndices,
     stylePPrCascade,
+    styleRPrCascade,
   }
   applyToBody(documentDoc, ctx)
 
@@ -618,13 +620,16 @@ export async function applyStyles(source: string, output: string, config: ApplyC
  * real-doc collision surfaces; this is OOXML-spec data, not natural-
  * language enumeration.
  */
-/** Build styleId → set of pPr child localNames the style's cascade declares
- * (style + every basedOn ancestor). The rules pass uses this to strip a
- * paragraph's direct pPr child only when the new style actually provides a
- * value for it; otherwise stripping would fall back to docDefaults and lose
- * template-prescribed values (e.g. line=400 lineRule=exact baked into
- * heading chrome). */
-function buildStylePPrCascade(stylesDoc: Document): Map<string, Set<string>> {
+/** Build styleId → set of `<childName>` (`pPr` or `rPr`) child localNames the
+ * style's cascade declares (style + every basedOn ancestor). The rules pass
+ * uses this to strip a paragraph's direct properties only when the new style
+ * actually provides values for them; otherwise stripping would fall back to
+ * docDefaults / Normal and lose chrome-baked values (line spacing, font
+ * size, bold, etc.). */
+function buildStyleChildCascade(
+  stylesDoc: Document,
+  childName: "pPr" | "rPr",
+): Map<string, Set<string>> {
   const w = NS.w
   const styles = getChildrenNS(stylesDoc.documentElement!, w, "style")
   const directChildren = new Map<string, Set<string>>()
@@ -633,9 +638,9 @@ function buildStylePPrCascade(stylesDoc: Document): Map<string, Set<string>> {
     const id = wAttr(s, "styleId")
     if (!id) continue
     const direct = new Set<string>()
-    const pPr = firstChildNS(s, w, "pPr")
-    if (pPr) {
-      for (const c of getChildren(pPr)) {
+    const container = firstChildNS(s, w, childName)
+    if (container) {
+      for (const c of getChildren(container)) {
         if (c.namespaceURI === w) direct.add(c.localName!)
       }
     }
