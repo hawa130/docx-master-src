@@ -1,6 +1,8 @@
 import { loadDocx, parseNumbering } from "@lib/load.ts"
-import type { DocumentElement } from "@lib/types.ts"
+import { walkIndexedParagraphs } from "@lib/locator.ts"
+import { NS, type DocumentElement, type ParsedParagraph } from "@lib/types.ts"
 import type { LoadedDoc } from "@lib/load.ts"
+import { firstChildNS, getChildren } from "@lib/xml-utils.ts"
 import { pad, paperName, truncate, tw2mm } from "@lib/format.ts"
 
 async function main() {
@@ -23,6 +25,8 @@ async function main() {
     out.push(...renderNumbering(doc))
     out.push("")
     out.push(...renderVisualSummary(doc))
+    out.push("")
+    out.push(...renderDirectPPrPerFingerprint(doc))
     out.push("")
     out.push(...renderSkeleton(doc))
     console.log(out.join("\n"))
@@ -173,6 +177,47 @@ function renderVisualSummary(doc: LoadedDoc): string[] {
       )
     }
     lines.push(`${s.label} [${s.hash}]: ${s.description.padEnd(36, " ")} ${facts.join("  ")}`)
+  }
+  return lines
+}
+
+/** For each fingerprint, list which pPr children the first sample paragraph
+ * carries DIRECTLY (not via style cascade). Lets the agent decide whether
+ * an attribute is already set as chrome convention — in which case the
+ * style shouldn't redeclare it. The values themselves aren't shown here
+ * (use `inspect_range` for those); presence/absence is what governs the
+ * "don't override what chrome already provides" rule. */
+function renderDirectPPrPerFingerprint(doc: LoadedDoc): string[] {
+  const lines = ["=== Direct pPr per Fingerprint ==="]
+  const indexToElement = new Map<number, Element>()
+  for (const p of walkIndexedParagraphs(doc.documentDoc)) {
+    indexToElement.set(p.index, p.element)
+  }
+  const firstByLabel = new Map<string, ParsedParagraph>()
+  for (const p of doc.paragraphs) {
+    if (!firstByLabel.has(p.fingerprint)) firstByLabel.set(p.fingerprint, p)
+  }
+  for (const s of doc.summary) {
+    const sample = firstByLabel.get(s.label)
+    if (!sample) continue
+    const el = indexToElement.get(sample.index)
+    if (!el) continue
+    const pPr = firstChildNS(el, NS.w, "pPr")
+    const childNames: string[] = []
+    if (pPr) {
+      for (const c of getChildren(pPr)) {
+        if (c.namespaceURI !== NS.w) continue
+        if (c.localName === "rPr") {
+          // paragraph-mark rPr — note it but don't list its inner attrs
+          childNames.push("rPr(pMark)")
+        } else {
+          childNames.push(c.localName!)
+        }
+      }
+    }
+    lines.push(
+      `  ${s.label}: ${childNames.length > 0 ? childNames.join(", ") : "(none)"}`,
+    )
   }
   return lines
 }

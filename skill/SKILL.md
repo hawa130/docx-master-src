@@ -7,19 +7,22 @@ description: "Standardize, edit, or audit a Word (.docx) document via direct OOX
 
 Mutates Word (.docx) OOXML directly: produce well-formed documents from messy templates, install styles + numbering, convert hand-typed prefixes to auto-numbering, insert content, audit conformance. Output is a new docx; the original is never touched.
 
-## Authority
+## How to think about formatting
 
-When deciding what to write, follow this order:
+User prompt overrides everything below.
 
-1. **User prompt** — explicit requirements override everything below.
-2. **Document's own conventions** — existing chrome, prescribed typography from instruction paragraphs, slot layout. Match what the doc already shows.
-3. **Target state defaults** (below) — well-formed Word practice. When 1 and 2 are silent on a given attribute, apply the target default for it. Silence is not a reason to omit.
+Otherwise, treat a document as two kinds of paragraphs:
+
+- **Content chrome** — paragraphs with typed text already in the document (chapter markers, instruction notes, fixed labels). Their direct `pPr` / `rPr` is the document's typographic convention. **Preserve their direct format.** Re-tagging (changing `pStyle`, stripping a typed prefix) is fine; declaring an attribute they already carry in `styles[]` is not — that overrides chrome.
+- **Empty slots** — blank paragraphs pre-allocated for content insertion. **Fill freely** with content + your chosen formatting.
+
+The practical rule for `styles[]`: declare an attribute only when (a) the user prompt requires it, or (b) the style applies to empty slots that need it (locale defaults). Don't declare attributes content chrome already carries — engine's selective-strip preserves them as long as the style doesn't override.
 
 Tools surface visible facts; classification and judgment are yours.
 
-## Target state (default destination)
+## Target state (defaults for empty slots)
 
-A well-formed Word document expresses structure through **styles + numbering + sections**, not typed text mimicking structure (Microsoft / WebAIM / ECMA-376 consensus). When user prompt and document conventions don't specify, move toward this default:
+A well-formed Word document expresses structure through **styles + numbering + sections**, not typed text mimicking structure (Microsoft / WebAIM / ECMA-376 consensus). When filling empty slots, move toward:
 
 - Every paragraph carries a semantic styleId (Heading1..N / BodyText / ListNumber / Caption / etc.); direct paragraph format only as one-off exceptions.
 - One unified multi-level numbering scheme bound to all heading styles; one separate single-level scheme per list-bound style.
@@ -30,7 +33,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
   - **Inline-value** (short phrase filling a labeled cell) → inherit the slot's existing format.
   - **Block enumeration** (items each on their own paragraph) → `ListNumber` + single-level numbering scheme; markers come from the scheme.
   - **Inline enumeration** (items within one prose paragraph, e.g. `"... covers (1) X, (2) Y, (3) Z ..."`) → stays as prose text.
-- **Locale-specific typography.** CJK docs: prose body and list items get a 2-char first-line indent by default — set `firstLineIndent: "2char"` on `BodyText` / `ListNumber` unless user prompt or document conventions override. Literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
+- **Locale-specific typography.** CJK: prose body and list items get a 2-char first-line indent — declare `firstLineIndent: "2char"` on `BodyText` / `ListNumber`. Literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Commands
 
@@ -59,7 +62,7 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 `overview` first. From the output, note:
 
 - **Existing structure** — Heading levels, numbering schemes, fingerprints, document skeleton.
-- **Prescribed typography** — paragraphs in the doc that fix fonts / sizes / line spacing / alignment (front matter, instruction blocks, footnotes, "filling guidelines" sections). These override any defaults you would invent.
+- **Content chrome formatting** — what direct `pPr` / `rPr` content paragraphs carry (font / size / line spacing / alignment / indent). This IS the document's typographic convention; you'll preserve it by not declaring those attributes on the styles that re-tag these paragraphs.
 - **Typed structural prefixes** — chapter / section markers like `Chapter N.`, `第N章`, `一、`, `1.1`, `（一）`. List the shapes you see; one regex per shape feeds `pattern_rules`.
 - **Form-fill paragraphs** — text shaped like `label + long whitespace gap`, `label + ____ underscore placeholder`, or several `label / gap / label` pairs in one paragraph. The blank is usually a separate run with `<w:u/>`. Note indices for Step 2.
 - **Source content** (fill tasks) — what the user-provided content actually carries.
@@ -68,8 +71,7 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 
 Sketch the content's structural outline first; `styles[]` follows that outline, not the other way around. Reactive style additions accrete debt later edits have to re-untangle.
 
-- `styles[]` — install the styles the doc + content combined need: every Heading level; `BodyText`; `ListNumber` for block enumerations.
-- **Sizes follow existing chrome** (visual style summary in `overview`). When heading-shaped paragraphs share a uniform size with hierarchy signalled via weight / spacing / indent, preserve that — differentiate levels on the same axes. Invent sizes only when no chrome convention exists.
+- `styles[]` — install the styles the doc + content combined need: every Heading level; `BodyText`; `ListNumber` for block enumerations. **Per "How to think about formatting" above:** declare on each style only attributes the user prompt requires + locale defaults for empty-slot use cases. Don't declare attributes content chrome already carries (font size / line spacing / indent / alignment) — leaving them off lets chrome's direct values pass through restyle untouched.
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style. The scheme's `lvlText` chooses the marker shape (decimal / parenthesized / CJK 序号 / bullet / ...) — pick to match document convention or user request. Inserted text holds only item content; markers always come from the scheme, never typed.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
 - `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use the `set-run` op with a `run` locator (`blank: K` for Kth blank placeholder) — preserves the placeholder run's rPr automatically. Whole-paragraph `replace` is the wrong tool here.
@@ -111,7 +113,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 
 | Tool | Invocation | When to Use |
 |------|------------|-------------|
-| `overview` | `node scripts/overview.js <file>` | First call on any task. Metadata, page setup (mm), theme, style defs, numbering schemes (clustered by pattern), visual style statistics, document skeleton. |
+| `overview` | `node scripts/overview.js <file>` | First call on any task. Metadata, page setup (mm), theme, style defs, numbering schemes (clustered by pattern), visual style statistics, **direct-pPr summary per fingerprint** (which attributes content chrome carries — drives the "don't redeclare" rule), document skeleton. |
 | `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | Full text and computed styles for a paragraph range. |
 | `inspect_runs` | `node scripts/inspect_runs.js <file> <para>` | Per-run rPr dump. Use for paragraphs with mixed run-level formatting OR **form-fill segments** (label + underscore-blank pattern) — see how the blank is structured before deciding the edit shape. |
 | `inspect_neighbors` | `node scripts/inspect_neighbors.js <file> <para> [--radius N]` | What surrounds a paragraph. First choice for figure-caption / table-caption / first-after-heading classification. |
