@@ -13,7 +13,7 @@ When deciding what to write, follow this order:
 
 1. **User prompt** — explicit requirements override everything below.
 2. **Document's own conventions** — existing chrome (heading sizes, body typography, list shapes), prescribed typography from instruction paragraphs, slot layout. The doc tells you what it wants — match it.
-3. **Target state defaults** (below) — well-formed Word practice. Fall back here only when both above are silent.
+3. **Target state defaults** (below) — well-formed Word practice. **When 1 and 2 are silent on a given attribute, apply the target state default for that attribute** — silence is not a reason to omit. The user's prompt covers the points they care to specify; everything else falls through to defaults.
 
 ## Target state (default destination)
 
@@ -24,7 +24,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
 - Hierarchy and list markers come from auto-numbering — **never typed text** in either direction. Existing chrome stripped via `pattern_rules`; inserted content omits the prefix in `text`. Display follows the level's `lvlText` pattern (`%1` = own counter; `%1.%2` references multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
 - Heading levels nest without skipping.
 - **Match content shape to slot shape.** **Prose** (multi-paragraph body): prose typography. **Inline-value** (single short phrase filling a labeled cell): inherit the slot's existing format. **Block enumeration** (items each on their own paragraph): `ListNumber` + single-level numbering scheme; the scheme renders the marker. **Inline enumeration** (items within a single prose paragraph, `"... covers (1) X, (2) Y, and (3) Z ..."`): stays as prose text. List items default to body weight; bold only when the source explicitly emphasizes.
-- **Locale-specific typography.** CJK docs: prose body and list items typically take a 2-char first-line indent (so the list marker aligns with body's first character — flush-left looks foreign in CN academic conventions); literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
+- **Locale-specific typography.** CJK docs: prose body and list items get a 2-char first-line indent by default — set `firstLineIndent: "2char"` on `BodyText` / `ListNumber` styles unless user prompt or document conventions override (flush-left looks foreign in CN academic context; the list marker should align with body's first character). Literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Tools you are the analyst
 
