@@ -26,7 +26,7 @@ async function main() {
     out.push("")
     out.push(...renderVisualSummary(doc))
     out.push("")
-    out.push(...renderDirectPPrPerFingerprint(doc))
+    out.push(...renderDirectFormatPerFingerprint(doc))
     out.push("")
     out.push(...renderSkeleton(doc))
     console.log(out.join("\n"))
@@ -182,13 +182,14 @@ function renderVisualSummary(doc: LoadedDoc): string[] {
 }
 
 /** For each fingerprint, list which pPr children the first sample paragraph
- * carries DIRECTLY (not via style cascade). Lets the agent decide whether
- * an attribute is already set as chrome convention — in which case the
- * style shouldn't redeclare it. The values themselves aren't shown here
+ * carries DIRECTLY (not via style cascade), plus the union of run-level rPr
+ * children across the paragraph's `<w:r>` children. Lets the agent decide
+ * whether an attribute is already set as chrome convention — in which case
+ * the style shouldn't redeclare it. The values themselves aren't shown here
  * (use `inspect_range` for those); presence/absence is what governs the
- * "don't override what chrome already provides" rule. */
-function renderDirectPPrPerFingerprint(doc: LoadedDoc): string[] {
-  const lines = ["=== Direct pPr per Fingerprint ==="]
+ * "don't override what chrome already provides" rule across both axes. */
+function renderDirectFormatPerFingerprint(doc: LoadedDoc): string[] {
+  const lines = ["=== Direct Format per Fingerprint ==="]
   const indexToElement = new Map<number, Element>()
   for (const p of walkIndexedParagraphs(doc.documentDoc)) {
     indexToElement.set(p.index, p.element)
@@ -202,22 +203,32 @@ function renderDirectPPrPerFingerprint(doc: LoadedDoc): string[] {
     if (!sample) continue
     const el = indexToElement.get(sample.index)
     if (!el) continue
+    const pPrNames: string[] = []
     const pPr = firstChildNS(el, NS.w, "pPr")
-    const childNames: string[] = []
     if (pPr) {
       for (const c of getChildren(pPr)) {
         if (c.namespaceURI !== NS.w) continue
         if (c.localName === "rPr") {
           // paragraph-mark rPr — note it but don't list its inner attrs
-          childNames.push("rPr(pMark)")
+          pPrNames.push("rPr(pMark)")
         } else {
-          childNames.push(c.localName!)
+          pPrNames.push(c.localName!)
         }
       }
     }
-    lines.push(
-      `  ${s.label}: ${childNames.length > 0 ? childNames.join(", ") : "(none)"}`,
-    )
+    const rPrNames = new Set<string>()
+    for (const c of getChildren(el)) {
+      if (c.namespaceURI !== NS.w || c.localName !== "r") continue
+      const rPr = firstChildNS(c, NS.w, "rPr")
+      if (!rPr) continue
+      for (const cc of getChildren(rPr)) {
+        if (cc.namespaceURI !== NS.w) continue
+        rPrNames.add(cc.localName!)
+      }
+    }
+    const pPrStr = pPrNames.length > 0 ? pPrNames.join(", ") : "(none)"
+    const rPrStr = rPrNames.size > 0 ? [...rPrNames].join(", ") : "(none)"
+    lines.push(`  ${s.label}  pPr: ${pPrStr}  |  rPr: ${rPrStr}`)
   }
   return lines
 }

@@ -113,7 +113,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 
 | Tool | Invocation | When to Use |
 |------|------------|-------------|
-| `overview` | `node scripts/overview.js <file>` | First call on any task. Metadata, page setup (mm), theme, style defs, numbering schemes (clustered by pattern), visual style statistics, **direct-pPr summary per fingerprint** (which attributes content chrome carries — drives the "don't redeclare" rule), document skeleton. |
+| `overview` | `node scripts/overview.js <file>` | First call on any task. Metadata, page setup (mm), theme, style defs, numbering schemes (clustered by pattern), visual style statistics, **direct-format summary per fingerprint** (which pPr / run-level rPr attributes content chrome carries — drives the "don't redeclare" rule), document skeleton. |
 | `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | Full text and computed styles for a paragraph range. |
 | `inspect_runs` | `node scripts/inspect_runs.js <file> <para>` | Per-run rPr dump. Use for paragraphs with mixed run-level formatting OR **form-fill segments** (label + underscore-blank pattern) — see how the blank is structured before deciding the edit shape. |
 | `inspect_neighbors` | `node scripts/inspect_neighbors.js <file> <para> [--radius N]` | What surrounds a paragraph. First choice for figure-caption / table-caption / first-after-heading classification. |
