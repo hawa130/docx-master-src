@@ -73,6 +73,10 @@ export function printReport(args: {
     { empty: number; nonEmpty: number; nonEmptySamples: string[] }
   >
   unstrippedByStyle: Map<string, { count: number; samples: string[] }>
+  /** dry-run only: heuristic detection of typed-prefix residue in paragraphs
+   * bound to auto-numbered styles (catches inserted-with-prefix paragraphs
+   * that don't go through the rule-routing path unstrippedByStyle covers). */
+  manualNumberingDetected?: Map<string, { count: number; samples: string[] }>
   numberingBindings: Array<{
     styleId: string
     level: number
@@ -209,6 +213,24 @@ export function printReport(args: {
     }
     lines.push("  → Read the samples: a typed prefix you missed (add to stripPrefixPatterns)")
     lines.push("    or a clean heading without manual numbering (no action needed).")
+    lines.push("")
+  }
+  // Dry-run only: heuristic catch for typed prefixes that survived into
+  // numbered-style paragraphs. Distinct from unstrippedByStyle above:
+  // unstripped surfaces leading-text *samples* for agent classification;
+  // this section reports likely typed prefixes the regex inventory
+  // recognised, so the action is more concrete (strip on insert, or add a
+  // stripPrefixPattern for the chrome shape).
+  if (args.manualNumberingDetected && args.manualNumberingDetected.size > 0) {
+    lines.push("Manual numbering detected in numbered-style paragraphs:")
+    for (const [styleId, info] of args.manualNumberingDetected) {
+      const samples = info.samples.map((s) => `"${s}"`).join(" / ")
+      lines.push(`  ${styleId}: ${info.count} paragraphs  e.g. ${samples}`)
+    }
+    lines.push("  → For inserts (in `edits[]`): drop the typed prefix from `text` —")
+    lines.push("    the styleId's auto-numbering scheme already emits the marker.")
+    lines.push("    For chrome paragraphs: add a matching `stripPrefixPatterns` entry")
+    lines.push("    on the bound numbering level so the prefix is stripped on retag.")
     lines.push("")
   }
   if (args.patternMatchStats.size > 0) {

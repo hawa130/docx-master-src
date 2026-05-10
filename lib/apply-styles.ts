@@ -16,6 +16,7 @@ import {
 import { applyToBody } from "./para-mutation.ts"
 import { attachNumberingToStyle, injectNumbering, resolveSuff } from "./numbering-mutation.ts"
 import { applyListRestartPass } from "./list-restart.ts"
+import { detectManualNumbering } from "./manual-numbering-detect.ts"
 import { validateDocxFile } from "./docx-validate.ts"
 import { extractDisplayFields, printReport } from "./report.ts"
 import { reorderAgentTouchedStylesFirst, resolveStyleDef, upsertStyle } from "./style-mutation.ts"
@@ -574,6 +575,14 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     )
   })()
 
+  // Dry-run only: best-effort scan of `edits[]` Blocks for typed-prefix
+  // residue when the Block's styleId is bound to an auto-numbering scheme.
+  // Catches inserts typed by hand; chrome retags are already covered by
+  // `unstrippedByStyle`. Skip on real apply — agent already saw it.
+  const manualNumberingDetected = config.dryRun
+    ? detectManualNumbering(config.edits, new Set(numLvlTextByStyle.keys()))
+    : undefined
+
   printReport({
     source,
     injected,
@@ -591,6 +600,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     samples: ctx.samples,
     implicitKeepByFingerprint: ctx.implicitKeepByFingerprint,
     unstrippedByStyle: ctx.unstrippedByStyle,
+    manualNumberingDetected,
     numberingBindings,
     templateImport,
     editsPreview,
