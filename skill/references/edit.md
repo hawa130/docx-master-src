@@ -4,7 +4,7 @@
 
 *Illustrative phrasings: "把第 3 段改成 ...", "在 X 章后面插一段", "这个表格第 2 行换成 ...", "删掉那段开题摘要", "给第 5 段加粗", "在结论后插张图". For role-based whole-doc reshape, drive the change via `pattern_rules` / `bulk_rules` in the same config; for surgical location-based work, use this `edits` block.*
 
-There's no separate `apply_edits` CLI — pure content-only edits go through `apply` with `edits[]` and nothing else. When the task also needs style installation (template fill, missing Heading levels), the same `apply` config gets `styles[]` + `numbering` + `pattern_rules` blocks alongside `edits`. **One config, one call.**
+There's no separate `apply_edits` CLI — content edits run through `apply` with `edits[]`. Inserts that introduce structural roles (prose body, list items, sub-headings) need the matching style installed in `styles[]` so Blocks bind via `styleId` rather than ad-hoc per-op `paraFormat` / `runFormat`. `numbering` and `pattern_rules` slot in alongside when the task spans new structure + chrome retags. **One config, one call.**
 
 ## Reconnaissance first
 

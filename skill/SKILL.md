@@ -14,13 +14,13 @@ User prompt overrides everything below.
 Otherwise, treat a document as two kinds of paragraphs:
 
 - **Content chrome** — paragraphs with typed text already in the document (chapter markers, instruction notes, fixed labels). Their direct `pPr` / `rPr` is the document's typographic convention. **Preserve their direct format.** Re-tagging (changing `pStyle`, stripping a typed prefix) is fine; declaring an attribute they already carry in `styles[]` is not — that overrides chrome.
-- **Empty slots** — blank paragraphs pre-allocated for content insertion. **Fill freely** with content + your chosen formatting.
+- **Empty slots** — blank paragraphs pre-allocated for content insertion. **Bind inserted content to a semantic style** (`BodyText` for prose, `ListNumber` / `ListBullet` for block enumerations, `Heading1..N` for sub-sections); install the style in `styles[]` if the doc doesn't already have one that fits. `Normal` is the fallback style, not a body style — don't bind body prose to it.
 
-The practical rule for `styles[]`: declare an attribute only when (a) the user prompt requires it, or (b) the style applies to empty slots that need it (locale defaults). Don't declare attributes content chrome already carries — engine's selective-strip preserves them as long as the style doesn't override.
+The practical rule for `styles[]`: install one style per semantic role the doc + content combined contain. On each style, declare an attribute only when (a) the user prompt requires it, or (b) the style applies to empty slots that need it (locale defaults). Don't declare attributes content chrome already carries — engine's selective-strip preserves them as long as the style doesn't override.
 
 Tools surface visible facts; classification and judgment are yours.
 
-## Target state (defaults for empty slots)
+## Target state
 
 A well-formed Word document expresses structure through **styles + numbering + sections**, not typed text mimicking structure (Microsoft / WebAIM / ECMA-376 consensus). When filling empty slots, move toward:
 
@@ -39,7 +39,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
 
 | Command | When | Reference |
 |---|---|---|
-| **`apply`** | The unified writer. Install styles + numbering + theme + template, restyle by pattern / fingerprint, insert content via edits — single config, single call. Pure-edit tasks use `apply` with just `edits[]`. | [standardize.md](references/standardize.md) + [edit.md](references/edit.md) |
+| **`apply`** | The unified writer. Install styles + numbering + theme + template, restyle by pattern / fingerprint, insert content via edits — single config, single call. | [standardize.md](references/standardize.md) + [edit.md](references/edit.md) |
 | `audit` | Read-only conformance check; no file output. | [audit.md](references/audit.md) |
 
 `apply` pipeline order:
@@ -69,12 +69,12 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 
 ### 2. Design ONE config
 
-Sketch the content's structural outline first; `styles[]` follows that outline, not the other way around. Reactive style additions accrete debt later edits have to re-untangle.
+Plan styles first based on the content's structural outline. Then route in one config: chrome → apply those styles via `pattern_rules` / `assignments` / `bulk_rules`; inserts → bind via `styleId` on `edits[]` Blocks. Reactive style additions later accrete debt.
 
-- `styles[]` — install the styles the doc + content combined need: every Heading level; `BodyText`; `ListNumber` for block enumerations. **Per "How to think about formatting" above:** declare on each style only attributes the user prompt requires + locale defaults for empty-slot use cases. Don't declare attributes content chrome already carries (font size / line spacing / indent / alignment) — leaving them off lets chrome's direct values pass through restyle untouched.
+- `styles[]` — install one style per semantic role the doc + content combined contain (every Heading level used, `BodyText` for prose, `ListNumber` for block enumerations, etc.). **Per "How to think about formatting" above:** declare on each style only attributes the user prompt requires + locale defaults for empty-slot use cases. Don't declare attributes content chrome already carries (font size / line spacing / indent / alignment) — leaving them off lets chrome's direct values pass through restyle untouched.
 - `numbering` — one multi-level scheme bound to Heading1..N; one single-level per list-bound style. The scheme's `lvlText` chooses the marker shape (decimal / parenthesized / CJK 序号 / bullet / ...) — pick to match document convention or user request. Inserted text holds only item content; markers always come from the scheme, never typed.
 - `pattern_rules` — one regex per chrome shape with `stripMatch: true`. Applies uniformly to every match.
-- `edits[]` — content insertion. For **form-fill paragraphs** identified in Step 1, use the `set-run` op with a `run` locator (`blank: K` for Kth blank placeholder) — preserves the placeholder run's rPr automatically. Whole-paragraph `replace` is the wrong tool here.
+- `edits[]` — content insertion. New `paragraph` Blocks bind to the styles you installed via `styleId`; per-op `paraFormat` / `runFormat` are one-off overrides, not the default. For **form-fill paragraphs** identified in Step 1, use the `set-run` op with a `run` locator (`blank: K` for Kth blank placeholder) — preserves the placeholder run's rPr automatically; whole-paragraph `replace` is the wrong tool there.
 - `bulk_rules` — fingerprint-keyed routing for body paragraphs without a clean text pattern. Whether to route a given fingerprint is a Step 3 question — `dry-run` flags unrouted ones via implicit-keep, and you decide there.
 - `exclude` — false-positive corrections.
 - `assignments` — per-paragraph corrections, **last resort**, for outliers only.
