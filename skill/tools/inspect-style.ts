@@ -53,6 +53,7 @@ function formatRPr(p: ParsedParagraph): string {
   if (r.italic) parts.push(`italic: true`)
   if (r.color && r.color !== "auto") parts.push(`color: ${r.color}`)
   if (r.underline) parts.push(`underline: ${r.underline}`)
+  if (r.vertAlign) parts.push(`vertAlign: ${r.vertAlign}`)
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 

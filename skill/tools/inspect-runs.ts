@@ -201,6 +201,7 @@ const ROLE_HINT_PROPS = [
   "u",
   "highlight",
   "strike",
+  "vertAlign",
 ]
 
 function renderReport(

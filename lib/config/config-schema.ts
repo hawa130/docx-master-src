@@ -57,6 +57,10 @@ const styleFormatFields = {
   firstLineIndent: z.optional(IndentValue),
   hangingIndent: z.optional(IndentValue),
   outlineLevel: z.optional(z.number().check(z.gte(0), z.lte(9))),
+  // Run-level baseline shift. "baseline" is the explicit reset — distinct
+  // from omitting the field (= inherit). Use "baseline" only when the
+  // basedOn cascade declares super/sub and this style needs to opt out.
+  vertAlign: z.optional(z.enum(["superscript", "subscript", "baseline"])),
 }
 
 /* ------------- styles[] entry ------------- */

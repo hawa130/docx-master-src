@@ -63,6 +63,7 @@ function formatRPr(r: ComputedRunStyle): string {
   if (r.highlight) parts.push(`highlight: ${r.highlight}`)
   if (r.strike) parts.push(`strike: ${r.strike}`)
   if (r.caps) parts.push(`caps: ${r.caps}`)
+  if (r.vertAlign) parts.push(`vertAlign: ${r.vertAlign}`)
   return `{ ${parts.join(", ")} }`
 }
 

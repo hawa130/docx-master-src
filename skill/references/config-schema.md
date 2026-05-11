@@ -75,6 +75,11 @@ config; SKILL.md only carries a top-level summary.
   bold:            false,      // optional. Default false.
   italic:          false,      // optional. Default false.
   color:           "auto",     // optional. Hex ("2E75B6") or "auto". Default "auto".
+  vertAlign:       "superscript", // optional. "superscript" | "subscript" | "baseline".
+                               //   Used on character styles (FootnoteReference,
+                               //   EndnoteReference, or custom super/sub styles).
+                               //   "baseline" is the explicit reset — distinct from
+                               //   omitting the field (= inherit cascade).
   alignment:       "center",   // optional. "left" | "center" | "right" | "both".
   lineSpacing:     1.5,        // optional. Number or "Npt" string (e.g. 20 or "20pt").
                                //   Number: <10 → multiplier (auto rule); ≥10 → pt (exact rule).

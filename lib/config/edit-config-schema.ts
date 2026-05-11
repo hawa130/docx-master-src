@@ -48,6 +48,10 @@ export const RunFormatSchema = z.strictObject({
   fontLatin: z.optional(z.string()),
   fontCJK: z.optional(z.string()),
   size: z.optional(z.number().check(z.gt(0))),
+  // "baseline" is the explicit reset to normal baseline (use when a parent
+  // character style declares super/sub and this run needs to opt out);
+  // omitting the field inherits whatever the cascade resolves to.
+  vertAlign: z.optional(z.enum(["superscript", "subscript", "baseline"])),
 })
 
 /* ------------- paragraph-level format ------------- */

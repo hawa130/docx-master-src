@@ -83,6 +83,7 @@ const STRIPPABLE_FIELDS: ReadonlySet<string> = new Set([
   "bold",
   "italic",
   "color",
+  "vertAlign",
 ])
 
 /* ------------- schema-drift guard -------------
@@ -108,6 +109,7 @@ type FormatFieldKey = Extract<
   | "bold"
   | "italic"
   | "color"
+  | "vertAlign"
   | "alignment"
   | "lineSpacing"
   | "lineRule"
@@ -125,6 +127,7 @@ const FORMAT_FIELDS = [
   "bold",
   "italic",
   "color",
+  "vertAlign",
   "alignment",
   "lineSpacing",
   "lineRule",

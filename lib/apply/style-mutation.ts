@@ -91,6 +91,7 @@ export function extractPriorDisplayFields(
   if (rPr.bold !== undefined) out.bold = rPr.bold
   if (rPr.italic !== undefined) out.italic = rPr.italic
   if (rPr.color && rPr.color !== "auto") out.color = rPr.color
+  if (rPr.vertAlign) out.vertAlign = rPr.vertAlign
   if (pPr.alignment) out.alignment = pPr.alignment
   if (pPr.spaceBefore !== undefined) out.spaceBefore = pPr.spaceBefore / 20
   if (pPr.spaceAfter !== undefined) out.spaceAfter = pPr.spaceAfter / 20
@@ -133,6 +134,7 @@ export function computedStyleToEntry(
   if (r.bold) out.bold = true
   if (r.italic) out.italic = true
   if (r.color && r.color !== "auto") out.color = r.color
+  if (r.vertAlign) out.vertAlign = r.vertAlign
   if (pp.alignment) out.alignment = pp.alignment as StyleConfigEntry["alignment"]
   if (pp.spaceBefore !== undefined) out.spaceBefore = pp.spaceBefore / 20
   if (pp.spaceAfter !== undefined) out.spaceAfter = pp.spaceAfter / 20
@@ -208,7 +210,17 @@ function resolveStyleRef(stylesDoc: Document, val: string, selfId?: string): str
  * one without adding the corresponding write paths would silently drop
  * existing style attrs (e.g. <w:u>) that the engine has no way to put back. */
 const PPR_MANAGED_CHILDREN = new Set(["spacing", "ind", "jc", "outlineLvl"])
-const RPR_MANAGED_CHILDREN = new Set(["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color"])
+const RPR_MANAGED_CHILDREN = new Set([
+  "rFonts",
+  "sz",
+  "szCs",
+  "b",
+  "bCs",
+  "i",
+  "iCs",
+  "color",
+  "vertAlign",
+])
 
 export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "updated" {
   const w = NS.w
@@ -396,6 +408,11 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     const color = stylesDoc.createElementNS(w, "w:color")
     color.setAttributeNS(w, "w:val", def.color)
     rPrAdditions.push(color)
+  }
+  if (def.vertAlign) {
+    const va = stylesDoc.createElementNS(w, "w:vertAlign")
+    va.setAttributeNS(w, "w:val", def.vertAlign)
+    rPrAdditions.push(va)
   }
   if (rPrAdditions.length > 0) {
     if (!rPr) {

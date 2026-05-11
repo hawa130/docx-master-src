@@ -234,6 +234,11 @@ export class StyleResolver {
     const caps = firstChildNS(rPrEl, NS.w, "caps")
     const capsToggle = parseToggle(caps)
     if (capsToggle !== undefined) out.caps = capsToggle
+    const vertAlign = firstChildNS(rPrEl, NS.w, "vertAlign")
+    if (vertAlign) {
+      const v = wVal(vertAlign)
+      if (v === "superscript" || v === "subscript" || v === "baseline") out.vertAlign = v
+    }
     return out
   }
 

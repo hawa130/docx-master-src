@@ -30,6 +30,7 @@ export function extractDisplayFields(def: StyleConfigEntry): Record<string, unkn
     "bold",
     "italic",
     "color",
+    "vertAlign",
     "alignment",
     "lineSpacing",
     "lineRule",

@@ -215,7 +215,17 @@ function setParagraphStyle(pEl: Element, styleId: string) {
   pStyle.setAttributeNS(w, "w:val", styleId)
 }
 
-const RPR_CONFLICT_NAMES = ["rFonts", "sz", "szCs", "b", "bCs", "i", "iCs", "color"] as const
+const RPR_CONFLICT_NAMES = [
+  "rFonts",
+  "sz",
+  "szCs",
+  "b",
+  "bCs",
+  "i",
+  "iCs",
+  "color",
+  "vertAlign",
+] as const
 
 function stripConflictingDirectFormatting(
   pEl: Element,

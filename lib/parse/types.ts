@@ -10,6 +10,9 @@ export interface ComputedRunStyle {
   highlight?: string
   strike?: boolean
   caps?: boolean
+  /** OOXML `<w:vertAlign>` baseline shift. "baseline" is the explicit
+   * reset — distinct from undefined (= inherit / unspecified). */
+  vertAlign?: "superscript" | "subscript" | "baseline"
 }
 
 export interface ComputedParaStyle {

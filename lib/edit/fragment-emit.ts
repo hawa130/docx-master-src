@@ -86,6 +86,11 @@ export function buildRPrChildren(fmt: RunFormat, ownerDoc: Document): Element[] 
     c.setAttributeNS(w, "w:val", fmt.color)
     out.push(c)
   }
+  if (fmt.vertAlign) {
+    const va = ownerDoc.createElementNS(w, "w:vertAlign")
+    va.setAttributeNS(w, "w:val", fmt.vertAlign)
+    out.push(va)
+  }
   // CT_RPr children must appear in EG_RPrBase order (b/bCs before sz/szCs,
   // etc.). Callers append in returned order, so sort here once instead of
   // making each call site care.
@@ -117,6 +122,7 @@ export const RPR_MANAGED_LOCAL_NAMES: ReadonlySet<string> = new Set([
   "u",
   "strike",
   "color",
+  "vertAlign",
 ])
 
 /* ------------- paragraph-level format ------------- */

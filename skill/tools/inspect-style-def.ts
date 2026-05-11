@@ -79,6 +79,7 @@ function formatStyleProps(r: ComputedRunStyle, pp: ComputedParaStyle): string {
   if (r.bold !== undefined) parts.push(`bold: ${r.bold}`)
   if (r.italic !== undefined) parts.push(`italic: ${r.italic}`)
   if (r.color) parts.push(`color: ${r.color}`)
+  if (r.vertAlign) parts.push(`vertAlign: ${r.vertAlign}`)
   if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
   if (pp.outlineLevel !== undefined) parts.push(`outlineLevel: ${pp.outlineLevel}`)
   if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)

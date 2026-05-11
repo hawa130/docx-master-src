@@ -49,7 +49,7 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 - **`insert-before` / `insert-after`** — `{ ..., "content": [Block, ...] }`. Inserts fragment immediately before / after the target.
 - **`delete`** — `{ ... }`. Removes the targeted paragraph(s).
 - **`format`** — `{ ..., "styleId"?, "runFormat"?, "paraFormat"? }`. Mutates existing paragraphs without changing their content. At least one of styleId / runFormat / paraFormat required.
-- **`set-run`** — `{ "at": <run-locator>, "with": "value text", "format"?: { ... } }`. Replaces the targeted run's text while preserving its rPr (font / underline / size carry through). Use for filling form-fill placeholder runs without manually reconstructing label + value runs. `format` accepts the same fields as `runFormat` (bold / italic / underline / strike / color / fontLatin / fontCJK / size); absent, the run's existing rPr stays verbatim.
+- **`set-run`** — `{ "at": <run-locator>, "with": "value text", "format"?: { ... } }`. Replaces the targeted run's text while preserving its rPr (font / underline / size carry through). Use for filling form-fill placeholder runs without manually reconstructing label + value runs. `format` accepts the same fields as `runFormat` (bold / italic / underline / strike / color / fontLatin / fontCJK / size / vertAlign); absent, the run's existing rPr stays verbatim.
 
 ### Match-destination formatting (default)
 
@@ -80,7 +80,7 @@ If the styleId or numId you reference doesn't exist in the doc, add `styles[]` /
 
 ### Format fields
 
-`runFormat`: `bold` / `italic` / `underline` / `strike` (boolean, tri-state — `false` emits explicit off-toggle to override inherited true), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (pt).
+`runFormat`: `bold` / `italic` / `underline` / `strike` (boolean, tri-state — `false` emits explicit off-toggle to override inherited true), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (pt), `vertAlign` (`"superscript"` / `"subscript"` / `"baseline"` — three-state; omit to inherit, use `"baseline"` only to opt out of a super/sub inherited from a character style).
 
 `paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (pt), `lineSpacing` + `lineRule` (same convention as a style definition), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (`"Nchar"` / `"Npt"` / number), `outlineLevel` (0–9).
 
