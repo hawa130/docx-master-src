@@ -1,5 +1,7 @@
 # Standardize-shape `apply` config
 
+Standardize adds **structure** (semantic styleId, outlineLevel, auto-numbering, sectioning). Typography stays where the template put it — touch font / size / alignment only when (a) the user prompt explicitly names them, or (b) chrome is inconsistent enough that no exemplar can be extracted. Reading "标准化 / 排版" as "reset typography to canonical values" is the most common agent failure on this skill.
+
 How to compose an `apply` config that reshapes a Word document's style
 system, numbering, and role assignments. Operates by **pattern**: you
 describe categories of paragraphs (regex match / fingerprint match /
@@ -37,13 +39,28 @@ For most whole-doc reshape tasks, design **one** `apply` config that does the en
   "source": "input.docx",
   "output": "output.docx",
 
-  // 1. Every Heading level the doc + content combined need.
+  // 1. styles[]: install one entry per semantic role the doc + content need.
+  //    Mode A (preferred) extracts the definition from a representative
+  //    paragraph already styled as this role — no fields invented. Mode B
+  //    (explicit fields) is the fallback when no exemplar exists or the
+  //    user prompt explicitly names typography. Locale defaults belong on
+  //    fresh styles, not piled onto Mode A extractions.
   "styles": [
-    { "id": "Heading1", "name": "heading 1", "fontCJK": "黑体", "size": 14, "bold": true, "overrides": { "outlineLevel": 0 } },
-    { "id": "Heading2", "name": "heading 2", "fontCJK": "黑体", "size": 13, "bold": true, "overrides": { "outlineLevel": 1 } },
-    { "id": "Heading3", "name": "heading 3", "fontCJK": "黑体", "size": 12, "bold": true, "overrides": { "outlineLevel": 2 } },
-    { "id": "Heading4", "name": "heading 4", "fontCJK": "黑体", "size": 12, "bold": true, "overrides": { "outlineLevel": 3 } },
-    { "id": "ListNumber", "name": "List Number", "fontCJK": "宋体", "size": 12 }
+    // Mode A (preferred): replace 33/47/... with paragraph indices from
+    // your overview that already look like this role. The engine pulls
+    // font / size / weight / indent / spacing from the actual paragraph —
+    // nothing gets hallucinated. outlineLevel is structural (binds the
+    // style to Word's outline view), so it stays at top-level.
+    { "id": "Heading1", "name": "heading 1", "fromParagraph": 33, "outlineLevel": 0 },
+    { "id": "Heading2", "name": "heading 2", "fromParagraph": 47, "outlineLevel": 1 },
+    { "id": "Heading3", "name": "heading 3", "fromParagraph": 58, "outlineLevel": 2 },
+    { "id": "Heading4", "name": "heading 4", "fromParagraph": 71, "outlineLevel": 3 },
+
+    // Mode B (fallback): explicit fields. Use when source has no
+    // representative paragraph (empty template), OR the user prompt
+    // explicitly names typography. Declare ONLY what the user spec asks
+    // or what the empty slot needs (locale defaults).
+    { "id": "ListNumber", "name": "List Number", "fontCJK": "宋体", "size": 12, "firstLineIndent": "2char" }
     // Add Caption / Quote / Code / etc. as the doc + content require.
   ],
 
