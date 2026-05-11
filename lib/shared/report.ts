@@ -1,6 +1,7 @@
 import type { EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import type { ImportResult } from "@lib/apply/template-import.ts"
+import type { VsDirectReport } from "@lib/shared/vs-direct.ts"
 import type {
   FlagRecord,
   RestyleSample,
@@ -93,12 +94,11 @@ function shortVal(v: unknown): string {
  *    - 0 target paragraphs → emit a single placeholder line.
  *    - All declared fields land in "new" (no override or redundant on any
  *      target) → skip — sparse declaration that adds without conflict. */
-function renderVsDirect(
-  r: import("@lib/shared/vs-direct.ts").VsDirectReport,
-  lines: string[],
-): void {
+function renderVsDirect(r: VsDirectReport, lines: string[]): void {
   if (r.targetCount === 0) {
-    lines.push(`    vs target direct: (no paragraphs targeted)`)
+    lines.push(
+      `    vs target direct: (no chrome targets; edits[]-inserts excluded from analysis)`,
+    )
     return
   }
   const interesting = r.fields.filter((f) => f.override > 0 || f.redundant > 0)

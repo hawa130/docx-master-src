@@ -17,13 +17,14 @@
  */
 
 import { DocxReader } from "@lib/xml/reader.ts"
-import { NS } from "@lib/parse/types.ts"
+import { NS, type ParsedParagraph } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
 import { PPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import {
   assertNever,
   makeTrackContext,
   type EditOp,
+  type Fragment,
   type ResolvedEdit,
   type ResolvedTarget,
   type TrackContext,
@@ -92,7 +93,7 @@ export interface EditsPreviewEntry {
 
 export interface PreviewEditsInput {
   documentDoc: Document
-  parsedParagraphs: import("@lib/parse/types.ts").ParsedParagraph[]
+  parsedParagraphs: ParsedParagraph[]
   edits: EditOp[]
 }
 
@@ -167,7 +168,7 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
 
 export interface RunEditOpsInput {
   documentDoc: Document
-  parsedParagraphs: import("@lib/parse/types.ts").ParsedParagraph[]
+  parsedParagraphs: ParsedParagraph[]
   reader: DocxReader
   edits: EditOp[]
   trackChanges: boolean
@@ -428,7 +429,7 @@ function mergeMissingAttrs(source: Element, target: Element): void {
 
 function inheritFormatForNewParagraphs(
   newEls: Element[],
-  newBlocks: import("@lib/config/edit-types.ts").Fragment,
+  newBlocks: Fragment,
   anchor: Element | null,
   ownerDoc: Document,
 ): void {
@@ -497,7 +498,7 @@ function ensureCellHasParagraph(tc: Element, ownerDoc: Document): void {
 
 function applyInsertBefore(
   target: ResolvedTarget,
-  fragment: import("@lib/config/edit-types.ts").Fragment,
+  fragment: Fragment,
   documentDoc: Document,
   trackContext: TrackContext,
   emitCtx: EmitContext,
@@ -524,7 +525,7 @@ function applyInsertBefore(
 
 function applyInsertAfter(
   target: ResolvedTarget,
-  fragment: import("@lib/config/edit-types.ts").Fragment,
+  fragment: Fragment,
   documentDoc: Document,
   trackContext: TrackContext,
   emitCtx: EmitContext,
@@ -570,7 +571,7 @@ function insertAtContainerEnd(
 
 function applyReplace(
   target: ResolvedTarget,
-  fragment: import("@lib/config/edit-types.ts").Fragment,
+  fragment: Fragment,
   documentDoc: Document,
   trackContext: TrackContext,
   emitCtx: EmitContext,

@@ -10,6 +10,7 @@ import type {
   TemplateSchema,
   ThemeFontsSchema,
 } from "@lib/config/config-schema.ts"
+import type { VsDirectReport } from "@lib/shared/vs-direct.ts"
 
 /* ------------- public config types -------------
  *
@@ -69,7 +70,7 @@ export interface StyleResolutionEntry {
    * styles.xml cascade — sparse-by-design's real invariant lives at the
    * direct-format layer. Undefined when no target paragraphs / analysis
    * skipped. */
-  vsDirect?: import("../shared/vs-direct.ts").VsDirectReport
+  vsDirect?: VsDirectReport
 }
 
 export interface CompiledPatternRule {
