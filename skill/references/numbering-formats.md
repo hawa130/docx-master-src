@@ -72,12 +72,12 @@ Level 0: 表 1 / 表 2 / 表 3            numFmt=decimal  lvlText="表 %1"   suf
 ```
 Use a separate `numId` per caption family so figures and tables count independently.
 
-### Chapter-Prefixed Caption (`图 1-1`, `图 1-2`, `图 2-1`)
+### Chapter-Prefixed Caption (`图 1-1`, `表 1-1`, `图 2-1`, ...)
 ```
 Level 0: (mirrors Heading1's counter; no display)  numFmt=decimal  lvlText=""        suff="nothing"
 Level 1: 图 1-1 / 图 1-2 / 图 2-1                  numFmt=decimal  lvlText="图 %1-%2" suff="space"
 ```
-Captions sit on level 1; level 0 silently tracks the chapter number, restart-on-Heading1 via the chapter style's own numbering. Bind caption paragraphs to level 1; the body never sees level 0.
+Captions sit on level 1; level 0 silently tracks the chapter number, restart-on-Heading1 via the chapter style's own numbering. Bind caption paragraphs to level 1; the body never sees level 0. For tables use the same shape with `lvlText="表 %1-%2"` on a separate `numId` so figures and tables count independently.
 
 ### Reference List
 ```

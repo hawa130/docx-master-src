@@ -106,7 +106,7 @@ When you do ask: one focused message naming the choice + your default, then yiel
 
 Surface to the user when blocked by: layout-**table** restructuring, TOC body content, footnotes / comments / headers / footers content. Paragraphs *inside* layout-table cells ARE indexed and fully editable; only the table holding them is off-limits.
 
-**Auto-updating cross-references (REF fields).** Captions auto-number stably when bound to a numbering scheme, but body-text cites to them ("如图 1 所示", "见 [3]") are emitted as literal text — this skill does not produce `<w:fldChar>` REF fields. The literals will silently desync the moment a figure is inserted or a reference reordered. When the doc has auto-numbered captions / references, finish by telling the user: for production use, replace in-text cites via Word's *Insert → Cross-reference* UI so they auto-update.
+**Auto-updating cross-references (REF fields).** Captions auto-number stably when bound to a numbering scheme, but body-text cites to them ("如图 1 所示", "见表 2", "见 [3]") are emitted as literal text — this skill does not produce `<w:fldChar>` REF fields. The literals will silently desync the moment a figure / table is inserted or a reference reordered. When the doc has auto-numbered captions / references, finish by telling the user: for production use, replace in-text cites via Word's *Insert → Cross-reference* UI so they auto-update.
 
 ## Tool Reference
 
