@@ -54,7 +54,8 @@ async function main() {
           const text = cellText(cells[c]!)
           const snippet = text.length > 40 ? text.slice(0, 40) + "…" : text
           const paraSpan = formatParaSpan(cells[c]!, indexByElement)
-          out.push(`  [${r},${c}] ${JSON.stringify(snippet)}${paraSpan}`)
+          // Display 1-based to match the cell locator's 1-based row/col fields.
+          out.push(`  [${r + 1},${c + 1}] ${JSON.stringify(snippet)}${paraSpan}`)
         }
       }
       out.push("")

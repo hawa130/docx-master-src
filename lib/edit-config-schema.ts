@@ -140,9 +140,9 @@ const RangeLocatorSchema = z
 
 const CellLocatorSchema = z.strictObject({
   type: z.literal("cell"),
-  table: z.number().check(z.gte(0)),
-  row: z.number().check(z.gte(0)),
-  col: z.number().check(z.gte(0)),
+  table: z.number().check(z.gte(1)),
+  row: z.number().check(z.gte(1)),
+  col: z.number().check(z.gte(1)),
 })
 
 const HeadingLocatorSchema = z.strictObject({
@@ -157,16 +157,16 @@ const WholeBodyLocatorSchema = z.strictObject({
 
 /** Run-level locator. Targets one specific <w:r> within a paragraph — used
  * by `set-run` to replace blank/placeholder run text while preserving the
- * surrounding label runs. Pick the run by 0-based `runIndex`, or by `blank`
+ * surrounding label runs. Pick the run by 1-based `runIndex`, or by `blank`
  * (Kth run whose text is whitespace-only and rPr carries `<w:u/>` — typical
  * form-fill placeholder). When both omitted, defaults to the first blank
- * run (`blank: 0`). */
+ * run (`blank: 1`). */
 export const RunLocatorSchema = z
   .strictObject({
     type: z.literal("run"),
     paragraph: z.number().check(z.gte(1)),
-    blank: z.optional(z.number().check(z.gte(0))),
-    runIndex: z.optional(z.number().check(z.gte(0))),
+    blank: z.optional(z.number().check(z.gte(1))),
+    runIndex: z.optional(z.number().check(z.gte(1))),
   })
   .check(
     z.refine((loc) => !(loc.blank !== undefined && loc.runIndex !== undefined), {

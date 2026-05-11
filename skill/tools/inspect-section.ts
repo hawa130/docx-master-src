@@ -6,19 +6,23 @@ async function main() {
   const file = process.argv[2]
   const idxArg = process.argv[3]
   if (!file || idxArg === undefined) {
-    console.error("Usage: node scripts/inspect_section.js <docx-path> <section-index>")
+    console.error(
+      "Usage: node scripts/inspect_section.js <docx-path> <section-index>  (1-based; matches `Section N` in overview)",
+    )
     process.exit(1)
   }
   const idx = parseInt(idxArg, 10)
   try {
     const doc = await loadDocx(file)
-    const sec = doc.sections[idx]
-    if (!sec) {
-      console.error(`Section ${idx} not found (have ${doc.sections.length})`)
+    if (idx < 1 || idx > doc.sections.length) {
+      console.error(
+        `Section ${idx} not found. Document has ${doc.sections.length} section(s); valid 1..${doc.sections.length}.`,
+      )
       process.exit(1)
     }
+    const sec = doc.sections[idx - 1]!
     const out: string[] = []
-    out.push(`Section ${sec.index} (paragraphs #${sec.paraRange[0]}-#${sec.paraRange[1]})`)
+    out.push(`Section ${idx} (paragraphs #${sec.paraRange[0]}-#${sec.paraRange[1]})`)
     const paper = paperName(sec.pageSize.width, sec.pageSize.height)
     out.push(
       `  Paper:       ${paper} (${tw2mm(sec.pageSize.width)} × ${tw2mm(sec.pageSize.height)} mm)`,
@@ -32,10 +36,10 @@ async function main() {
     out.push(`  Footer: ${sec.footer ?? "(none)"}`)
     if (sec.footerPageNumFormat) out.push(`  Footer page format: ${sec.footerPageNumFormat}`)
 
-    if (idx > 0) {
-      const prev = doc.sections[idx - 1]!
+    if (idx > 1) {
+      const prev = doc.sections[idx - 2]!
       out.push("")
-      out.push(`  Differs from Section ${prev.index}:`)
+      out.push(`  Differs from Section ${idx - 1}:`)
       const diffs = diffSections(prev, sec)
       if (diffs.length === 0) out.push(`    (no differences)`)
       for (const d of diffs) out.push(`    ${d}`)

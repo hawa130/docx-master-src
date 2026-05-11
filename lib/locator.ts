@@ -64,8 +64,8 @@ export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
 /* ------------- table walk (for cell locator) ------------- */
 
 interface TableRef {
-  /** 0-based top-level table position (document order). Includes layout, data,
-   * form alike — cell locator addresses any table by raw position so the
+  /** 1-based top-level table position (document order). Includes layout, data,
+   * form alike — cell locator addresses any table by position so the
    * agent can target data/form tables that paragraph indices skip. */
   tableIndex: number
   element: Element
@@ -77,7 +77,7 @@ export function walkTopLevelTables(documentDoc: Document): TableRef[] {
   if (!root) return out
   const body = firstChildNS(root, NS.w, "body")
   if (!body) return out
-  let i = 0
+  let i = 1
   for (const child of getChildren(body)) {
     if (child.namespaceURI === NS.w && child.localName === "tbl") {
       out.push({ tableIndex: i++, element: child })
@@ -185,25 +185,28 @@ function resolveCell(
   col: number,
   ctx: ResolverContext,
 ): ResolvedTarget {
-  if (table < 0 || table >= ctx.tables.length) {
+  // All three coords are 1-based agent-facing; convert to 0-based for array
+  // access here. Error messages keep the 1-based form so they line up with
+  // what the agent wrote in their config.
+  if (table < 1 || table > ctx.tables.length) {
     throw new Error(
-      `cell.table: index ${table} out of range. Document has ${ctx.tables.length} top-level table(s).`,
+      `cell.table: index ${table} out of range. Document has ${ctx.tables.length} top-level table(s); valid 1..${ctx.tables.length}.`,
     )
   }
-  const tbl = ctx.tables[table]!.element
+  const tbl = ctx.tables[table - 1]!.element
   const rows = getChildrenNS(tbl, NS.w, "tr")
-  if (row < 0 || row >= rows.length) {
+  if (row < 1 || row > rows.length) {
     throw new Error(
-      `cell.row: index ${row} out of range. Table ${table} has ${rows.length} row(s).`,
+      `cell.row: index ${row} out of range. Table ${table} has ${rows.length} row(s); valid 1..${rows.length}.`,
     )
   }
-  const cells = getChildrenNS(rows[row]!, NS.w, "tc")
-  if (col < 0 || col >= cells.length) {
+  const cells = getChildrenNS(rows[row - 1]!, NS.w, "tc")
+  if (col < 1 || col > cells.length) {
     throw new Error(
-      `cell.col: index ${col} out of range. Table ${table} row ${row} has ${cells.length} cell(s).`,
+      `cell.col: index ${col} out of range. Table ${table} row ${row} has ${cells.length} cell(s); valid 1..${cells.length}.`,
     )
   }
-  const tc = cells[col]!
+  const tc = cells[col - 1]!
   const paragraphs = getChildrenNS(tc, NS.w, "p")
   return { paragraphs, container: tc }
 }
@@ -243,10 +246,10 @@ function resolveWholeBody(ctx: ResolverContext): ResolvedTarget {
 
 /** Resolve a `set-run` op's RunLocator. Returns the target paragraph element
  * and the specific run element to mutate. The run is selected by:
- *   - `runIndex: M`     → 0-based run index in the paragraph
- *   - `blank: K`        → Kth run that's a "blank" placeholder (whitespace-only
- *                         text + rPr containing `<w:u/>`)
- *   - neither given     → first blank run (= `blank: 0`)
+ *   - `runIndex: M`     → 1-based run index in the paragraph
+ *   - `blank: K`        → Kth (1-based) run that's a "blank" placeholder
+ *                         (whitespace-only text + rPr containing `<w:u/>`)
+ *   - neither given     → first blank run (= `blank: 1`)
  *
  * Throws with a clear message when the paragraph isn't found, the index is
  * out of range, or the requested blank doesn't exist (lists what blanks ARE
@@ -267,31 +270,29 @@ export function resolveRunLocator(
     throw new Error(`paragraph #${loc.paragraph} has no runs to target.`)
   }
   if (loc.runIndex !== undefined) {
-    const run = runs[loc.runIndex]
-    if (!run) {
+    if (loc.runIndex < 1 || loc.runIndex > runs.length) {
       throw new Error(
-        `paragraph #${loc.paragraph}: runIndex ${loc.runIndex} out of range (paragraph has ${runs.length} run(s); valid 0..${runs.length - 1}).`,
+        `paragraph #${loc.paragraph}: runIndex ${loc.runIndex} out of range (paragraph has ${runs.length} run(s); valid 1..${runs.length}).`,
       )
     }
-    return { paragraph: hit.element, run }
+    return { paragraph: hit.element, run: runs[loc.runIndex - 1]! }
   }
   // blank-run mode (default when neither field given)
-  const blankK = loc.blank ?? 0
+  const blankK = loc.blank ?? 1
   const blanks = runs.filter(isBlankRun)
   if (blanks.length === 0) {
     throw new Error(
       `paragraph #${loc.paragraph}: no blank runs found. ` +
         `A blank run is one whose text is whitespace-only and rPr carries <w:u/> ` +
-        `(typical form-fill placeholder). Use \`runIndex\` to target a specific run by 0-based index instead.`,
+        `(typical form-fill placeholder). Use \`runIndex\` to target a specific run by 1-based index instead.`,
     )
   }
-  const run = blanks[blankK]
-  if (!run) {
+  if (blankK < 1 || blankK > blanks.length) {
     throw new Error(
-      `paragraph #${loc.paragraph}: blank ${blankK} out of range (paragraph has ${blanks.length} blank run(s); valid 0..${blanks.length - 1}).`,
+      `paragraph #${loc.paragraph}: blank ${blankK} out of range (paragraph has ${blanks.length} blank run(s); valid 1..${blanks.length}).`,
     )
   }
-  return { paragraph: hit.element, run }
+  return { paragraph: hit.element, run: blanks[blankK - 1]! }
 }
 
 /** Heuristic: a "blank" run is one whose text content is whitespace-only and

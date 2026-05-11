@@ -38,7 +38,8 @@ export type RegionKind = "tracked-change" | "field" | "sdt" | "hyperlink"
 interface ProjectionSegment {
   start: number
   end: number
-  /** Direct-child run index in the paragraph. Null for nested runs / sentinels. */
+  /** 1-based direct-child run index in the paragraph. Null for nested runs
+   * (inside hyperlink/ins/del/sdt) or sentinel positions (tab/break/object). */
   runIndex: number | null
   region: RegionKind | null
 }
@@ -147,7 +148,8 @@ function buildParagraphProjection(
 ): ParagraphProjection {
   const segments: ProjectionSegment[] = []
   let text = ""
-  let directRunIdx = 0
+  // 1-based: the next direct <w:r> child gets this index, then increments.
+  let directRunIdx = 1
 
   function appendNode(node: Element, scopeRegion: RegionKind | null): void {
     if (node.namespaceURI !== w) return

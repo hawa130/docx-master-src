@@ -32,16 +32,16 @@ Always inspect before composing edits.
 
 ### Locators (`at`)
 
-Index conventions vary by field: paragraph-level (matching `#NNN` in `overview`) is **1-based**; OOXML-internal positions (table cell coords, run indices) are **0-based**. Each row below states its own convention to avoid the mixup.
+All index fields are **1-based** — uniform across the locator types and consistent with `overview` / `inspect_table` / `inspect_runs` display.
 
 | `type` | Selects |
 |---|---|
-| `paragraph` | The Nth indexed paragraph (`{ "type": "paragraph", "index": N }`). **1-based**, matches `#NNN` in `overview`. |
-| `range` | `{ ..., "from": A, "to": B }`, **1-based** inclusive (same indexing as `paragraph`). Endpoints must share a container (body, or one specific layout-table cell). |
-| `cell` | `{ ..., "table": T, "row": R, "col": C }`, **0-based** (T/R/C). Only way to reach data/form-table cell paragraphs (those are unindexed). |
+| `paragraph` | The Nth indexed paragraph (`{ "type": "paragraph", "index": N }`). Matches `#NNN` in `overview`. |
+| `range` | `{ ..., "from": A, "to": B }`, inclusive. Endpoints must share a container (body, or one specific layout-table cell). |
+| `cell` | `{ ..., "table": T, "row": R, "col": C }`. Only way to reach data/form-table cell paragraphs (those are unindexed). Coords match `inspect_table`'s `[r,c]` output. |
 | `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose outline level is L. Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
 | `whole-body` | Every body paragraph. Pairs naturally with `format`; rarely with `replace`. |
-| `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. `paragraph` is 1-based; `blank` and `runIndex` are **0-based**. With `blank: K`, targets the Kth (0-indexed) run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth (0-indexed) run. If neither `blank` nor `runIndex` is given, defaults to `blank: 0`. Pair only with `set-run`. |
+| `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. With `blank: K`, targets the Kth run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth run. If neither `blank` nor `runIndex` is given, defaults to `blank: 1`. Run indices match `inspect_runs` / `find_text` output. Pair only with `set-run`. |
 
 ### Ops
 
