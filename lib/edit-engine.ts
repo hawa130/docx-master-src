@@ -353,28 +353,11 @@ function isParagraphElement(el: Element): boolean {
   return el.namespaceURI === w && el.localName === "p"
 }
 
-function isImageOnlyParagraph(p: Element): boolean {
-  // Image / page-break / horizontal-rule blocks all emit a <w:p>, but the
-  // ones we want to skip inheritance on have specific shapes:
-  //   - image: <w:r><w:drawing>… inside, no <w:t>
-  //   - page-break: <w:r><w:br type="page"/>
-  //   - horizontal-rule: empty <w:r>s + <w:pBdr> in pPr
-  // Detect: any <w:drawing> descendant, or a <w:br type="page">, or an
-  // existing <w:pBdr> child of pPr.
-  for (const r of getChildrenNS(p, w, "r")) {
-    for (const c of getChildren(r)) {
-      if (c.namespaceURI !== w) continue
-      if (c.localName === "drawing") return true
-      if (c.localName === "br") {
-        const t = c.getAttributeNS(w, "type") || c.getAttribute("w:type")
-        if (t === "page") return true
-      }
-    }
-  }
-  const pPr = firstChildNS(p, w, "pPr")
-  if (pPr && firstChildNS(pPr, w, "pBdr")) return true
-  return false
-}
+// (Previously isImageOnlyParagraph inferred image/page-break/horizontal-rule
+// shape from emitted XML — but <w:pBdr> match would false-positive on a
+// regular paragraph block whose paraFormat intentionally declared a border.
+// MDF skip is now decided from the source Block.type at the inheritance
+// call site, where the agent's declared intent is unambiguous.)
 
 function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document): void {
   const anchorPPr = firstChildNS(anchor, w, "pPr")
@@ -445,13 +428,20 @@ function mergeMissingAttrs(source: Element, target: Element): void {
 
 function inheritFormatForNewParagraphs(
   newEls: Element[],
+  newBlocks: import("./edit-types.ts").Fragment,
   anchor: Element | null,
   ownerDoc: Document,
 ): void {
   if (!anchor) return
-  for (const el of newEls) {
+  // newEls and newBlocks are emitted from the same fragment in order — zip
+  // by index. Block.type carries the agent's declared intent; only paragraph
+  // blocks should inherit anchor pPr. image / page-break / horizontal-rule
+  // blocks emit a <w:p> shell but skip MDF — they're structural, not text.
+  for (let i = 0; i < newEls.length; i++) {
+    const el = newEls[i]!
+    const block = newBlocks[i]!
+    if (block.type !== "paragraph") continue
     if (!isParagraphElement(el)) continue
-    if (isImageOnlyParagraph(el)) continue
     inheritPPrFromAnchor(el, anchor, ownerDoc)
   }
 }
@@ -519,7 +509,7 @@ function applyInsertBefore(
   // before any track-changes wrapping (so <w:ins> on the para mark sits on
   // top of the inherited rPr, not under it).
   const anchor = target.paragraphs[0] ?? null
-  inheritFormatForNewParagraphs(newEls, anchor, documentDoc)
+  inheritFormatForNewParagraphs(newEls, fragment, anchor, documentDoc)
   if (trackContext.enabled) {
     for (const el of newEls) markParagraphAsInserted(el, documentDoc, trackContext)
   }
@@ -543,7 +533,7 @@ function applyInsertAfter(
   const newEls = emitFragment(fragment, documentDoc, emitCtx)
   if (newEls.length === 0) return 0
   const anchor = target.paragraphs[target.paragraphs.length - 1] ?? null
-  inheritFormatForNewParagraphs(newEls, anchor, documentDoc)
+  inheritFormatForNewParagraphs(newEls, fragment, anchor, documentDoc)
   if (trackContext.enabled) {
     for (const el of newEls) markParagraphAsInserted(el, documentDoc, trackContext)
   }
@@ -598,7 +588,7 @@ function applyReplace(
   // when track-changes is on, the anchor's pPr is later mutated by
   // markParagraphMarkDeleted to add <w:del/>, but inheritance has already
   // captured a clone, so the new paragraphs see the unmutated formatting.
-  inheritFormatForNewParagraphs(newEls, anchor, documentDoc)
+  inheritFormatForNewParagraphs(newEls, fragment, anchor, documentDoc)
 
   if (trackContext.enabled) {
     // 1. Mark old paragraphs deleted (keep in tree).
