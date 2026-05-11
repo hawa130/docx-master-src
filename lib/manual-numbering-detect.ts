@@ -1,14 +1,19 @@
 /**
  * Best-effort detection of typed/manual numbering prefixes inside `edits[]`
- * Block paragraphs whose `styleId` is bound to an auto-numbering scheme.
- * Surfaced as a dry-run warning so the agent can fix before commit — typed
- * prefix + auto marker renders as a double prefix in Word.
+ * Block paragraphs. Surfaced as a dry-run warning so the agent can fix
+ * before commit. Two failure modes covered, distinguished in the report:
  *
- * Only inspects the config (`edits[]`) — chrome paragraphs that ride through
- * the rule-routing path are already covered by `unstrippedByStyle`. The two
- * surfaces complement each other: this catches inserts the agent typed by
- * hand; the existing surface catches chrome the agent retagged but didn't
- * supply a stripPrefixPattern for.
+ *   - `bound`: styleId IS bound to an auto-numbering scheme. The typed
+ *     prefix will double-print with the scheme's emitted marker. Fix:
+ *     drop the typed prefix from `text`.
+ *   - `unbound`: styleId is NOT bound to numbering, but the paragraph
+ *     starts with an enumeration-shape prefix. Likely a block enumeration
+ *     that should use a list-bound style (e.g. ListNumber) with a
+ *     numbering scheme; or intentional typed prefix (bibliography) that
+ *     agent should affirm.
+ *
+ * Only inspects the config (`edits[]`) — chrome paragraphs that ride
+ * through the rule-routing path are already covered by `unstrippedByStyle`.
  *
  * Heuristic by design: regex patterns cover the most common CJK-academic
  * shapes (`一、`, `（一）`, `1.`, `1.1`, `第N章`, ...). Roman numerals and
@@ -32,6 +37,10 @@ const COMMON_TYPED_PREFIX_PATTERNS: RegExp[] = [
 export interface ManualNumberingHit {
   count: number
   samples: string[]
+  /** `bound`: styleId has an auto-numbering scheme attached (double-print
+   *  risk). `unbound`: styleId has no numbering binding (potential
+   *  block-enumeration miscategorisation). */
+  kind: "bound" | "unbound"
 }
 
 export function detectManualNumbering(
@@ -39,19 +48,22 @@ export function detectManualNumbering(
   numberedStyleIds: Set<string>,
 ): Map<string, ManualNumberingHit> {
   const out = new Map<string, ManualNumberingHit>()
-  if (!edits || numberedStyleIds.size === 0) return out
+  if (!edits) return out
   for (const edit of edits) {
     const blocks = blocksOf(edit)
     if (!blocks) continue
     for (const block of blocks) {
       if (block.type !== "paragraph") continue
-      if (!block.styleId || !numberedStyleIds.has(block.styleId)) continue
+      if (!block.styleId) continue
       const text = richTextToPlain(block.text)
       if (!text) continue
       if (!COMMON_TYPED_PREFIX_PATTERNS.some((rx) => rx.test(text))) continue
+      const kind: ManualNumberingHit["kind"] = numberedStyleIds.has(block.styleId)
+        ? "bound"
+        : "unbound"
       let hit = out.get(block.styleId)
       if (!hit) {
-        hit = { count: 0, samples: [] }
+        hit = { count: 0, samples: [], kind }
         out.set(block.styleId, hit)
       }
       hit.count += 1

@@ -108,10 +108,15 @@ export function printReport(args: {
     { empty: number; nonEmpty: number; nonEmptySamples: string[] }
   >
   unstrippedByStyle: Map<string, { count: number; samples: string[] }>
-  /** dry-run only: heuristic detection of typed-prefix residue in paragraphs
-   * bound to auto-numbered styles (catches inserted-with-prefix paragraphs
-   * that don't go through the rule-routing path unstrippedByStyle covers). */
-  manualNumberingDetected?: Map<string, { count: number; samples: string[] }>
+  /** dry-run only: heuristic detection of typed-prefix residue in
+   * `edits[]` Block paragraphs. `bound` = styleId has numbering scheme
+   * (double-print risk); `unbound` = styleId lacks numbering (potential
+   * block-enumeration miscategorisation). Chrome paragraphs through the
+   * rule-routing path are covered separately by unstrippedByStyle. */
+  manualNumberingDetected?: Map<
+    string,
+    { count: number; samples: string[]; kind: "bound" | "unbound" }
+  >
   /** dry-run only: text snippet for each excluded paragraph so the agent can
    * spot index drift after document edits (exclude entries are bare numbers). */
   excludeSamples?: Array<{ index: number; snippet: string }>
@@ -276,15 +281,31 @@ export function printReport(args: {
   // recognised, so the action is more concrete (strip on insert, or add a
   // stripPrefixPattern for the chrome shape).
   if (args.manualNumberingDetected && args.manualNumberingDetected.size > 0) {
-    lines.push("Manual numbering detected in numbered-style paragraphs:")
-    for (const [styleId, info] of args.manualNumberingDetected) {
-      const samples = info.samples.map((s) => `"${s}"`).join(" / ")
-      lines.push(`  ${styleId}: ${info.count} paragraphs  e.g. ${samples}`)
+    const bound = [...args.manualNumberingDetected].filter(([, v]) => v.kind === "bound")
+    const unbound = [...args.manualNumberingDetected].filter(([, v]) => v.kind === "unbound")
+    lines.push("Manual numbering detected in edits[] paragraphs:")
+    if (bound.length > 0) {
+      for (const [styleId, info] of bound) {
+        const samples = info.samples.map((s) => `"${s}"`).join(" / ")
+        lines.push(`  ${styleId} (bound to numbering): ${info.count} paragraphs  e.g. ${samples}`)
+      }
+      lines.push(
+        "    → Drop the typed prefix from `text` — the scheme's lvlText already emits the marker.",
+      )
     }
-    lines.push("  → For inserts (in `edits[]`): drop the typed prefix from `text` —")
-    lines.push("    the styleId's auto-numbering scheme already emits the marker.")
-    lines.push("    For chrome paragraphs: add a matching `stripPrefixPatterns` entry")
-    lines.push("    on the bound numbering level so the prefix is stripped on retag.")
+    if (unbound.length > 0) {
+      for (const [styleId, info] of unbound) {
+        const samples = info.samples.map((s) => `"${s}"`).join(" / ")
+        lines.push(`  ${styleId} (no numbering binding): ${info.count} paragraphs  e.g. ${samples}`)
+      }
+      lines.push(
+        "    → If these are list items, declare a list-bound style (e.g. ListNumber)",
+      )
+      lines.push(
+        "      and let the numbering scheme emit the marker. If typed prefix is",
+      )
+      lines.push("      intentional (e.g. bibliography), ignore.")
+    }
     lines.push("")
   }
   if (args.patternMatchStats.size > 0) {
