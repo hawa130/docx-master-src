@@ -21,7 +21,7 @@
  * prose is too high.
  */
 
-import type { EditOp, Block, RichText } from "./edit-types.ts"
+import type { EditOp, Block, RichText } from "@lib/config/edit-types.ts"
 
 const COMMON_TYPED_PREFIX_PATTERNS: RegExp[] = [
   /^\s*\d+(\.\d+)+\s/,

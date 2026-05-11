@@ -1,7 +1,7 @@
-import { summarizeTable } from "@lib/table-classifier.ts"
-import { NS, type ParsedParagraph } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, textContent, wAttr } from "@lib/xml-utils.ts"
-import type { ApplyContext, CompiledPatternRule, RestyleSample } from "./config-types.ts"
+import { summarizeTable } from "@lib/parse/table-classifier.ts"
+import { NS, type ParsedParagraph } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent, wAttr } from "@lib/xml/xml-utils.ts"
+import type { ApplyContext, CompiledPatternRule, RestyleSample } from "@lib/config/config-types.ts"
 
 /* ------------- paragraph processing ------------- */
 

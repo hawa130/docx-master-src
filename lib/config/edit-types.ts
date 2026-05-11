@@ -35,7 +35,7 @@ import type {
   RichTextSchema,
   RunFormatSchema,
   RunLocatorSchema,
-} from "./edit-config-schema.ts"
+} from "@lib/config/edit-config-schema.ts"
 
 /* ------------- Public config types (inferred from zod schemas) ------------- */
 

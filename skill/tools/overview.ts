@@ -1,9 +1,9 @@
-import { loadDocx, parseNumbering } from "@lib/load.ts"
-import { walkIndexedParagraphs } from "@lib/locator.ts"
-import { NS, type DocumentElement, type ParsedParagraph } from "@lib/types.ts"
-import type { LoadedDoc } from "@lib/load.ts"
-import { firstChildNS, getChildren } from "@lib/xml-utils.ts"
-import { pad, paperName, truncate, tw2mm } from "@lib/format.ts"
+import { loadDocx, parseNumbering } from "@lib/xml/load.ts"
+import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
+import { NS, type DocumentElement, type ParsedParagraph } from "@lib/parse/types.ts"
+import type { LoadedDoc } from "@lib/xml/load.ts"
+import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
+import { pad, paperName, truncate, tw2mm } from "@lib/parse/format.ts"
 
 async function main() {
   const file = process.argv[2]

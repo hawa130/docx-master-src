@@ -1,6 +1,6 @@
-import { loadDocx } from "@lib/load.ts"
-import type { SectionInfo } from "@lib/types.ts"
-import { paperName, tw2mm } from "@lib/format.ts"
+import { loadDocx } from "@lib/xml/load.ts"
+import type { SectionInfo } from "@lib/parse/types.ts"
+import { paperName, tw2mm } from "@lib/parse/format.ts"
 
 async function main() {
   const file = process.argv[2]

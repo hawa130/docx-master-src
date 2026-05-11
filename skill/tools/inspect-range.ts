@@ -1,6 +1,6 @@
-import { loadDocx } from "@lib/load.ts"
-import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "@lib/types.ts"
-import { formatLineSpacing, pad } from "@lib/format.ts"
+import { loadDocx } from "@lib/xml/load.ts"
+import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "@lib/parse/types.ts"
+import { formatLineSpacing, pad } from "@lib/parse/format.ts"
 
 async function main() {
   const file = process.argv[2]

@@ -1,8 +1,8 @@
-import { DocxReader } from "@lib/reader.ts"
-import { walkIndexedParagraphs, walkTopLevelTables } from "@lib/locator.ts"
-import { NS } from "@lib/types.ts"
-import { getChildren, getChildrenNS, textContent } from "@lib/xml-utils.ts"
-import { summarizeTable } from "@lib/table-classifier.ts"
+import { DocxReader } from "@lib/xml/reader.ts"
+import { walkIndexedParagraphs, walkTopLevelTables } from "@lib/edit/locator.ts"
+import { NS } from "@lib/parse/types.ts"
+import { getChildren, getChildrenNS, textContent } from "@lib/xml/xml-utils.ts"
+import { summarizeTable } from "@lib/parse/table-classifier.ts"
 
 /**
  * `inspect_table` — list top-level tables with cell text snippets.

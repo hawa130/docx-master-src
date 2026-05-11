@@ -16,7 +16,7 @@
  * `image` block = error (Step 7 plumbs this in via image-asset.ts).
  */
 
-import { NS } from "@lib/types.ts"
+import { NS } from "@lib/parse/types.ts"
 import {
   assertNever,
   type Block,
@@ -24,9 +24,9 @@ import {
   type ParagraphFormat,
   type RichText,
   type RunFormat,
-} from "./edit-types.ts"
-import { parseLineSpacing } from "./style-mutation.ts"
-import { RPR_CHILD_ORDER } from "./xml-order.ts"
+} from "@lib/config/edit-types.ts"
+import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
+import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 
 const w = NS.w
 

@@ -1,8 +1,8 @@
-import { DocxReader } from "@lib/reader.ts"
-import { buildResolverContext, paragraphStyleId, paragraphText } from "@lib/locator.ts"
-import { detectBlockers, explainBlockerReason, summarizeBlockers } from "@lib/blockers.ts"
-import { DocumentParser } from "@lib/document-parser.ts"
-import { StyleResolver } from "@lib/style-resolver.ts"
+import { DocxReader } from "@lib/xml/reader.ts"
+import { buildResolverContext, paragraphStyleId, paragraphText } from "@lib/edit/locator.ts"
+import { detectBlockers, explainBlockerReason, summarizeBlockers } from "@lib/edit/blockers.ts"
+import { DocumentParser } from "@lib/parse/document-parser.ts"
+import { StyleResolver } from "@lib/parse/style-resolver.ts"
 
 /**
  * `inspect_blockers` — list paragraphs that `apply`'s edit phase will refuse

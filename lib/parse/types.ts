@@ -37,6 +37,15 @@ export interface ParsedParagraph {
   text: string
   rPr: ComputedRunStyle
   pPr: ComputedParaStyle
+  /** Direct run-level rPr captured at parse time — what's literally on the
+   * paragraph's runs (dominant) and/or pMark rPr, BEFORE the cascade is
+   * merged. Used by the vs-target-direct dry-run check to classify each
+   * agent-declared style field as override / redundant / new against what
+   * the paragraph carries directly. Empty when no direct rPr anywhere. */
+  directRPr: ComputedRunStyle
+  /** Direct pPr from the paragraph element itself (excluding pMark rPr).
+   * Same purpose as directRPr, for paragraph-level direct properties. */
+  directPPr: ComputedParaStyle
   styleId: string
   styleName: string
   fingerprint: string

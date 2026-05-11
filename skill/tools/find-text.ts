@@ -10,9 +10,9 @@
  * just browsing) is up to them.
  */
 
-import { loadDocx } from "@lib/load.ts"
-import { searchDocument, describeRegion, type MatchHit } from "@lib/text-search.ts"
-import { pad } from "@lib/format.ts"
+import { loadDocx } from "@lib/xml/load.ts"
+import { searchDocument, describeRegion, type MatchHit } from "@lib/edit/text-search.ts"
+import { pad } from "@lib/parse/format.ts"
 
 async function main() {
   const argv = process.argv.slice(2)

@@ -15,8 +15,8 @@
  * Filtering by fingerprint (--fingerprint) is useful when the same regex
  * pattern matches multiple roles and you want to scope to one visual class.
  */
-import { loadDocx } from "@lib/load.ts"
-import { pad } from "@lib/format.ts"
+import { loadDocx } from "@lib/xml/load.ts"
+import { pad } from "@lib/parse/format.ts"
 
 async function main() {
   const argv = process.argv.slice(2)

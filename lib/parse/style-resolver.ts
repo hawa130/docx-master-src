@@ -1,5 +1,5 @@
-import { NS, type ComputedParaStyle, type ComputedRunStyle, type StyleDefinition } from "./types.ts"
-import { attr, firstChildNS, getChildrenNS, parseToggle, wAttr, wVal } from "./xml-utils.ts"
+import { NS, type ComputedParaStyle, type ComputedRunStyle, type StyleDefinition } from "@lib/parse/types.ts"
+import { attr, firstChildNS, getChildrenNS, parseToggle, wAttr, wVal } from "@lib/xml/xml-utils.ts"
 
 interface ThemeFonts {
   majorLatin?: string

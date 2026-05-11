@@ -31,9 +31,9 @@ import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { DOMParser } from "@xmldom/xmldom"
 import type { XMLFileInfo, validateXML as ValidateXMLFn } from "xmllint-wasm"
-import { DocxReader } from "@lib/reader.ts"
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
+import { DocxReader } from "@lib/xml/reader.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 
 export type ValidationError = { part: string; message: string }
 

@@ -15,8 +15,8 @@
  * importing the validator.
  */
 
-import { NS } from "@lib/types.ts"
-import { getChildren } from "@lib/xml-utils.ts"
+import { NS } from "@lib/parse/types.ts"
+import { getChildren } from "@lib/xml/xml-utils.ts"
 
 /** EG_RPrBase child order, per ECMA-376 17.7.9.1 (children of CT_RPr inside
  * style / run / paragraph mark). Truncated to the children this engine

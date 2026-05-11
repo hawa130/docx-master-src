@@ -1,4 +1,4 @@
-import { runCli } from "@lib/cli-helpers.ts"
+import { runCli } from "@lib/shared/cli-helpers.ts"
 
 /**
  * CLI entry for `apply` — the unified docx mutation orchestrator.

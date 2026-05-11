@@ -1,6 +1,6 @@
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml-utils.ts"
-import { forkNumWithStartOverride, setParagraphNumPr } from "@lib/numbering-mutation.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { forkNumWithStartOverride, setParagraphNumPr } from "@lib/apply/numbering-mutation.ts"
 
 /**
  * Per-instance restart pass for single-level numbering schemes.

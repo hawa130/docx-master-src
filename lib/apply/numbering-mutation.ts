@@ -1,8 +1,8 @@
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
-import type { NumberingConfig } from "./config-types.ts"
-import { insertPPrIntoStyle } from "./style-mutation.ts"
-import { RPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
+import type { NumberingConfig } from "@lib/config/config-types.ts"
+import { insertPPrIntoStyle } from "@lib/apply/style-mutation.ts"
+import { RPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 
 /* ------------- numbering.xml manipulation ------------- */
 

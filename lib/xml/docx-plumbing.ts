@@ -1,6 +1,6 @@
 import { DOMParser } from "@xmldom/xmldom"
-import type { DocxReader } from "@lib/reader.ts"
-import { NS } from "@lib/types.ts"
+import type { DocxReader } from "@lib/xml/reader.ts"
+import { NS } from "@lib/parse/types.ts"
 
 /* ------------- bootstrap blank docs ------------- */
 

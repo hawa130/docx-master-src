@@ -18,8 +18,8 @@
 import { existsSync, readFileSync } from "node:fs"
 import { extname, resolve as resolvePath } from "node:path"
 import { DOMParser } from "@xmldom/xmldom"
-import type { DocxReader } from "@lib/reader.ts"
-import { NS } from "@lib/types.ts"
+import type { DocxReader } from "@lib/xml/reader.ts"
+import { NS } from "@lib/parse/types.ts"
 
 const PT_TO_EMU = 12700
 

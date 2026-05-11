@@ -21,8 +21,8 @@
  * span paragraph boundaries — `STYLEREF` in particular often does.
  */
 
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 
 export type BlockerReason = "tracked-change" | "field" | "sdt"
 

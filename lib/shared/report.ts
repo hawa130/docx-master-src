@@ -88,6 +88,46 @@ function shortVal(v: unknown): string {
   return String(v)
 }
 
+/** Render the vs-target-direct sub-block under a styleResolution entry.
+ *  Hides the whole block when there's nothing to learn:
+ *    - 0 target paragraphs → emit a single placeholder line.
+ *    - All declared fields land in "new" (no override or redundant on any
+ *      target) → skip — sparse declaration that adds without conflict. */
+function renderVsDirect(
+  r: import("@lib/shared/vs-direct.ts").VsDirectReport,
+  lines: string[],
+): void {
+  if (r.targetCount === 0) {
+    lines.push(`    vs target direct: (no paragraphs targeted)`)
+    return
+  }
+  const interesting = r.fields.filter((f) => f.override > 0 || f.redundant > 0)
+  if (interesting.length === 0) return // all-new sub-block hidden
+  lines.push(`    vs target direct (${r.targetCount} paragraphs):`)
+  for (const f of r.fields) {
+    if (f.override === 0 && f.redundant === 0 && f.fresh === 0) continue
+    const n = r.targetCount
+    if (f.override > 0) {
+      const tag = f.willStrip ? "" : " [mixed runs — direct stays]"
+      const fromTo =
+        f.overrideFrom !== undefined
+          ? `${shortVal(f.overrideFrom)} → ${shortVal(f.declared)}`
+          : `${shortVal(f.declared)}`
+      lines.push(`      override:  ${f.field} ${fromTo} (${f.override}/${n})${tag}`)
+    }
+    if (f.redundant > 0) {
+      lines.push(
+        `      redundant: ${f.field}=${shortVal(f.declared)} (${f.redundant}/${n} already match direct)`,
+      )
+    }
+    if (f.fresh > 0) {
+      lines.push(
+        `      new:       ${f.field}=${shortVal(f.declared)} (${f.fresh}/${n} no direct equivalent)`,
+      )
+    }
+  }
+}
+
 function sameValue(a: unknown, b: unknown): boolean {
   if (typeof a === "number" && typeof b === "number") {
     return Math.abs(a - b) < 1e-6
@@ -376,6 +416,9 @@ export function printReport(args: {
         for (const wMsg of r.warnings) {
           lines.push(`    note: ${wMsg}`)
         }
+      }
+      if (r.vsDirect) {
+        renderVsDirect(r.vsDirect, lines)
       }
     }
     lines.push("")

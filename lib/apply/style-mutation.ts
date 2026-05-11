@@ -1,8 +1,13 @@
-import { NS, type ParsedParagraph } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
-import type { StyleConfigEntry } from "./config-types.ts"
-import type { StyleResolver } from "./style-resolver.ts"
-import { PPR_CHILD_ORDER, RPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
+import {
+  NS,
+  type ComputedParaStyle,
+  type ComputedRunStyle,
+  type ParsedParagraph,
+} from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
+import type { StyleConfigEntry } from "@lib/config/config-types.ts"
+import type { StyleResolver } from "@lib/parse/style-resolver.ts"
+import { PPR_CHILD_ORDER, RPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 
 /**
  * Insert a freshly-created `<w:pPr>` into a `<w:style>` at the schema-correct
@@ -108,8 +113,18 @@ export function extractPriorDisplayFields(
 }
 
 function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
-  const r = p.rPr
-  const pp = p.pPr
+  return computedStyleToEntry(p.rPr, p.pPr)
+}
+
+/** Convert a ComputedRunStyle + ComputedParaStyle pair into the field
+ * shape used by `StyleConfigEntry`. Shared between Mode A's `fromParagraph`
+ * extraction (cascade-merged values) and the dry-run vs-target-direct
+ * classifier (per-paragraph direct values). Both produce the same field
+ * names + units so they can be diffed against an agent-declared style. */
+export function computedStyleToEntry(
+  r: ComputedRunStyle,
+  pp: ComputedParaStyle,
+): Partial<StyleConfigEntry> {
   const out: Partial<StyleConfigEntry> = {}
   const latin = r.fontAscii ?? r.fontHAnsi
   if (latin) out.fontLatin = latin

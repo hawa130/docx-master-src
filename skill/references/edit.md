@@ -76,7 +76,7 @@ If the styleId or numId you reference doesn't exist in the doc, add `styles[]` /
 
 ### Quote handling
 
-`text` is emitted verbatim. Default to smart quotes in prose (Chinese `“…”` / `「…」`, English `“…”` / `‘…’`). Use ASCII `"` `'` only inside literal tokens (code, URLs, identifiers, shell commands). Smart quotes also bypass the JSON `\"` escape footgun.
+`text` is emitted verbatim. Default to smart quotes in prose: outer `“…”`, inner `‘…’` (Chinese 横排 + English); `「…」`/`『…』` only for 竖排. ASCII `"` `'` only inside literal tokens (code, URLs, shell). Smart quotes also bypass the JSON `\"` escape footgun.
 
 ### Format fields
 

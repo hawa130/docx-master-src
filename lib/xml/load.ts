@@ -1,17 +1,17 @@
 import { basename } from "node:path"
 import { statSync } from "node:fs"
-import { DocxReader } from "./reader.ts"
-import { StyleResolver } from "./style-resolver.ts"
-import { DocumentParser } from "./document-parser.ts"
-import { Fingerprinter, type FingerprintSummary } from "./fingerprint.ts"
+import { DocxReader } from "@lib/xml/reader.ts"
+import { StyleResolver } from "@lib/parse/style-resolver.ts"
+import { DocumentParser } from "@lib/parse/document-parser.ts"
+import { Fingerprinter, type FingerprintSummary } from "@lib/parse/fingerprint.ts"
 import {
   NS,
   type DocumentElement,
   type NeighborItem,
   type ParsedParagraph,
   type SectionInfo,
-} from "./types.ts"
-import { firstChildNS, getChildrenNS, textContent, wAttr, wVal } from "./xml-utils.ts"
+} from "@lib/parse/types.ts"
+import { firstChildNS, getChildrenNS, textContent, wAttr, wVal } from "@lib/xml/xml-utils.ts"
 
 export interface LoadedDoc {
   reader: DocxReader

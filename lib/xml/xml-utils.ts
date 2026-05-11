@@ -1,4 +1,4 @@
-import { NS } from "./types.ts"
+import { NS } from "@lib/parse/types.ts"
 
 function isElement(node: any): node is Element {
   return node && node.nodeType === 1

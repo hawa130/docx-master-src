@@ -12,9 +12,9 @@
  * attributes; we emit empty author since identity is not in scope.
  */
 
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml-utils.ts"
-import type { TrackContext } from "./edit-types.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
+import type { TrackContext } from "@lib/config/edit-types.ts"
 
 const w = NS.w
 

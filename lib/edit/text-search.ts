@@ -23,9 +23,9 @@
  *     <w:fldChar end> is reported as `field`.
  */
 
-import { walkIndexedParagraphs } from "./locator.ts"
-import { NS } from "./types.ts"
-import { firstChildNS, getChildren, wAttr } from "./xml-utils.ts"
+import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
 
 const w = NS.w
 

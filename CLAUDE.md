@@ -12,18 +12,35 @@ skill/SKILL.md                       agent-facing contract (router + invariants)
 skill/references/                    on-demand reference docs (progressive disclosure)
 skill/tools/                         TS source for CLIs the agent invokes directly
                                        (each file = one entry in tsdown.config.ts)
-lib/                               every non-tool TypeScript module — OOXML
-                                     primitives (xml-utils, reader, load,
-                                     style-resolver, fingerprint, ...), skill
-                                     engine (apply-styles orchestrator,
-                                     mutation primitives), config schema (zod),
-                                     CLI scaffolding. Reachable via the
-                                     `@lib/*` alias. Imported by tools, never
-                                     built as a script entry.
+lib/                               every non-tool TypeScript module, grouped
+                                     by concern. Reachable via the `@lib/*`
+                                     alias. Imported by tools, never built as
+                                     a script entry.
+  lib/xml/                           OOXML/zip primitives (xml-utils,
+                                       xml-order, reader, load, docx-plumbing)
+  lib/parse/                         read-side parsing (document-parser,
+                                       style-resolver, fingerprint,
+                                       table-classifier, format,
+                                       manual-numbering-detect, types)
+  lib/config/                        zod schemas + derived types for both
+                                       sub-commands (config-schema,
+                                       config-types, edit-config-schema,
+                                       edit-types)
+  lib/apply/                         standardize sub-command engine
+                                       (apply-styles orchestrator,
+                                       style/numbering/para/list mutation,
+                                       template-import)
+  lib/edit/                          edit sub-command engine (edit-engine,
+                                       locator, text-search, blockers,
+                                       fragment-emit, track-changes,
+                                       image-asset)
+  lib/shared/                        cross-engine helpers (cli-helpers,
+                                       docx-validate, report)
                                      Two type files split by concern:
-                                       - `lib/types.ts` for OOXML / parser
-                                         types (NS, ParsedParagraph, ...)
-                                       - `lib/config-types.ts` for
+                                       - `lib/parse/types.ts` for OOXML /
+                                         parser types (NS, ParsedParagraph,
+                                         ...)
+                                       - `lib/config/config-types.ts` for
                                          config-derived + internal data
                                          shapes (ApplyConfig, ApplyContext,
                                          ...)
@@ -33,7 +50,7 @@ dist/docx-master.zip               zipped bundle ready to publish
 build-skill.ts                     packages staged dir into the .skill zip
 ```
 
-Tools and `lib/` modules import internal code via the `@lib/*` alias (declared in `tsconfig.json` paths and `tsdown.config.ts` alias). Don't use relative `../../lib/...` paths. The `skill/tools/` directory is exclusively for files built as agent-callable CLIs; anything imported but never invoked goes in `lib/`.
+Tools and `lib/` modules import internal code via the `@lib/*` alias (declared in `tsconfig.json` paths and `tsdown.config.ts` alias) — including lib-to-lib imports. Don't use relative paths (`./foo.ts`, `../xml/foo.ts`); keep imports group-prefixed (`@lib/xml/foo.ts`) so moving a file between groups only touches the import-site path, not its style. The `skill/tools/` directory is exclusively for files built as agent-callable CLIs; anything imported but never invoked goes in `lib/`.
 
 ## Commands
 

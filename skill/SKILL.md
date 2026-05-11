@@ -33,7 +33,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
   - **Inline-value** (short phrase filling a labeled cell) → inherit the slot's existing format.
   - **Block enumeration** (items each on their own paragraph) → `ListNumber` + single-level numbering scheme; markers come from the scheme.
   - **Inline enumeration** (items within one prose paragraph, e.g. `"... covers (1) X, (2) Y, (3) Z ..."`) → stays as prose text.
-- **Locale-specific typography.** CJK: prose body and list items get a 2-char first-line indent — declare `firstLineIndent: "2char"` on `BodyText` / `ListNumber`. Literal whitespace between CJK and Latin runs is stripped (Word's autoSpace handles the gap). Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
+- **Locale-specific typography.** CJK: prose body and list items get a 2-char first-line indent — declare `firstLineIndent: "2char"` on `BodyText` / `ListNumber`. **No literal space at CJK ↔ Latin boundaries in `text`** — autoSpace inserts the gap; a typed one stacks visibly. Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Commands
 

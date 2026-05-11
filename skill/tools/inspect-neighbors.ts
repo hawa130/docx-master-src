@@ -18,9 +18,9 @@
  * Default radius is 4 — enough to span "image, empty para, caption, empty
  * para, next thing" without too much noise.
  */
-import { loadDocx } from "@lib/load.ts"
-import type { LoadedDoc } from "@lib/load.ts"
-import type { NeighborItem } from "@lib/types.ts"
+import { loadDocx } from "@lib/xml/load.ts"
+import type { LoadedDoc } from "@lib/xml/load.ts"
+import type { NeighborItem } from "@lib/parse/types.ts"
 
 async function main() {
   const argv = process.argv.slice(2)

@@ -1,4 +1,4 @@
-import { validateDocxFile } from "@lib/docx-validate.ts"
+import { validateDocxFile } from "@lib/shared/docx-validate.ts"
 
 /**
  * `validate` — comprehensive OOXML validation of a .docx file.

@@ -13,11 +13,11 @@
  * thus only reachable via a `cell` locator.
  */
 
-import type { ParsedParagraph } from "@lib/types.ts"
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, textContent, wVal } from "@lib/xml-utils.ts"
-import { summarizeTable } from "@lib/table-classifier.ts"
-import { assertNever, type Locator, type ResolvedTarget } from "./edit-types.ts"
+import type { ParsedParagraph } from "@lib/parse/types.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent, wVal } from "@lib/xml/xml-utils.ts"
+import { summarizeTable } from "@lib/parse/table-classifier.ts"
+import { assertNever, type Locator, type ResolvedTarget } from "@lib/config/edit-types.ts"
 
 /* ------------- indexed walk ------------- */
 

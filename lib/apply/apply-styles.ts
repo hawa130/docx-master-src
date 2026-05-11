@@ -1,32 +1,35 @@
 import { unlinkSync, existsSync, copyFileSync, mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
-import { DocxReader, serializeXml } from "@lib/reader.ts"
-import { importTemplateStyles, type ImportResult } from "@lib/template-import.ts"
-import { StyleResolver, applyThemeFontOverrides } from "@lib/style-resolver.ts"
-import { DocumentParser } from "@lib/document-parser.ts"
-import { Fingerprinter } from "@lib/fingerprint.ts"
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
+import { DocxReader, serializeXml } from "@lib/xml/reader.ts"
+import { importTemplateStyles, type ImportResult } from "@lib/apply/template-import.ts"
+import { StyleResolver, applyThemeFontOverrides } from "@lib/parse/style-resolver.ts"
+import { DocumentParser } from "@lib/parse/document-parser.ts"
+import { Fingerprinter } from "@lib/parse/fingerprint.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 import {
   blankNumberingDoc,
   blankStylesDoc,
   ensureNumberingContentType,
   ensureNumberingRelationship,
-} from "./docx-plumbing.ts"
-import { applyToBody } from "./para-mutation.ts"
-import { attachNumberingToStyle, injectNumbering, resolveSuff } from "./numbering-mutation.ts"
-import { applyListRestartPass } from "./list-restart.ts"
-import { detectManualNumbering } from "./manual-numbering-detect.ts"
-import { validateDocxFile } from "./docx-validate.ts"
-import { extractDisplayFields, printReport } from "./report.ts"
+} from "@lib/xml/docx-plumbing.ts"
+import { applyToBody } from "@lib/apply/para-mutation.ts"
+import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
+import { analyzeVsDirect } from "@lib/shared/vs-direct.ts"
+import type { ParsedParagraph } from "@lib/parse/types.ts"
+import { attachNumberingToStyle, injectNumbering, resolveSuff } from "@lib/apply/numbering-mutation.ts"
+import { applyListRestartPass } from "@lib/apply/list-restart.ts"
+import { detectManualNumbering } from "@lib/parse/manual-numbering-detect.ts"
+import { validateDocxFile } from "@lib/shared/docx-validate.ts"
+import { extractDisplayFields, printReport } from "@lib/shared/report.ts"
 import {
   extractPriorDisplayFields,
   reorderAgentTouchedStylesFirst,
   resolveStyleDef,
   upsertStyle,
-} from "./style-mutation.ts"
-import { previewEditOps, runEditOps, type EditsPreviewEntry } from "./edit-engine.ts"
-import type { ImageAssetRegistry } from "./image-asset.ts"
+} from "@lib/apply/style-mutation.ts"
+import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
+import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import type {
   ApplyConfig,
   ApplyContext,
@@ -36,7 +39,7 @@ import type {
   RestyleSample,
   StyleConfigEntry,
   StyleResolutionEntry,
-} from "./config-types.ts"
+} from "@lib/config/config-types.ts"
 
 /** Heuristic checks on a resolved style entry. The engine doesn't reject
  * these — they're informational signals surfaced in dry-run + the change
@@ -69,6 +72,60 @@ function detectStyleResolutionWarnings(
     )
   }
   return out
+}
+
+/** Build per-styleId target paragraph sets from the post-rules-pass doc
+ *  state, then attach a vs-direct classification to each StyleResolutionEntry.
+ *  Walks the live documentDoc to read each paragraph's CURRENT pStyle (after
+ *  edits + rules), matches back to parsed.paragraphs by index for the
+ *  direct-format snapshot captured at parse time. edits[]-inserted paragraphs
+ *  whose direct format came from agent's own paraFormat/runFormat would
+ *  trivially appear redundant — they're included for now (acceptable noise
+ *  given the small footprint of inserts vs chrome). */
+function populateVsDirectReports(
+  documentDoc: Document,
+  paragraphs: readonly ParsedParagraph[],
+  declaredStyles: readonly StyleConfigEntry[],
+  styleResolutions: StyleResolutionEntry[],
+  resolver: StyleResolver,
+): void {
+  const w = NS.w
+  const paraByIndex = new Map<number, ParsedParagraph>()
+  for (const p of paragraphs) paraByIndex.set(p.index, p)
+  const defaultStyleId = resolver.getDefaultParagraphStyleId() ?? "Normal"
+
+  // Walk post-mutation doc; read each paragraph's current pStyle.
+  const targetsByStyleId = new Map<string, ParsedParagraph[]>()
+  for (const indexed of walkIndexedParagraphs(documentDoc)) {
+    const p = paraByIndex.get(indexed.index)
+    if (!p) continue
+    const pPr = firstChildNS(indexed.element, w, "pPr")
+    const pStyleEl = pPr ? firstChildNS(pPr, w, "pStyle") : null
+    const currentStyleId = (pStyleEl && wAttr(pStyleEl, "val")) || defaultStyleId
+    let bucket = targetsByStyleId.get(currentStyleId)
+    if (!bucket) {
+      bucket = []
+      targetsByStyleId.set(currentStyleId, bucket)
+    }
+    bucket.push(p)
+  }
+
+  // Attach the analysis result onto the matching StyleResolutionEntry.
+  const resolutionsById = new Map<string, StyleResolutionEntry>()
+  for (const r of styleResolutions) resolutionsById.set(r.styleId, r)
+  for (const def of declaredStyles) {
+    const entry = resolutionsById.get(def.id)
+    if (!entry) continue
+    const targets = targetsByStyleId.get(def.id) ?? []
+    // Mode A same-source silencing: get the source paragraph's fingerprint
+    // so the analyzer can skip the redundant tally for paragraphs that
+    // necessarily match by construction.
+    let fromFp: string | undefined
+    if (def.fromParagraph !== undefined) {
+      fromFp = paraByIndex.get(def.fromParagraph)?.fingerprint
+    }
+    entry.vsDirect = analyzeVsDirect(def, targets, fromFp)
+  }
 }
 
 export async function applyStyles(source: string, output: string, config: ApplyConfig) {
@@ -591,6 +648,23 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // for cross-level resets. See lib/list-restart.ts.
   if (installedSchemes.length > 0) {
     applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
+  }
+
+  // 7c. Target-set + vs-direct analysis (dry-run only). For each declared
+  // style, find the paragraphs whose final pStyle is this style (after
+  // edits + rules pass), then classify each declared field's per-paragraph
+  // direct values as override / redundant / new. Surfaces the gap left by
+  // the styles-cascade Δ-line — sparse-by-design's real invariant is the
+  // direct-format layer this pass touches. Skip on real apply: same compute
+  // cost, and agent already saw it during iteration.
+  if (config.dryRun) {
+    populateVsDirectReports(
+      documentDoc,
+      parsed.paragraphs,
+      config.styles,
+      styleResolutions,
+      resolver,
+    )
   }
 
   // 8. Serialize and write

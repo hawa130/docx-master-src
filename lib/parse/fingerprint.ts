@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
-import type { ParsedParagraph } from "./types.ts"
-import type { StyleResolver } from "./style-resolver.ts"
+import type { ParsedParagraph } from "@lib/parse/types.ts"
+import type { StyleResolver } from "@lib/parse/style-resolver.ts"
 
 export interface FingerprintSummary {
   /** Display label, sorted by frequency. Volatile across doc edits — fine for in-session interactive use. */

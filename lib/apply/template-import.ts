@@ -9,9 +9,9 @@
  * target docs). Keeping it isolated keeps apply-styles' main pipeline
  * readable.
  */
-import { DocxReader } from "./reader.ts"
-import { NS } from "./types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr, wVal } from "./xml-utils.ts"
+import { DocxReader } from "@lib/xml/reader.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr, wVal } from "@lib/xml/xml-utils.ts"
 
 export interface ImportResult {
   /** Style IDs actually imported (includes transitive basedOn ancestors). */

@@ -188,7 +188,7 @@ export const PatternRuleSchema = z.strictObject({
 // after style + numbering install and before pattern_rules / bulk_rules /
 // assignments — so the rules pass sees both pre-existing chrome paragraphs
 // and any agent-inserted content uniformly.
-import { EditOpSchema } from "./edit-config-schema.ts"
+import { EditOpSchema } from "@lib/config/edit-config-schema.ts"
 
 export const ApplyConfigSchema = z.strictObject({
   source: NonEmptyString,

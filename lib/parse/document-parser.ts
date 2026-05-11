@@ -6,7 +6,7 @@ import {
   type ParsedParagraph,
   type SectionInfo,
   type TableClassification,
-} from "./types.ts"
+} from "@lib/parse/types.ts"
 import {
   descendantsNS,
   firstChildNS,
@@ -15,9 +15,9 @@ import {
   textContent,
   wAttr,
   wVal,
-} from "./xml-utils.ts"
-import type { StyleResolver } from "./style-resolver.ts"
-import { summarizeTable } from "./table-classifier.ts"
+} from "@lib/xml/xml-utils.ts"
+import type { StyleResolver } from "@lib/parse/style-resolver.ts"
+import { summarizeTable } from "@lib/parse/table-classifier.ts"
 
 interface ParseResult {
   paragraphs: ParsedParagraph[]
@@ -322,11 +322,19 @@ export class DocumentParser {
     const styleDef = this.resolver.getStyleDefinition(styleId)
     const styleName = styleDef?.name || computed.styleName || styleId
 
+    // Direct rPr: parse the dominant run's rPr (or pMark rPr fallback) raw,
+    // WITHOUT the cascade merge `computed` applies. Used by the dry-run
+    // vs-target-direct classifier. Returns an empty record when nothing
+    // direct exists. directPPr is `directPPr` parsed earlier (above).
+    const directRPr = this.resolver.parseRPr(chosenRPr || paraMarkRPr)
+
     const para: ParsedParagraph = {
       index: this.nextParaIndex++,
       text,
       rPr: computed.rPr,
       pPr: finalPPr,
+      directRPr,
+      directPPr,
       styleId,
       styleName,
       fingerprint: "", // assigned later

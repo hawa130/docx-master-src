@@ -16,10 +16,10 @@
  * non-overlapping edits — but cheaper to catch than to debug.
  */
 
-import { DocxReader } from "@lib/reader.ts"
-import { NS } from "@lib/types.ts"
-import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml-utils.ts"
-import { PPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
+import { DocxReader } from "@lib/xml/reader.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
+import { PPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import {
   assertNever,
   makeTrackContext,
@@ -27,20 +27,20 @@ import {
   type ResolvedEdit,
   type ResolvedTarget,
   type TrackContext,
-} from "./edit-types.ts"
+} from "@lib/config/edit-types.ts"
 import {
   buildResolverContext,
   resolveLocator,
   resolveRunLocator,
   trailingBodySectPr,
   type ResolverContext,
-} from "./locator.ts"
+} from "@lib/edit/locator.ts"
 import {
   detectBlockers,
   explainBlockerReason,
   summarizeBlockers,
   type BlockerScan,
-} from "./blockers.ts"
+} from "@lib/edit/blockers.ts"
 import {
   buildPPrChildren,
   buildRPrChildren,
@@ -48,15 +48,15 @@ import {
   PPR_MANAGED_LOCAL_NAMES,
   RPR_MANAGED_LOCAL_NAMES,
   type EmitContext,
-} from "./fragment-emit.ts"
+} from "@lib/edit/fragment-emit.ts"
 import {
   attachPPrChange,
   attachRPrChange,
   markParagraphAsInserted,
   markParagraphMarkDeleted,
   wrapParagraphContentInDel,
-} from "./track-changes.ts"
-import { ImageAssetRegistry } from "./image-asset.ts"
+} from "@lib/edit/track-changes.ts"
+import { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 
 const w = NS.w
 
@@ -92,7 +92,7 @@ export interface EditsPreviewEntry {
 
 export interface PreviewEditsInput {
   documentDoc: Document
-  parsedParagraphs: import("@lib/types.ts").ParsedParagraph[]
+  parsedParagraphs: import("@lib/parse/types.ts").ParsedParagraph[]
   edits: EditOp[]
 }
 
@@ -167,7 +167,7 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
 
 export interface RunEditOpsInput {
   documentDoc: Document
-  parsedParagraphs: import("@lib/types.ts").ParsedParagraph[]
+  parsedParagraphs: import("@lib/parse/types.ts").ParsedParagraph[]
   reader: DocxReader
   edits: EditOp[]
   trackChanges: boolean
@@ -428,7 +428,7 @@ function mergeMissingAttrs(source: Element, target: Element): void {
 
 function inheritFormatForNewParagraphs(
   newEls: Element[],
-  newBlocks: import("./edit-types.ts").Fragment,
+  newBlocks: import("@lib/config/edit-types.ts").Fragment,
   anchor: Element | null,
   ownerDoc: Document,
 ): void {
@@ -497,7 +497,7 @@ function ensureCellHasParagraph(tc: Element, ownerDoc: Document): void {
 
 function applyInsertBefore(
   target: ResolvedTarget,
-  fragment: import("./edit-types.ts").Fragment,
+  fragment: import("@lib/config/edit-types.ts").Fragment,
   documentDoc: Document,
   trackContext: TrackContext,
   emitCtx: EmitContext,
@@ -524,7 +524,7 @@ function applyInsertBefore(
 
 function applyInsertAfter(
   target: ResolvedTarget,
-  fragment: import("./edit-types.ts").Fragment,
+  fragment: import("@lib/config/edit-types.ts").Fragment,
   documentDoc: Document,
   trackContext: TrackContext,
   emitCtx: EmitContext,
@@ -570,7 +570,7 @@ function insertAtContainerEnd(
 
 function applyReplace(
   target: ResolvedTarget,
-  fragment: import("./edit-types.ts").Fragment,
+  fragment: import("@lib/config/edit-types.ts").Fragment,
   documentDoc: Document,
   trackContext: TrackContext,
   emitCtx: EmitContext,

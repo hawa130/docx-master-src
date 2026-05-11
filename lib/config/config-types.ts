@@ -1,5 +1,5 @@
 import type * as z from "zod/mini"
-import type { ParsedParagraph } from "@lib/types.ts"
+import type { ParsedParagraph } from "@lib/parse/types.ts"
 import type {
   ApplyConfigSchema,
   AssignmentSchema,
@@ -9,7 +9,7 @@ import type {
   StyleEntrySchema,
   TemplateSchema,
   ThemeFontsSchema,
-} from "./config-schema.ts"
+} from "@lib/config/config-schema.ts"
 
 /* ------------- public config types -------------
  *
@@ -63,6 +63,13 @@ export interface StyleResolutionEntry {
    * value that contains CJK characters (likely meant fontCJK). Surfaced
    * under the style in the dry-run report. Empty / undefined when clean. */
   warnings?: string[]
+  /** Per-field classification (override / redundant / new) against the
+   * direct format of every paragraph this style's new definition will
+   * render. Closes the gap left by `priorState` Δ-lines, which only check
+   * styles.xml cascade — sparse-by-design's real invariant lives at the
+   * direct-format layer. Undefined when no target paragraphs / analysis
+   * skipped. */
+  vsDirect?: import("../shared/vs-direct.ts").VsDirectReport
 }
 
 export interface CompiledPatternRule {
