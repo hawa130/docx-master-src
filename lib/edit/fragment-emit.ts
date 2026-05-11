@@ -17,6 +17,8 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
+import type * as z from "zod/mini"
+import type { InlineRefSchema } from "@lib/config/edit-config-schema.ts"
 import {
   assertNever,
   type Block,
@@ -27,6 +29,18 @@ import {
 } from "@lib/config/edit-types.ts"
 import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
+
+export type InlineRef = z.infer<typeof InlineRefSchema>
+
+/** Callback the engine supplies for InlineRef nodes. Returns the run
+ * elements that go inside the paragraph (typically the 5-run REF
+ * sequence from emitRefField). Decoupled from this module so fragment-emit
+ * stays free of bookmark / locator / numbering-counter concerns. */
+export type RefEmitter = (
+  ref: InlineRef,
+  ownerDoc: Document,
+  defaultFormat: RunFormat | undefined,
+) => Element[]
 
 const w = NS.w
 
@@ -244,11 +258,28 @@ function emitRun(text: string, format: RunFormat | undefined, ownerDoc: Document
   return r
 }
 
-function emitRichText(rt: RichText, ownerDoc: Document, defaultFormat?: RunFormat): Element[] {
+function emitRichText(
+  rt: RichText,
+  ownerDoc: Document,
+  ctx: EmitContext,
+  defaultFormat?: RunFormat,
+): Element[] {
   if (typeof rt === "string") {
     return rt.length === 0 ? [] : [emitRun(rt, defaultFormat, ownerDoc)]
   }
-  return rt.map((piece) => emitRun(piece.text, piece.format ?? defaultFormat, ownerDoc))
+  const out: Element[] = []
+  for (const piece of rt) {
+    if ("refTo" in piece) {
+      if (!ctx.emitRef) {
+        throw new Error("InlineRef encountered but ctx.emitRef was not provided by the engine")
+      }
+      const fmt = piece.format ?? defaultFormat
+      for (const r of ctx.emitRef(piece, ownerDoc, fmt)) out.push(r)
+      continue
+    }
+    out.push(emitRun(piece.text, piece.format ?? defaultFormat, ownerDoc))
+  }
+  return out
 }
 
 /* ------------- block emitters ------------- */
@@ -269,6 +300,10 @@ export type ImageEmitter = (
 
 export interface EmitContext {
   emitImage?: ImageEmitter
+  /** Provided when edits[] contains InlineRef nodes. Engine builds this
+   * over a bookmark allocator + locator resolver + pending-backfill queue.
+   * Absent ctx.emitRef + an InlineRef in input = engine error at emit. */
+  emitRef?: RefEmitter
 }
 
 function ensurePPr(p: Element, ownerDoc: Document): Element {
@@ -286,6 +321,7 @@ function ensurePPr(p: Element, ownerDoc: Document): Element {
 function emitParagraphBlock(
   block: Extract<Block, { type: "paragraph" }>,
   ownerDoc: Document,
+  ctx: EmitContext,
 ): Element {
   const p = ownerDoc.createElementNS(w, "w:p")
   const needsPPr =
@@ -311,7 +347,7 @@ function emitParagraphBlock(
       for (const c of buildPPrChildren(block.paraFormat, ownerDoc)) pPr.appendChild(c)
     }
   }
-  for (const r of emitRichText(block.text, ownerDoc, block.runFormat)) p.appendChild(r)
+  for (const r of emitRichText(block.text, ownerDoc, ctx, block.runFormat)) p.appendChild(r)
   return p
 }
 
@@ -363,7 +399,7 @@ function emitHorizontalRuleBlock(ownerDoc: Document): Element {
 export function emitBlock(block: Block, ownerDoc: Document, ctx: EmitContext): Element {
   switch (block.type) {
     case "paragraph":
-      return emitParagraphBlock(block, ownerDoc)
+      return emitParagraphBlock(block, ownerDoc, ctx)
     case "image":
       return emitImageBlock(block, ownerDoc, ctx)
     case "page-break":

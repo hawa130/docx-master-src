@@ -82,6 +82,8 @@ If the styleId or numId you reference doesn't exist in the doc, add `styles[]` /
 
 `runFormat`: `bold` / `italic` / `underline` / `strike` (boolean, tri-state — `false` emits explicit off-toggle to override inherited true), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (pt), `vertAlign` (`"superscript"` / `"subscript"` / `"baseline"` — three-state; omit to inherit, use `"baseline"` only to opt out of a super/sub inherited from a character style).
 
+Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` runs, you can place `{ "refTo": ..., "display": ..., "format": ... }` cross-reference nodes. **Any cite to an auto-numbered target (figure / table / heading / equation / reference entry) must use these — never write the counter as literal text.** See [`cross-references.md`](cross-references.md) for the contract.
+
 `paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (pt), `lineSpacing` + `lineRule` (same convention as a style definition), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (`"Nchar"` / `"Npt"` / number), `outlineLevel` (0–9).
 
 Mirrors the style schema — what you'd put inside a `styles[]` entry, you put as direct paragraph formatting here.

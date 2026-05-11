@@ -58,6 +58,12 @@ import {
   wrapParagraphContentInDel,
 } from "@lib/edit/track-changes.ts"
 import { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
+import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
+import {
+  emitRefField,
+  switchesForDisplay,
+  type PendingRefBackfill,
+} from "@lib/edit/field-ref.ts"
 
 const w = NS.w
 
@@ -172,11 +178,27 @@ export interface RunEditOpsInput {
   reader: DocxReader
   edits: EditOp[]
   trackChanges: boolean
+  /** Live styles.xml with this apply's numbering bindings applied —
+   * used by InlineRef to verify the target paragraph's style cascade
+   * resolves to a numId. Optional: when absent, the check falls back
+   * to the parsed paragraph's pre-apply pPr.numId, which still
+   * catches source-bound targets but may reject newly-bound targets.  */
+  stylesDoc?: Document | null
 }
 
 export interface RunEditOpsOutput {
   imageRegistry: ImageAssetRegistry
   report: ApplyEditsReport
+  /** Cross-reference state produced by `InlineRef` emissions during this
+   * edit pass. apply-styles consumes these post-edits to (a) backfill REF
+   * placeholder text from the numbering counter simulator, (b) commit
+   * bookmark wrapping on target paragraphs, and (c) flip settings.xml's
+   * updateFields flag when at least one ref was emitted. Empty when no
+   * InlineRef appeared in the edits[]. */
+  crossRefs: {
+    bookmarkAllocator: BookmarkAllocator
+    pendingBackfills: PendingRefBackfill[]
+  }
 }
 
 /**
@@ -189,7 +211,7 @@ export interface RunEditOpsOutput {
  * own replacement map) plus the applied-ops report.
  */
 export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutput> {
-  const { documentDoc, parsedParagraphs, reader, edits, trackChanges } = input
+  const { documentDoc, parsedParagraphs, reader, edits, trackChanges, stylesDoc } = input
 
   const resolverCtx = buildResolverContext(documentDoc, parsedParagraphs)
   const blockers = detectBlockers(documentDoc, resolverCtx.indexByElement)
@@ -208,10 +230,60 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
   const imageRegistry = await ImageAssetRegistry.open(reader)
+  const bookmarkAllocator = new BookmarkAllocator(documentDoc)
+  const pendingBackfills: PendingRefBackfill[] = []
   const emitCtx: EmitContext = {
     emitImage: (src, widthPt, heightPt, alt, ownerDoc) => {
       const { rId } = imageRegistry.registerImage(src)
       return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
+    },
+    emitRef: (ref, ownerDoc, defaultFormat) => {
+      // Pre-edit resolution: refTo.index is the index in source paragraph
+      // order. Locator resolution handles bounds + table-cell exclusion the
+      // same way every other locator does.
+      const target = resolverCtx.indexed[ref.refTo.index - 1]
+      if (!target || target.index !== ref.refTo.index) {
+        throw new Error(
+          `InlineRef: refTo.paragraph=${ref.refTo.index} is out of range. ` +
+            `Document has ${resolverCtx.indexed.length} indexed paragraphs.`,
+        )
+      }
+      // Target must be bound to a numbering scheme — otherwise REF has
+      // nothing to render via \\n / \\r switches. Numbering can be either
+      // direct on the paragraph (<w:p>/<w:pPr>/<w:numPr>) or inherited from
+      // the paragraph's style cascade. Check both paths.
+      if (!paragraphIsAutoNumbered(target.element, stylesDoc ?? null)) {
+        throw new Error(
+          `InlineRef: target paragraph #${ref.refTo.index} is not bound to a numbering scheme. ` +
+            `Cross-references require an auto-numbered target — bind the target's pStyle to a numbering[] level, or change the locator to a numbered paragraph.`,
+        )
+      }
+      const { name } = bookmarkAllocator.getOrAllocate(target.element)
+      const display = ref.display ?? "label"
+      // Placeholder text is empty here; backfilled post-edit once the
+      // numbering counter simulator yields rendered values. settings.xml's
+      // updateFields=true also ensures Word resolves on open, so users who
+      // skip the backfill (e.g. parser called outside the apply pipeline)
+      // still see correct text after their first F9.
+      const runs = emitRefField(ownerDoc, {
+        bookmarkName: name,
+        switches: switchesForDisplay(display),
+        placeholder: "",
+        format: ref.format ?? defaultFormat,
+      })
+      // The 4th run is the placeholder run; its <w:t> is the textContent we
+      // backfill. Locate it explicitly rather than indexing by position so
+      // refactors to emitRefField's run layout don't silently break this.
+      const placeholderRun = runs[3]!
+      const placeholderT = firstChildNS(placeholderRun, w, "t")
+      if (placeholderT) {
+        pendingBackfills.push({
+          placeholderTextEl: placeholderT,
+          targetParagraph: target.element,
+          display,
+        })
+      }
+      return runs
     },
   }
   const perOp: ApplyEditsReport["perOp"] = []
@@ -236,7 +308,53 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       blockerCounts: summarizeBlockers(blockers),
       perOp,
     },
+    crossRefs: {
+      bookmarkAllocator,
+      pendingBackfills,
+    },
   }
+}
+
+/** Does a paragraph render with auto-numbering? Checks both the direct
+ * `<w:p>/<w:pPr>/<w:numPr>` shortcut and the style cascade traced through
+ * stylesDoc. Used by InlineRef target validation; stylesDoc is the live
+ * (post-binding) document so cascade-only bindings injected by this apply
+ * run are honored. */
+function paragraphIsAutoNumbered(pEl: Element, stylesDoc: Document | null): boolean {
+  const pPr = firstChildNS(pEl, w, "pPr")
+  if (pPr) {
+    if (firstChildNS(pPr, w, "numPr")) return true
+    const pStyle = firstChildNS(pPr, w, "pStyle")
+    if (pStyle && stylesDoc) {
+      const styleId = pStyle.getAttributeNS(w, "val") ?? pStyle.getAttribute("w:val") ?? ""
+      if (styleId && styleHasNumPrInCascade(stylesDoc, styleId)) return true
+    }
+  }
+  return false
+}
+
+function styleHasNumPrInCascade(stylesDoc: Document, styleId: string): boolean {
+  const seen = new Set<string>()
+  let current: string | null = styleId
+  while (current && !seen.has(current)) {
+    seen.add(current)
+    const styleEl = findStyleById(stylesDoc, current)
+    if (!styleEl) return false
+    const sPr = firstChildNS(styleEl, w, "pPr")
+    if (sPr && firstChildNS(sPr, w, "numPr")) return true
+    const basedOn = firstChildNS(styleEl, w, "basedOn")
+    current = basedOn ? (basedOn.getAttributeNS(w, "val") ?? basedOn.getAttribute("w:val")) : null
+  }
+  return false
+}
+
+function findStyleById(stylesDoc: Document, id: string): Element | null {
+  const root = stylesDoc.documentElement
+  if (!root) return null
+  for (const s of getChildrenNS(root, w, "style")) {
+    if ((s.getAttributeNS(w, "styleId") ?? s.getAttribute("w:styleId")) === id) return s
+  }
+  return null
 }
 
 /** Resolve one op's locator. Single source of truth used by both

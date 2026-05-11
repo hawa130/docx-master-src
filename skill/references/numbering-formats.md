@@ -83,7 +83,7 @@ Captions sit on level 1; level 0 silently tracks the chapter number, restart-on-
 ```
 Level 0: [1] / [2] / [3]                numFmt=decimal  lvlText="[%1]"   suff="space"
 ```
-Body-text cites (`如 [1] 所示`) are **not** emitted by this skill — see SKILL.md "Out of scope". Auto-numbered reference entries stay stable; in-text cites must be inserted via Word's Insert → Cross-reference UI for production docs, otherwise renumbering a reference silently desyncs every cite.
+Body-text cites to these (or to any auto-numbered caption / heading) go through `InlineRef` in `edits[]`, not literal text. See [`cross-references.md`](cross-references.md).
 
 ## lvlText Syntax
 

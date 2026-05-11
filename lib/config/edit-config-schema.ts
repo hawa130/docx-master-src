@@ -76,9 +76,27 @@ export const InlineRunSchema = z.strictObject({
   format: z.optional(RunFormatSchema),
 })
 
+/** Inline cross-reference to an auto-numbered paragraph. Emits as an
+ * OOXML REF field; Word resolves the visible text from the target's
+ * bookmark at render time. The target locator resolves against the
+ * pre-edit document state (same as every other edits[] locator); the
+ * referenced paragraph must be bound to a numbering scheme in this apply
+ * — the engine refuses unbound targets at apply time. See
+ * references/cross-references.md for the full contract. */
+export const InlineRefSchema = z.strictObject({
+  refTo: z.strictObject({
+    type: z.literal("paragraph"),
+    index: z.number().check(z.gte(1)),
+  }),
+  display: z.optional(z.enum(["full", "label", "number"])),
+  format: z.optional(RunFormatSchema),
+})
+
+export const InlineNodeSchema = z.union([InlineRunSchema, InlineRefSchema])
+
 /** Plain string is shorthand for a single run with no inline formatting.
  * The emitter expands strings on the fly — most paragraphs are plain text. */
-export const RichTextSchema = z.union([z.string(), z.array(InlineRunSchema)])
+export const RichTextSchema = z.union([z.string(), z.array(InlineNodeSchema)])
 
 /* ------------- numbering ref (for list paragraphs) ------------- */
 

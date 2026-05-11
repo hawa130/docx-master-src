@@ -30,6 +30,11 @@ import {
 } from "@lib/apply/style-mutation.ts"
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
+import {
+  simulateNumberingCounters,
+  extractParagraphText,
+} from "@lib/apply/numbering-counter.ts"
+import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
 import type {
   ApplyConfig,
   ApplyContext,
@@ -82,6 +87,18 @@ function detectStyleResolutionWarnings(
  *  whose direct format came from agent's own paraFormat/runFormat would
  *  trivially appear redundant — they're included for now (acceptable noise
  *  given the small footprint of inserts vs chrome). */
+/** True iff `el` is reachable from `doc.documentElement` (not removed). Walks
+ * parent links rather than relying on any cached structure; constant-time per
+ * call for shallow trees and bounded for paragraphs. */
+function isAttachedToDoc(el: Element, doc: Document): boolean {
+  let cur: Node | null = el
+  while (cur) {
+    if (cur === doc.documentElement) return true
+    cur = cur.parentNode
+  }
+  return false
+}
+
 function populateVsDirectReports(
   documentDoc: Document,
   paragraphs: readonly ParsedParagraph[],
@@ -456,6 +473,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let editsTrackChanges = false
   let editsPreview: EditsPreviewEntry[] = []
   let editTouchedIndices: Set<number> | undefined
+  let crossRefsTouched = false
   if (config.edits && config.edits.length > 0) {
     if (config.dryRun) {
       // Dry-run: resolve locators + blocker check, but don't mutate. Lets the
@@ -476,10 +494,50 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         reader,
         edits: config.edits,
         trackChanges: config.trackChanges ?? false,
+        stylesDoc,
       })
       imageRegistry = result.imageRegistry
       editsApplied = result.report.applied
       editsTrackChanges = result.report.trackChanges
+
+      // Cross-reference post-pass. (1) Simulate numbering counters against the
+      // current document state — gives us the rendered label / number text per
+      // target paragraph. (2) Backfill each pending REF's placeholder run so
+      // Word users see correct text before the first F9 / "update fields"
+      // prompt. (3) Wrap target paragraphs with <w:bookmarkStart>/<w:bookmarkEnd>
+      // pairs so REF can resolve. (4) Flip settings.xml's updateFields flag.
+      const { bookmarkAllocator, pendingBackfills } = result.crossRefs
+      if (bookmarkAllocator.hasAllocations()) {
+        // Detached-target guard: a later edit op may have removed the
+        // paragraph an earlier InlineRef pointed at. The stale-element
+        // check below catches this BEFORE the counter sim (which iterates
+        // only attached paragraphs and would silently leave the placeholder
+        // empty). Throw with the original locator so the agent can see
+        // which ref needs updating.
+        for (const pending of pendingBackfills) {
+          if (!isAttachedToDoc(pending.targetParagraph, documentDoc)) {
+            throw new Error(
+              `InlineRef target paragraph was removed by a later edit op. ` +
+                `Reorder edits so the ref op runs before any op that replaces / deletes the target, ` +
+                `or remove the conflicting edit.`,
+            )
+          }
+        }
+        const counters = simulateNumberingCounters(documentDoc, numberingDoc, stylesDoc)
+        for (const pending of pendingBackfills) {
+          const rendered = counters.get(pending.targetParagraph)
+          if (!rendered && pending.display !== "full") continue
+          const text =
+            pending.display === "number"
+              ? (rendered?.number ?? "")
+              : pending.display === "full"
+                ? extractParagraphText(pending.targetParagraph)
+                : (rendered?.label ?? "")
+          pending.placeholderTextEl.textContent = text
+        }
+        bookmarkAllocator.commit(documentDoc)
+        crossRefsTouched = true
+      }
 
       // Re-parse documentDoc — paragraph indices have shifted since edits inserted
       // new paragraphs. The rules pass below uses parsed.paragraphs directly, so it
@@ -694,6 +752,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // Image registry from edit-pass flushes its staged binaries + rels +
   // content-type updates. No-op when no images were embedded.
   if (imageRegistry) imageRegistry.flushTo(replacements)
+  // Cross-references emitted in this run — flip settings.xml's
+  // <w:updateFields> flag so Word resolves each REF on next open without
+  // the user manually pressing Ctrl+A then F9.
+  if (crossRefsTouched) {
+    await ensureUpdateFieldsFlag(reader, replacements)
+  }
   // 8b. Dry-run skips write + post-write validation; the agent iterates on
   // the in-memory report alone. Otherwise: write, then run the comprehensive
   // bundle check (XML well-formedness, CT_* schema, whitespace preservation,

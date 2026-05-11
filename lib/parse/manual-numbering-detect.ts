@@ -84,5 +84,11 @@ function blocksOf(edit: EditOp): Block[] | null {
 
 function richTextToPlain(rich: RichText): string {
   if (typeof rich === "string") return rich
-  return rich.map((r) => r.text).join("")
+  // InlineRef nodes have no text content at config-write time (the
+  // resolved counter only materializes after the numbering simulator
+  // runs post-edit) — exclude them from the manual-prefix scan rather
+  // than fabricating placeholder text that might trigger false positives.
+  return rich
+    .map((r) => ("text" in r ? r.text : ""))
+    .join("")
 }

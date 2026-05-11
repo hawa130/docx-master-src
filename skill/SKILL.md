@@ -97,7 +97,7 @@ Default first. Don't ask unless one of the cases below applies:
 - typed sentinel mid-prose vs. heading
 - bold paragraph as sub-heading vs. emphasis
 - missing source content for template slots
-- unsupported structures (footnotes, math, cross-references)
+- unsupported structures (footnotes, math equations, page-number cites)
 - font / spacing prompt without explicit scope (theme layer vs `Normal` cascade vs per-role `styles[]` — see standardize.md "Three layers for setting fonts")
 
 When you do ask: one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
@@ -106,7 +106,7 @@ When you do ask: one focused message naming the choice + your default, then yiel
 
 Surface to the user when blocked by: layout-**table** restructuring, TOC body content, footnotes / comments / headers / footers content. Paragraphs *inside* layout-table cells ARE indexed and fully editable; only the table holding them is off-limits.
 
-**Auto-updating cross-references (REF fields).** Captions auto-number stably when bound to a numbering scheme, but body-text cites to them ("如图 1 所示", "见表 2", "见 [3]") are emitted as literal text — this skill does not produce `<w:fldChar>` REF fields. The literals will silently desync the moment a figure / table is inserted or a reference reordered. When the doc has auto-numbered captions / references, finish by telling the user: for production use, replace in-text cites via Word's *Insert → Cross-reference* UI so they auto-update.
+**Cross-references are mandatory for any cite to a numbered target.** Figures, tables, sections, chapters, equations, theorem numbers, reference-list entries — any time body text mentions a target the skill auto-numbered, the cite goes through `edits[].text[]`'s `InlineRef` node, never as literal text like `"如图 1 所示"` or `"见 [3]"`. Literal counters silently desync the moment a figure is inserted or a reference reordered; REF fields stay correct. See [`references/cross-references.md`](references/cross-references.md) for the InlineRef schema, target requirements, and display options. Page-number cites ("on page 12") remain out of scope — surface to the user.
 
 ## Tool Reference
 
