@@ -19,7 +19,12 @@ import { applyListRestartPass } from "./list-restart.ts"
 import { detectManualNumbering } from "./manual-numbering-detect.ts"
 import { validateDocxFile } from "./docx-validate.ts"
 import { extractDisplayFields, printReport } from "./report.ts"
-import { reorderAgentTouchedStylesFirst, resolveStyleDef, upsertStyle } from "./style-mutation.ts"
+import {
+  extractPriorDisplayFields,
+  reorderAgentTouchedStylesFirst,
+  resolveStyleDef,
+  upsertStyle,
+} from "./style-mutation.ts"
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "./edit-engine.ts"
 import type { ImageAssetRegistry } from "./image-asset.ts"
 import type {
@@ -134,11 +139,16 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // declared style otherwise.
   const styleResolutions: StyleResolutionEntry[] = []
   const resolvedStyles = config.styles.map((def) => {
+    // Snapshot prior cascade-resolved state BEFORE injection mutates
+    // styles.xml. resolver was built at load; its cache reflects the
+    // source's pre-apply definition for each styleId.
+    const priorState = extractPriorDisplayFields(resolver, def.id)
     const final = resolveStyleDef(def, parsed.paragraphs)
     styleResolutions.push({
       styleId: def.id,
       userSpec: config.requirements?.[def.id] ?? null,
       resolved: extractDisplayFields(final),
+      priorState,
     })
     return final
   })

@@ -51,6 +51,41 @@ function formatResolvedFields(fields: Record<string, unknown>): string {
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 
+/** Compact Δ-line per the legend in the Style Resolution header.
+ *  changes/+new/~matches stay in that order so the most actionable signal
+ *  (changes) reads first. Returns empty string when nothing to show. */
+function formatDeltaLine(
+  resolved: Record<string, unknown>,
+  prior: Record<string, unknown>,
+): string {
+  const changes: string[] = []
+  const fresh: string[] = []
+  const matches: string[] = []
+  for (const [k, v] of Object.entries(resolved)) {
+    if (!(k in prior)) {
+      fresh.push(`+${k}=${shortVal(v)}`)
+    } else if (sameValue(prior[k], v)) {
+      matches.push(`~${k}`)
+    } else {
+      changes.push(`${k} ${shortVal(prior[k])}→${shortVal(v)}`)
+    }
+  }
+  return [...changes, ...fresh, ...matches].join(", ")
+}
+
+function shortVal(v: unknown): string {
+  if (typeof v === "string") return v
+  if (typeof v === "boolean") return v ? "true" : "false"
+  return String(v)
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (typeof a === "number" && typeof b === "number") {
+    return Math.abs(a - b) < 1e-6
+  }
+  return String(a) === String(b)
+}
+
 /* ------------- change report ------------- */
 
 export function printReport(args: {
@@ -276,14 +311,24 @@ export function printReport(args: {
     lines.push("  Styles without a spec are still listed so the resolved fields")
     lines.push("  are auditable.")
     lines.push("")
+    lines.push("  Δ-line vs source (when styleId existed pre-apply):")
+    lines.push("    A→B    field changed; source had A, declaration sets B")
+    lines.push("    +field new declaration; source didn't have this field")
+    lines.push("    ~field declaration matches source's cascade value (may be redundant)")
+    lines.push("")
     for (const r of args.styleResolutions) {
-      lines.push(`  ${r.styleId}`)
+      const freshTag = r.priorState === null ? "  [fresh]" : ""
+      lines.push(`  ${r.styleId}${freshTag}`)
       if (r.userSpec !== null) {
         lines.push(`    User specified: "${r.userSpec}"`)
       } else {
         lines.push(`    User specified: (none — no requirements entry)`)
       }
       lines.push(`    Agent resolved: ${formatResolvedFields(r.resolved)}`)
+      if (r.priorState !== null) {
+        const delta = formatDeltaLine(r.resolved, r.priorState)
+        if (delta) lines.push(`    Δ vs source:    ${delta}`)
+      }
     }
     lines.push("")
   }

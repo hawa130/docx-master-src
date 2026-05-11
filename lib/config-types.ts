@@ -49,6 +49,11 @@ export interface StyleResolutionEntry {
   styleId: string
   userSpec: string | null
   resolved: Record<string, unknown>
+  /** Cascade-resolved display fields for this styleId BEFORE this apply
+   * run, or null when the styleId is being freshly installed (no prior in
+   * the source's styles.xml). Used in the dry-run report to surface
+   * change/new/match per field against the source. */
+  priorState: Record<string, unknown> | null
 }
 
 export interface CompiledPatternRule {

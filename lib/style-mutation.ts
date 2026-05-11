@@ -1,6 +1,7 @@
 import { NS, type ParsedParagraph } from "@lib/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml-utils.ts"
 import type { StyleConfigEntry } from "./config-types.ts"
+import type { StyleResolver } from "./style-resolver.ts"
 import { PPR_CHILD_ORDER, RPR_CHILD_ORDER, insertChildInOrder } from "./xml-order.ts"
 
 /**
@@ -62,6 +63,48 @@ export function resolveStyleDef(
     name: def.name,
     ...(def.basedOn !== undefined ? { basedOn: def.basedOn } : {}),
   }
+}
+
+/**
+ * Capture the cascade-resolved display fields for an existing styleId BEFORE
+ * this apply run mutates it. Returns null when the styleId is absent from
+ * source — the agent is installing it fresh, so there's no prior state to
+ * diff against. Shape mirrors `extractDisplayFields` (report.ts) so the two
+ * can be compared field-by-field for the dry-run Δ line.
+ */
+export function extractPriorDisplayFields(
+  resolver: StyleResolver,
+  styleId: string,
+): Record<string, unknown> | null {
+  if (!resolver.getStyleDefinition(styleId)) return null
+  const { rPr, pPr } = resolver.resolveStyleChain(styleId)
+  const out: Record<string, unknown> = {}
+  if (rPr.fontEastAsia) out.fontCJK = rPr.fontEastAsia
+  const latin = rPr.fontAscii ?? rPr.fontHAnsi
+  if (latin) out.fontLatin = latin
+  if (rPr.size !== undefined) out.size = rPr.size / 2
+  if (rPr.bold !== undefined) out.bold = rPr.bold
+  if (rPr.italic !== undefined) out.italic = rPr.italic
+  if (rPr.color && rPr.color !== "auto") out.color = rPr.color
+  if (pPr.alignment) out.alignment = pPr.alignment
+  if (pPr.spaceBefore !== undefined) out.spaceBefore = pPr.spaceBefore / 20
+  if (pPr.spaceAfter !== undefined) out.spaceAfter = pPr.spaceAfter / 20
+  if (pPr.lineSpacing !== undefined) {
+    const rule = pPr.lineRule || "auto"
+    if (rule === "auto") {
+      out.lineSpacing = pPr.lineSpacing / 240
+    } else {
+      out.lineSpacing = pPr.lineSpacing / 20
+      out.lineRule = rule
+    }
+  }
+  if (pPr.firstLineIndentChars !== undefined) {
+    out.firstLineIndent = `${pPr.firstLineIndentChars / 100}char`
+  } else if (pPr.firstLineIndent !== undefined) {
+    out.firstLineIndent = `${pPr.firstLineIndent / 20}pt`
+  }
+  if (pPr.outlineLevel !== undefined) out.outlineLevel = pPr.outlineLevel
+  return out
 }
 
 function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
