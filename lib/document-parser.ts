@@ -224,7 +224,13 @@ export class DocumentParser {
   ): void {
     const pPr = firstChildNS(pEl, NS.w, "pPr")
     const pStyleEl = pPr ? firstChildNS(pPr, NS.w, "pStyle") : null
-    const styleId = (pStyleEl && wVal(pStyleEl)) || "Normal"
+    // Paragraphs without an explicit <w:pStyle> bind to the doc's default
+    // paragraph style (the one flagged `w:default="1"`). Resolve to that
+    // actual styleId so usage counts and dominant-binding stats attribute
+    // correctly; POI/WPS templates auto-generate ids like "a" for Normal,
+    // so the literal "Normal" string usually matches no real style.
+    const styleId =
+      (pStyleEl && wVal(pStyleEl)) || this.resolver.getDefaultParagraphStyleId() || "Normal"
 
     // dominant run rPr — pick the run with the most visible text characters.
     // Fallback to first non-empty run, then paragraph-mark rPr in pPr.

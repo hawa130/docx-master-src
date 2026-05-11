@@ -501,6 +501,18 @@ export class StyleResolver {
     const def = this.styles.get(styleId)
     if (def) def.usageCount++
   }
+
+  /** styleId of the paragraph style flagged `w:default="1"`, or null when
+   * the document has none. Parsers use this as the fallback for paragraphs
+   * that omit `<w:pStyle>` so usage attribution lands on the actual
+   * default style (POI/WPS auto-generate ids like "a") instead of the
+   * literal name "Normal" which usually doesn't match any styleId. */
+  getDefaultParagraphStyleId(): string | null {
+    for (const s of this.styles.values()) {
+      if (s.isDefault && s.type === "paragraph") return s.id
+    }
+    return null
+  }
 }
 
 /**
