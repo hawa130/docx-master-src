@@ -103,8 +103,21 @@ The skill writes:
 2. A REF field in the body run sequence: `REF _RefXXXXXX \n \h` (switches per `display`)
 3. The numbering counter is simulated at apply time and the **placeholder text** between `<w:fldChar fldCharType="separate"/>` and `<w:fldChar fldCharType="end"/>` is set to the predicted value (e.g. `图 1`). This means the doc reads correctly even if the user opens it without updating fields.
 4. `<w:updateFields w:val="true"/>` is set in `word/settings.xml`. On next open, Word automatically updates every field — the user sees a brief prompt and after confirming, all REFs resolve to their live target text.
+5. **When `InlineRef.format` is set** (and produces non-empty rPr): the same `<w:rPr>` is replicated onto every one of the 5 field runs (begin / instrText / separate / placeholder / end), and `\* MERGEFORMAT` is appended to the field code. Together these tell Word to preserve the formatting when it rewrites the result run on field update. Without both, Word reads rPr from the surrounding (empty) field runs after F9 and the format silently disappears.
 
 If the user dismisses the prompt without updating, the placeholder text from step 3 is still visible and correct for the as-emitted state. Updates take effect on the next manual `Ctrl+A` → `F9`.
+
+### Verifying format-bearing refs
+
+Inspecting the apply-time XML alone is **not enough** for refs that carry a `format`. Word rewrites the field's result run on every update; if rPr replication or `\* MERGEFORMAT` were missing, the emit-time XML would still look correct, validation would still pass, and the format would only disappear after the first update.
+
+Round-trip in Word to verify:
+1. Open the apply output in Word
+2. Accept the "update fields" prompt
+3. Save
+4. Unzip and grep `word/document.xml` for the relevant `instrText` — confirm the surrounding result run still carries the expected `<w:rPr>` after the update
+
+This is the only reliable check for format preservation. Schema validation and emit-time inspection both pass the broken case; only a real Word round-trip catches the regression.
 
 ## Display option behavior in detail
 
