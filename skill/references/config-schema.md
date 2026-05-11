@@ -12,11 +12,8 @@ config; SKILL.md only carries a top-level summary.
                                      // This file is NEVER modified — apply
                                      // copies it first, then writes the modified copy.
   output: "/path/to/output.docx",    // REQUIRED. Path for the new file. Must differ from source.
-  dryRun: false,                     // optional. If true, runs the entire pipeline
-                                     // in memory and prints the report but does NOT
-                                     // write the output file or run post-write
-                                     // validation. Equivalent to passing --dry-run
-                                     // on the CLI. Use during config iteration.
+  dryRun: false,                     // optional. true = in-memory pipeline + report, no file written.
+                                     // Equivalent to the --dry-run CLI flag.
 
   template: { ... },                 // optional. See § "Template import" below.
   theme:    { fonts: {...} },        // optional. See § "Theme" below.
@@ -110,7 +107,7 @@ config; SKILL.md only carries a top-level summary.
 }
 ```
 
-You can mix modes in the same array. Mode A is preferred when a representative paragraph already exists in the source — `fromParagraph` extracts the full computed rPr+pPr faithfully (with the indent-unit and dominant-run rules described above). Use Mode B when the source has no clean exemplar. `overrides` is the companion to Mode A's `fromParagraph` — layer additions or replacements on top of the extracted shape; in Mode B the same fields just go at top-level (the engine accepts either location).
+Modes mix in the same array. `overrides` companions `fromParagraph` — layer additions / replacements on top of the extracted shape.
 
 ## Numbering
 

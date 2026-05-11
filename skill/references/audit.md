@@ -2,7 +2,7 @@
 
 When the user wants to check whether a document conforms to a spec **without modifying it**. Read-only — produces a violation report, not a new docx.
 
-*Illustrative phrasings: "看看这份合不合学校规范", "对照这个标准检查一下". Same surface words can land in `apply` instead when the user actually wants the issues fixed; ask one focused question if intent is genuinely ambiguous.*
+Surface words can also imply `apply` when the user wants the issues fixed; ask one focused question if intent is genuinely ambiguous.
 
 ## Workflow
 

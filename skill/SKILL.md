@@ -32,7 +32,6 @@ A well-formed Word document expresses structure through **styles + numbering + s
   - **Prose** (multi-paragraph body) → prose typography.
   - **Inline-value** (short phrase filling a labeled cell) → inherit the slot's existing format.
   - **Block enumeration** (items each on their own paragraph) → `ListNumber` + single-level numbering scheme; markers come from the scheme.
-  - **Inline enumeration** (items within one prose paragraph, e.g. `"... covers (1) X, (2) Y, (3) Z ..."`) → stays as prose text.
 - **Locale-specific typography.** CJK: prose body and list items get a 2-char first-line indent — declare `firstLineIndent: "2char"` on `BodyText` / `ListNumber`. **No literal space at CJK ↔ Latin boundaries in `text`** — autoSpace inserts the gap; a typed one stacks visibly. Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 
 ## Commands
@@ -85,7 +84,7 @@ Plan styles first based on the content's structural outline. Then route in one c
 
 - **Style Resolution** — each installed style matches user spec / extracted source / template-prescribed values
 - **Sample Affected Paragraphs** — `pattern_rules` hit the right targets (`find_paragraphs --regex` validates coverage before apply)
-- **Implicit-keep is a FAILURE signal** — non-empty fingerprints not routed by any rule. Add `bulk_rules` / `assignments` until implicit-keep is empty, OR until the remaining ones are intentional non-content (true spacers, blank-line slots, reviewer signature blocks, evaluator-only sections that the user explicitly wants preserved).
+- **Implicit-keep is a FAILURE signal** — non-empty fingerprints not routed by any rule. Add `bulk_rules` / `assignments` until implicit-keep is empty, OR until the remaining ones are intentional non-content the user wants preserved.
 
 ### 4. Apply
 
@@ -100,7 +99,7 @@ Default first. Don't ask unless one of the cases below applies:
 - unsupported structures (footnotes, math equations, page-number cites)
 - font / spacing prompt without explicit scope (theme layer vs `Normal` cascade vs per-role `styles[]` — see standardize.md "Three layers for setting fonts")
 
-When you do ask: one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
+When you do ask: one focused message naming the choice + your default, then yield.
 
 ## Out of scope
 

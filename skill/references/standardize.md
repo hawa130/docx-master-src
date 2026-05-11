@@ -2,33 +2,7 @@
 
 Standardize adds **structure** (semantic styleId, outlineLevel, auto-numbering, sectioning). Typography stays where the template put it — touch font / size / alignment only when (a) the user prompt explicitly names them, or (b) chrome is inconsistent enough that no exemplar can be extracted. Reading "标准化 / 排版" as "reset typography to canonical values" is the most common agent failure on this skill.
 
-How to compose an `apply` config that reshapes a Word document's style
-system, numbering, and role assignments. Operates by **pattern**: you
-describe categories of paragraphs (regex match / fingerprint match /
-specific style), the engine applies uniformly to every member of the
-category. Per-paragraph enumeration is the **last resort**, not the default.
-
-## When to use this shape
-
-- The user wants the doc brought into a consistent, standardized form (whole-doc reshape).
-- The user wants a focused style-system change (add a Heading3, change Heading2 size, install numbering).
-- A template needs structure work before content can be filled (typed chrome → auto-numbering, missing Heading levels, missing list-bound style).
-
-For surgical changes at specific paragraph indices or table cells, see the
-edits-shape config in [edit.md](edit.md). Both shapes are blocks of the same
-`apply` config — combine them in one call when a task needs both.
-
-## Iterating with --dry-run
-
-The supported workflow:
-
-1. `apply --dry-run <config.json>` — applies in-memory, prints the change report, doesn't touch the output file.
-2. Read the report. Refine the config based on what hit / what didn't.
-3. Repeat until correct, then `apply` (no flag) to write.
-
-Each cycle is seconds. `styles[]` is sparse — declare only what you're touching; untouched styles stay as they are.
-
----
+Operates by **pattern**: regex / fingerprint / styleId selects categories; engine applies uniformly. Per-paragraph enumeration is the last resort. For surgical edits at specific indices or table cells, see [edit.md](edit.md); both shapes combine in one `apply` config.
 
 ## Default workflow: pattern-driven config
 
@@ -39,12 +13,8 @@ For most whole-doc reshape tasks, design **one** `apply` config that does the en
   "source": "input.docx",
   "output": "output.docx",
 
-  // 1. styles[]: install one entry per semantic role the doc + content need.
-  //    Mode A (preferred) extracts the definition from a representative
-  //    paragraph already styled as this role — no fields invented. Mode B
-  //    (explicit fields) is the fallback when no exemplar exists or the
-  //    user prompt explicitly names typography. Locale defaults belong on
-  //    fresh styles, not piled onto Mode A extractions.
+  // 1. styles[]: one entry per semantic role. Mode A (fromParagraph) extracts
+  //    from a representative paragraph; Mode B uses explicit fields.
   "styles": [
     // Mode A (preferred): replace 33/47/... with paragraph indices from
     // your overview that already look like this role. The engine pulls
@@ -102,9 +72,7 @@ For most whole-doc reshape tasks, design **one** `apply` config that does the en
 }
 ```
 
-**Targeting precedence (first match wins):** `exclude` > `assignments` > `pattern_rules` > `bulk_rules` > implicit-keep.
-
-This is one config, one `apply` call, dry-run + apply. **Don't** enumerate chrome paragraphs into `assignments` — that's where round-by-round selective skipping happens. Patterns describe; assignments correct.
+Targeting precedence and assignment-action semantics: see [config-schema.md](config-schema.md). Patterns describe categories; `assignments` is for outlier corrections only.
 
 ### Typical recipe shapes
 
@@ -121,25 +89,19 @@ The pattern_rules above are tuned to one common Chinese academic-form pattern. O
 
 Some real cases the recipe needs adapting for:
 
-- **Inconsistent chrome**: section 1 uses bare colon-labels (`Name:`), sections 2+ use enumerator chrome (`1.`, `2.`). Convert what's structural via `pattern_rules`; leave inline labels alone (they're not section headings).
-- **Unstable manual prefixes**: source has `1.1` in some chapters, `1.` in others (per-chapter restart). Use `stripPrefixPatterns: ["%1.%2", "%1."]` on the relevant level — longer pattern first.
-- **Chrome that shares a text shape with body content**: e.g., body paragraphs cite `第三章` as a reference. The pattern matches both; use `exclude` or refine the regex (anchor at paragraph start AND require trailing context).
-- **Mixed content + chrome**: in a fill task, the markdown content may also have hand-typed numbering. `pattern_rules` catches both; `stripMatch` cleans both. Same mechanism — no separate path for content vs chrome.
+- **Inconsistent chrome**: section 1 uses bare colon-labels (`Name:`), sections 2+ use enumerator chrome (`1.`, `2.`). Convert what's structural via `pattern_rules`; leave inline labels alone.
+- **Unstable manual prefixes**: source has `1.1` in some chapters, `1.` in others. Use `stripPrefixPatterns: ["%1.%2", "%1."]` on the relevant level — longer pattern first.
+- **Chrome that shares text shape with body content**: e.g., body paragraphs cite `第三章` as a reference. Use `exclude` or refine the regex (anchor at paragraph start + require trailing context).
 
 ---
 
 ## Designing the style system
 
-**Source of values** (priority order): (1) user requirements, (2) template document via `template`, (3) values extracted from a representative paragraph via `fromParagraph`, (4) sensible defaults. Don't invent values when a representative paragraph exists.
+Don't invent values when a representative paragraph exists. Value priority: user spec > template > `fromParagraph` extraction > sensible defaults.
 
-**Two modes per `styles` entry:**
+`fromParagraph` extracts from the paragraph's *dominant text run* (longest non-numbering-prefix run, so `"1.1 研究方法"` extracts the title formatting, not the prefix's). Use `overrides` to add fields the source lacks or apply user-specifics. Manual fields work too; modes mix within one `styles` array.
 
-1. **`fromParagraph`** (preferred when extracting from the doc): pick the first occurrence of the dominant fingerprint for the role and set `fromParagraph: <index>`. The tool extracts the full computed rPr + pPr from that paragraph's *dominant text run* (longest non-numbering-prefix run, so `"1.1 研究方法"` extracts the title formatting, not the prefix's). Use `overrides` to add fields the source lacks (e.g. `outlineLevel`) or apply user-requested specifics.
-2. **Manual mode**: specify fields directly — when no representative paragraph exists, when synthesizing a role, or when the user fully specified the style.
-
-Modes can mix within one `styles` array.
-
-**`fontLatin` vs `fontCJK`:** `fontLatin` is the Latin / Western text slot (writes to OOXML `w:ascii` and `w:hAnsi`); `fontCJK` is the East-Asian slot (`w:eastAsia`). When the user names only a CJK font ("正文宋体" / "标题黑体"), set `fontCJK` and leave `fontLatin` unset so the source's Latin font is preserved. Set both only when the user explicitly says the same font should apply to Latin too.
+**`fontLatin` vs `fontCJK`:** When the user names only a CJK font ("正文宋体" / "标题黑体"), set `fontCJK` and leave `fontLatin` unset so the source's Latin font is preserved. Set both only when the user explicitly says the same font applies to Latin.
 
 **Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
 
@@ -228,7 +190,6 @@ The user is expressing focused changes with the rest of the document expected to
 
 - **No fingerprint coverage requirement.** Untargeted paragraphs simply stay as they are.
 - **Run-level direct formatting on untouched paragraphs is preserved.** The uniform-strip rule fires only on paragraphs the script restyles.
-- **When a request grows beyond "targeted":** if you find yourself adding 5+ styles, declaring numbering, or reaching for a template — switch to the default workflow.
 
 ## Escape Hatch (manual XML)
 

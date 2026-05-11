@@ -1,18 +1,15 @@
 # `edits` block (used inside `apply`)
 
-`edits` is a sub-block of `apply`'s config — it covers surgical content + format changes at specific locations: replace / insert / delete paragraphs, swap a table cell, embed an image, restyle a paragraph or range. Optional Word tracked-changes mode.
+`edits` is a sub-block of `apply`'s config — surgical content + format changes at specific locations: replace / insert / delete paragraphs, swap a table cell, embed an image, restyle a paragraph or range. Optional Word tracked-changes mode.
 
-*Illustrative phrasings: "把第 3 段改成 ...", "在 X 章后面插一段", "这个表格第 2 行换成 ...", "删掉那段开题摘要", "给第 5 段加粗", "在结论后插张图". For role-based whole-doc reshape, drive the change via `pattern_rules` / `bulk_rules` in the same config; for surgical location-based work, use this `edits` block.*
-
-There's no separate `apply_edits` CLI — content edits run through `apply` with `edits[]`. Inserts that introduce structural roles (prose body, list items, sub-headings) need the matching style installed in `styles[]` so Blocks bind via `styleId` rather than ad-hoc per-op `paraFormat` / `runFormat`. `numbering` and `pattern_rules` slot in alongside when the task spans new structure + chrome retags. **One config, one call.**
+Inserts that introduce structural roles (prose body, list items, sub-headings) need the matching style installed in `styles[]` so Blocks bind via `styleId` rather than ad-hoc per-op format. `numbering` and `pattern_rules` slot in alongside when the task spans new structure + chrome retags.
 
 ## Reconnaissance first
 
-Always inspect before composing edits.
+Always inspect before composing edits. Two `edits`-specific tools beyond the standard survey:
 
 - `inspect_table` — top-level tables with `[row,col]` cell snippets (before composing a `cell` locator).
 - `inspect_blockers` — paragraphs `apply` will refuse to touch in the edit phase (existing tracked changes / fields / SDT controls).
-- `overview` / `find_paragraphs` / `inspect_range` / `inspect_neighbors` — same inspect tools the standardize-shape config uses.
 
 ## Config shape (within an `apply` config)
 
@@ -78,7 +75,7 @@ If the styleId or numId you reference doesn't exist in the doc, add `styles[]` /
 
 ### Quote handling
 
-`text` is emitted verbatim. Default to smart quotes in prose: outer `“…”`, inner `‘…’` (Chinese 横排 + English); `「…」`/`『…』` only for 竖排. ASCII `"` `'` only inside literal tokens (code, URLs, shell). Smart quotes also bypass the JSON `\"` escape footgun.
+`text` is emitted verbatim. Default to smart quotes in prose; ASCII `"` `'` only inside literal tokens (code, URLs, shell) — smart quotes also bypass the JSON `\"` escape footgun.
 
 ### Format fields
 
@@ -114,7 +111,4 @@ For multi-paragraph content, pass multiple Blocks in one op rather than chaining
 
 ## Compose with other shapes
 
-- **Messy template + content**: combine `styles[]` / `numbering` / `pattern_rules` (standardize-shape) with `edits[]` in one `apply` config. The engine installs structure first, then `edits[]` references the just-installed styleIds. Match-Destination-Formatting on a dirty template otherwise propagates the mess.
-- **Whole-doc role-based reshape**: drop `edits[]` and use the standardize-shape blocks (see [standardize.md](standardize.md)).
-- **Read-only conformance check**: `audit`. `apply` always writes when not in dry-run.
-- **Single-style change covering all paragraphs of role X**: `restyle` (or standardize-shape `pattern_rules`) — narrower than per-locator edits.
+For messy templates, combine `styles[]` / `numbering` / `pattern_rules` (standardize-shape) with `edits[]` in one `apply` config — the engine installs structure first so `edits[]` references just-installed styleIds, and MDF doesn't propagate template chrome into your inserts. Role-based whole-doc reshape without per-locator edits → [standardize.md](standardize.md). Read-only check → `audit`.

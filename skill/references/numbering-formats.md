@@ -4,25 +4,20 @@
 
 | `numFmt` value | Output | Notes |
 |---|---|---|
-| `decimal` | 1, 2, 3... | Most common |
+| `decimal` | 1, 2, 3... | |
 | `upperLetter` | A, B, C... | |
 | `lowerLetter` | a, b, c... | |
 | `upperRoman` | I, II, III... | |
 | `lowerRoman` | i, ii, iii... | |
 | `chineseCounting` | 一, 二, 三... | Chinese ordinal |
 | `chineseCountingThousand` | 一, 二, 三... | Same glyphs, different internal encoding |
-| `ideographTraditional` | 甲, 乙, 丙... | Rare |
+| `ideographTraditional` | 甲, 乙, 丙... | |
 | `bullet` | • | For unordered lists |
 | `none` | (nothing) | Suppress number display |
 
 ## Common Multi-Level Heading Patterns
 
-`suff` is shown alongside `lvlText` because the marker→text gap is part
-of the visual identity of each pattern. Pick `suff="space"` when the
-marker ends in a digit or character (the gap separates them from the
-title text), `"nothing"` when the marker's trailing punctuation already
-provides the separation. `"tab"` is rare and only suits wide-list
-layouts that align titles in a column.
+`suff` controls the marker→text gap: `"space"` when the marker ends in a digit/character (`1. Title`), `"nothing"` when trailing punctuation already separates (`一、Title`). `"tab"` is rare, wide-list layouts only.
 
 ### Academic Thesis (Chinese)
 ```
@@ -87,10 +82,7 @@ Body-text cites to these (or to any auto-numbered caption / heading) go through 
 
 ## lvlText Syntax
 
-- `%1` = current value of level 1
-- `%2` = current value of level 2
-- `%1.%2` = "1.2" (composite reference to multiple levels)
-- Literal text wraps the variables: `第%1章` = "第1章"
-- Each level can only reference its own level and higher levels
-- `isLgl: true` on a level forces every cross-level `%N` to render as arabic, regardless of the referenced level's `numFmt` (use when an outer level is chineseCounting / roman / etc. but you want it to appear as a digit inside this level's marker)
+- `%N` = counter at level N (1-indexed)
+- Composite: `%1.%2` → "1.2"; literal wraps variables: `第%1章` → "第1章"
+- `isLgl: true` on a level forces every cross-level `%N` to render as arabic regardless of the referenced level's `numFmt` (use when an outer level is chineseCounting / roman but you want its digit form here)
 
