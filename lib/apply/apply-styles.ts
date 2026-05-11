@@ -322,13 +322,19 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       `        locale alias (e.g. name="Body Text" for id="BodyText").`,
     )
     lines.push(
-      `    (c) use a fresh styleId + name pair (e.g. id="BodyMain", name="BodyMain")`,
+      `    (c) use a fresh styleId + name pair (e.g. id="BodyMain", name="正文主体")`,
     )
     lines.push(
       `        when the source has no styleId for this role, or compresses many`,
     )
     lines.push(
-      `        roles onto one styleId so override can't separate them.`,
+      `        roles onto one styleId so override can't separate them. \`name\` is`,
+    )
+    lines.push(
+      `        what end users see in Word's style panel — pick a human-readable`,
+    )
+    lines.push(
+      `        label, not the styleId.`,
     )
     if (config.dryRun) {
       lines.unshift("=== Style Name Conflicts (dry-run; would FAIL on real apply) ===")

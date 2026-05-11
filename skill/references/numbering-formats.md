@@ -61,6 +61,30 @@ Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText=
 Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."        suff="space"
 ```
 
+## Single-Counter Patterns (Captions, References, …)
+
+For paragraph roles that need a sequence but not a hierarchy — figure captions, table captions, reference list entries, theorem numbering, appendix items — bind a one-level numbering scheme. Never let the agent emit the counter as literal text (`图 1`, `[1]`); it desyncs the moment a figure is inserted or a reference reordered.
+
+### Figure / Table Caption (flat counter)
+```
+Level 0: 图 1 / 图 2 / 图 3            numFmt=decimal  lvlText="图 %1"   suff="space"
+Level 0: 表 1 / 表 2 / 表 3            numFmt=decimal  lvlText="表 %1"   suff="space"
+```
+Use a separate `numId` per caption family so figures and tables count independently.
+
+### Chapter-Prefixed Caption (`图 1-1`, `图 1-2`, `图 2-1`)
+```
+Level 0: (mirrors Heading1's counter; no display)  numFmt=decimal  lvlText=""        suff="nothing"
+Level 1: 图 1-1 / 图 1-2 / 图 2-1                  numFmt=decimal  lvlText="图 %1-%2" suff="space"
+```
+Captions sit on level 1; level 0 silently tracks the chapter number, restart-on-Heading1 via the chapter style's own numbering. Bind caption paragraphs to level 1; the body never sees level 0.
+
+### Reference List
+```
+Level 0: [1] / [2] / [3]                numFmt=decimal  lvlText="[%1]"   suff="space"
+```
+Body-text cites (`如 [1] 所示`) are **not** emitted by this skill — see SKILL.md "Out of scope". Auto-numbered reference entries stay stable; in-text cites must be inserted via Word's Insert → Cross-reference UI for production docs, otherwise renumbering a reference silently desyncs every cite.
+
 ## lvlText Syntax
 
 - `%1` = current value of level 1

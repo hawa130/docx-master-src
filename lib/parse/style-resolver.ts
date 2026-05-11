@@ -170,12 +170,29 @@ export class StyleResolver {
       const asciiTheme = wAttr(rFonts, "asciiTheme")
       const hAnsiTheme = wAttr(rFonts, "hAnsiTheme")
       const eastAsiaTheme = wAttr(rFonts, "eastAsiaTheme")
-      if (asciiTheme) out.fontAscii = this.resolveThemeFont(asciiTheme, false)
-      else if (ascii) out.fontAscii = ascii
-      if (hAnsiTheme) out.fontHAnsi = this.resolveThemeFont(hAnsiTheme, false)
-      else if (hAnsi) out.fontHAnsi = hAnsi
-      if (eastAsiaTheme) out.fontEastAsia = this.resolveThemeFont(eastAsiaTheme, true)
-      else if (eastAsia) out.fontEastAsia = eastAsia
+      let rAscii = asciiTheme ? this.resolveThemeFont(asciiTheme, false) : ascii || undefined
+      let rHAnsi = hAnsiTheme ? this.resolveThemeFont(hAnsiTheme, false) : hAnsi || undefined
+      let rEastAsia =
+        eastAsiaTheme ? this.resolveThemeFont(eastAsiaTheme, true) : eastAsia || undefined
+      // ECMA-376: ascii/hAnsi slots serve U+0000–U+007F; eastAsia serves CJK
+      // ranges. WPS / school templates routinely type a CJK font name
+      // (宋体, 黑体, …) into the ascii slot — Word uses it for CJK glyphs
+      // anyway, but every semantic-field reader downstream would see
+      // fontLatin="宋体" and a missing fontCJK, then propagate the slot
+      // violation into the styles we emit. Reroute CJK content to the
+      // correct slot at the read boundary so all consumers see clean data.
+      // An explicit eastAsia value (if present) wins; the misused slot drops.
+      if (rAscii && hasCJK(rAscii)) {
+        rEastAsia ??= rAscii
+        rAscii = undefined
+      }
+      if (rHAnsi && hasCJK(rHAnsi)) {
+        rEastAsia ??= rHAnsi
+        rHAnsi = undefined
+      }
+      if (rAscii) out.fontAscii = rAscii
+      if (rHAnsi) out.fontHAnsi = rHAnsi
+      if (rEastAsia) out.fontEastAsia = rEastAsia
     }
     const sz = firstChildNS(rPrEl, NS.w, "sz")
     if (sz) {
@@ -520,6 +537,18 @@ export class StyleResolver {
  * for merging both rPr and pPr inheritance frames; the field semantics are
  * the same (later wins iff non-undefined) so one helper covers both.
  */
+/** Does `s` contain a CJK Unified Ideograph (basic block or extension A)?
+ * Font names are short ASCII or short CJK; one CJK char is enough signal
+ * that the value belongs in the eastAsia slot, not ascii/hAnsi. */
+function hasCJK(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c >= 0x4e00 && c <= 0x9fff) return true
+    if (c >= 0x3400 && c <= 0x4dbf) return true
+  }
+  return false
+}
+
 function mergeStyle<T extends object>(base: T, overlay: T): T {
   const out = { ...base }
   for (const k of Object.keys(overlay) as (keyof T)[]) {
