@@ -1,12 +1,12 @@
-import type { EditsPreviewEntry } from "@lib/edit-engine.ts"
-import { parseLineSpacing } from "@lib/style-mutation.ts"
-import type { ImportResult } from "@lib/template-import.ts"
+import type { EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
+import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
+import type { ImportResult } from "@lib/apply/template-import.ts"
 import type {
   FlagRecord,
   RestyleSample,
   StyleConfigEntry,
   StyleResolutionEntry,
-} from "./config-types.ts"
+} from "@lib/config/config-types.ts"
 
 /* ------------- display helpers ------------- */
 
@@ -343,11 +343,17 @@ export function printReport(args: {
     lines.push("  Styles without a spec are still listed so the resolved fields")
     lines.push("  are auditable.")
     lines.push("")
-    lines.push("  Δ-line vs source (when styleId existed pre-apply):")
-    lines.push("    A→B    field changed; source had A, declaration sets B")
-    lines.push("    +field new declaration; source didn't have this field")
-    lines.push("    ~field declaration matches source's cascade value (may be redundant)")
-    lines.push("")
+    // The Δ-line legend is only useful when at least one styleResolution
+    // has a prior state to diff against. All-fresh runs (every style is
+    // newly installed) emit no Δ line, so the legend is dead load — skip.
+    const hasAnyPrior = args.styleResolutions.some((r) => r.priorState !== null)
+    if (hasAnyPrior) {
+      lines.push("  Δ-line vs source (when styleId existed pre-apply):")
+      lines.push("    A→B    field changed; source had A, declaration sets B")
+      lines.push("    +field new declaration; source didn't have this field")
+      lines.push("    ~field declaration matches source's cascade value (may be redundant)")
+      lines.push("")
+    }
     for (const r of args.styleResolutions) {
       const freshTag = r.priorState === null ? "  [fresh]" : ""
       lines.push(`  ${r.styleId}${freshTag}`)
