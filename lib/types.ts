@@ -80,7 +80,11 @@ export interface StyleDefinition {
 }
 
 export interface SectionInfo {
+  /** 0-based internal section number (document order). Display layers add 1
+   * to match agent-facing "Section N" labels; do NOT surface this raw value
+   * through any tool output or locator field. */
   index: number
+  /** 1-based [from, to], inclusive — matches `#NNN` in overview. */
   paraRange: [number, number]
   pageSize: { width: number; height: number }
   margins: { top: number; bottom: number; left: number; right: number }

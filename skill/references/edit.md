@@ -32,14 +32,14 @@ Always inspect before composing edits.
 
 ### Locators (`at`)
 
-All index fields are **1-based** — uniform across the locator types and consistent with `overview` / `inspect_table` / `inspect_runs` display.
+All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`, `blank`, `runIndex` — are **1-based**, uniform across locator types and consistent with `overview` / `inspect_table` / `inspect_runs` / `find_text` display. (Note: `heading.level` is the OOXML `outlineLevel`, which is 0-based — level 0 = Heading 1, level 1 = Heading 2, etc. See the `heading` row.)
 
 | `type` | Selects |
 |---|---|
 | `paragraph` | The Nth indexed paragraph (`{ "type": "paragraph", "index": N }`). Matches `#NNN` in `overview`. |
 | `range` | `{ ..., "from": A, "to": B }`, inclusive. Endpoints must share a container (body, or one specific layout-table cell). |
 | `cell` | `{ ..., "table": T, "row": R, "col": C }`. Only way to reach data/form-table cell paragraphs (those are unindexed). Coords match `inspect_table`'s `[r,c]` output. |
-| `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose outline level is L. Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
+| `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose OOXML outline level is L (**0-based**: level 0 = Heading 1, level 1 = Heading 2, …). Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
 | `whole-body` | Every body paragraph. Pairs naturally with `format`; rarely with `replace`. |
 | `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. With `blank: K`, targets the Kth run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth run. If neither `blank` nor `runIndex` is given, defaults to `blank: 1`. Run indices match `inspect_runs` / `find_text` output. Pair only with `set-run`. |
 
