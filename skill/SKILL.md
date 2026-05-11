@@ -98,6 +98,7 @@ Default first. Don't ask unless one of the cases below applies:
 - bold paragraph as sub-heading vs. emphasis
 - missing source content for template slots
 - unsupported structures (footnotes, math, cross-references)
+- font / spacing prompt without explicit scope (theme layer vs `Normal` cascade vs per-role `styles[]` — see standardize.md "Three layers for setting fonts")
 
 When you do ask: one focused message naming the choice + your default, then yield. Subagent producing one final output: the output IS the question — return without executing.
 

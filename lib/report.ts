@@ -361,6 +361,11 @@ export function printReport(args: {
         const delta = formatDeltaLine(r.resolved, r.priorState)
         if (delta) lines.push(`    Δ vs source:    ${delta}`)
       }
+      if (r.priorUsage && r.priorUsage > 0) {
+        lines.push(
+          `    Existing usage: ${r.priorUsage} paragraph(s) — will re-render with the new definition.`,
+        )
+      }
       if (r.warnings) {
         for (const wMsg of r.warnings) {
           lines.push(`    note: ${wMsg}`)

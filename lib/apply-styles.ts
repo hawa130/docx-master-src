@@ -176,6 +176,10 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     // styles.xml. resolver was built at load; its cache reflects the
     // source's pre-apply definition for each styleId.
     const priorState = extractPriorDisplayFields(resolver, def.id)
+    const priorUsage =
+      priorState !== null
+        ? (resolver.getStyleDefinition(def.id)?.usageCount ?? 0)
+        : undefined
     const final = resolveStyleDef(def, parsed.paragraphs)
     const warnings = detectStyleResolutionWarnings(def, final)
     styleResolutions.push({
@@ -183,6 +187,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       userSpec: config.requirements?.[def.id] ?? null,
       resolved: extractDisplayFields(final),
       priorState,
+      priorUsage,
       warnings: warnings.length > 0 ? warnings : undefined,
     })
     return final
