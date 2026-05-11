@@ -1,4 +1,5 @@
 import type { EditsPreviewEntry } from "@lib/edit-engine.ts"
+import { parseLineSpacing } from "@lib/style-mutation.ts"
 import type { ImportResult } from "@lib/template-import.ts"
 import type {
   FlagRecord,
@@ -38,7 +39,15 @@ export function extractDisplayFields(def: StyleConfigEntry): Record<string, unkn
     "outlineLevel",
   ]
   for (const k of interesting) {
-    if (def[k] !== undefined) out[k] = def[k]
+    if (def[k] === undefined) continue
+    // lineSpacing accepts number OR "Npt" string at the config surface.
+    // Normalize to the numeric form for display + diff parity with source
+    // values (which always come back as numbers from cascade resolution).
+    if (k === "lineSpacing") {
+      out[k] = parseLineSpacing(def[k] as string | number).value
+    } else {
+      out[k] = def[k]
+    }
   }
   return out
 }
@@ -302,9 +311,11 @@ export function printReport(args: {
         "    → If these are list items, declare a list-bound style (e.g. ListNumber)",
       )
       lines.push(
-        "      and let the numbering scheme emit the marker. If typed prefix is",
+        "      and let the numbering scheme emit the marker. Keep the typed form",
       )
-      lines.push("      intentional (e.g. bibliography), ignore.")
+      lines.push(
+        "      only when the user prompt explicitly asked for typed prefixes.",
+      )
     }
     lines.push("")
   }
@@ -349,6 +360,11 @@ export function printReport(args: {
       if (r.priorState !== null) {
         const delta = formatDeltaLine(r.resolved, r.priorState)
         if (delta) lines.push(`    Δ vs source:    ${delta}`)
+      }
+      if (r.warnings) {
+        for (const wMsg of r.warnings) {
+          lines.push(`    note: ${wMsg}`)
+        }
       }
     }
     lines.push("")

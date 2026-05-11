@@ -38,6 +38,26 @@ import type {
   StyleResolutionEntry,
 } from "./config-types.ts"
 
+/** Heuristic checks on a resolved style entry. The engine doesn't reject
+ * these — they're informational signals surfaced in dry-run + the change
+ * report so the agent can fix before commit. */
+function detectStyleResolutionWarnings(final: StyleConfigEntry): string[] {
+  const out: string[] = []
+  // fontLatin slot is for ascii / hAnsi (Latin / Western text). A CJK
+  // character in the value usually means the agent extracted from a source
+  // paragraph whose rPr put a CJK font on the ascii slot (common Word /
+  // POI authoring artifact). Latin chars in the new style would render in
+  // that CJK font; CJK chars fall through to docDefaults eastAsia.
+  if (typeof final.fontLatin === "string" && /[一-鿿]/.test(final.fontLatin)) {
+    out.push(
+      `fontLatin="${final.fontLatin}" contains CJK characters — likely meant fontCJK. ` +
+        `The Latin slot governs ascii/Western text rendering; a CJK font name here ` +
+        `displays English/digits in that font and falls through to docDefaults for CJK.`,
+    )
+  }
+  return out
+}
+
 export async function applyStyles(source: string, output: string, config: ApplyConfig) {
   // 0. Default styles[] to [] when omitted. Pure template-import and
   // numbering-only configs don't need to declare any styles; CLIs that
@@ -144,11 +164,13 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     // source's pre-apply definition for each styleId.
     const priorState = extractPriorDisplayFields(resolver, def.id)
     const final = resolveStyleDef(def, parsed.paragraphs)
+    const warnings = detectStyleResolutionWarnings(final)
     styleResolutions.push({
       styleId: def.id,
       userSpec: config.requirements?.[def.id] ?? null,
       resolved: extractDisplayFields(final),
       priorState,
+      warnings: warnings.length > 0 ? warnings : undefined,
     })
     return final
   })

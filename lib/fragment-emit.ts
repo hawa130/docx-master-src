@@ -25,6 +25,7 @@ import {
   type RichText,
   type RunFormat,
 } from "./edit-types.ts"
+import { parseLineSpacing } from "./style-mutation.ts"
 import { RPR_CHILD_ORDER } from "./xml-order.ts"
 
 const w = NS.w
@@ -154,12 +155,13 @@ export function buildPPrChildren(fmt: ParagraphFormat, ownerDoc: Document): Elem
       spacing.setAttributeNS(w, "w:after", String(Math.round(fmt.spaceAfter * 20)))
     }
     if (fmt.lineSpacing !== undefined) {
-      const rule = fmt.lineRule ?? (fmt.lineSpacing < 10 ? "auto" : "exact")
+      const ls = parseLineSpacing(fmt.lineSpacing)
+      const rule = fmt.lineRule ?? (ls.explicitPt || ls.value >= 10 ? "exact" : "auto")
       if (rule === "auto") {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(fmt.lineSpacing * 240)))
+        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 240)))
         spacing.setAttributeNS(w, "w:lineRule", "auto")
       } else {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(fmt.lineSpacing * 20)))
+        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 20)))
         spacing.setAttributeNS(w, "w:lineRule", rule)
       }
     }

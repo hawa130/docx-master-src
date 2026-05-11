@@ -50,7 +50,7 @@ const styleFormatFields = {
   italic: z.optional(z.boolean()),
   color: z.optional(z.string()),
   alignment: z.optional(z.enum(["left", "center", "right", "both"])),
-  lineSpacing: z.optional(z.number()),
+  lineSpacing: z.optional(z.union([z.number(), z.string()])),
   lineRule: z.optional(z.enum(["auto", "exact", "atLeast"])),
   spaceBefore: z.optional(z.number()),
   spaceAfter: z.optional(z.number()),

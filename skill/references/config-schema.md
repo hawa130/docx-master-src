@@ -76,12 +76,12 @@ config; SKILL.md only carries a top-level summary.
   italic:          false,      // optional. Default false.
   color:           "auto",     // optional. Hex ("2E75B6") or "auto". Default "auto".
   alignment:       "center",   // optional. "left" | "center" | "right" | "both".
-  lineSpacing:     1.5,        // optional. *number only* (no string units like "20pt"
-                               //   — pt is implied by ≥10 / multiplier by <10).
-                               //   <10 → multiplier (auto rule); ≥10 → pt.
-  lineRule:        "atLeast",  // optional. "auto" | "exact" | "atLeast". Overrides
-                               //   the <10/≥10 heuristic. Use "atLeast" to faithfully
-                               //   round-trip a source's atLeast rule.
+  lineSpacing:     1.5,        // optional. Number or "Npt" string (e.g. 20 or "20pt").
+                               //   Number: <10 → multiplier (auto rule); ≥10 → pt (exact rule).
+                               //   "Npt" string: always pt (exact), regardless of magnitude.
+  lineRule:        "atLeast",  // optional. "auto" | "exact" | "atLeast". Overrides the
+                               //   default rule. Use "atLeast" to faithfully round-trip a
+                               //   source's atLeast rule.
   spaceBefore:     12,         // optional. pt before paragraph.
   spaceAfter:      6,          // optional. pt after paragraph.
   firstLineIndent: "2char",    // optional. "Nchar" / "Npt" / pt number / null.

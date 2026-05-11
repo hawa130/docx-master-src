@@ -295,12 +295,13 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     if (def.spaceAfter !== undefined)
       spacing.setAttributeNS(w, "w:after", String(Math.round(def.spaceAfter * 20)))
     if (def.lineSpacing !== undefined) {
-      const rule = def.lineRule ?? (def.lineSpacing < 10 ? "auto" : "exact")
+      const ls = parseLineSpacing(def.lineSpacing)
+      const rule = def.lineRule ?? (ls.explicitPt || ls.value >= 10 ? "exact" : "auto")
       if (rule === "auto") {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(def.lineSpacing * 240)))
+        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 240)))
         spacing.setAttributeNS(w, "w:lineRule", "auto")
       } else {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(def.lineSpacing * 20)))
+        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 20)))
         spacing.setAttributeNS(w, "w:lineRule", rule)
       }
     }
@@ -412,6 +413,24 @@ function parseIndent(v: string | number): { kind: "twip" | "char"; value: number
   const unit = (m[2] || "").toLowerCase()
   if (unit.startsWith("char")) return { kind: "char", value: Math.round(n * 100) }
   return { kind: "twip", value: Math.round(n * 20) }
+}
+
+/** Normalize a lineSpacing config value to `{ value, explicitPt }`.
+ *  - number stays as-is; explicitPt=false (downstream applies the legacy
+ *    `<10 → multiplier`, `>=10 → pt` magnitude heuristic).
+ *  - "Npt" string (e.g. "20pt") parses to N with explicitPt=true so the
+ *    downstream rule defaults to "exact" regardless of magnitude — agent
+ *    who explicitly typed "pt" gets pt even at small numbers like 1.5pt.
+ *  Throws on unparseable strings so the error fires at config-read time. */
+export function parseLineSpacing(v: string | number): { value: number; explicitPt: boolean } {
+  if (typeof v === "number") return { value: v, explicitPt: false }
+  const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*pt$/i)
+  if (!m) {
+    throw new Error(
+      `lineSpacing "${v}": must be a number (e.g. 1.5 multiplier / 20 pt) or "Npt" string (e.g. "20pt").`,
+    )
+  }
+  return { value: parseFloat(m[1]!), explicitPt: true }
 }
 
 /**

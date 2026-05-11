@@ -54,6 +54,10 @@ export interface StyleResolutionEntry {
    * the source's styles.xml). Used in the dry-run report to surface
    * change/new/match per field against the source. */
   priorState: Record<string, unknown> | null
+  /** Heuristic warnings about the resolved style — e.g. fontLatin set to a
+   * value that contains CJK characters (likely meant fontCJK). Surfaced
+   * under the style in the dry-run report. Empty / undefined when clean. */
+  warnings?: string[]
 }
 
 export interface CompiledPatternRule {

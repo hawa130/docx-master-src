@@ -56,7 +56,7 @@ export const ParagraphFormatSchema = z.strictObject({
   alignment: z.optional(z.enum(["left", "center", "right", "both"])),
   spaceBefore: z.optional(z.number()),
   spaceAfter: z.optional(z.number()),
-  lineSpacing: z.optional(z.number()),
+  lineSpacing: z.optional(z.union([z.number(), z.string()])),
   lineRule: z.optional(z.enum(["auto", "exact", "atLeast"])),
   firstLineIndent: z.optional(IndentValue),
   hangingIndent: z.optional(IndentValue),
