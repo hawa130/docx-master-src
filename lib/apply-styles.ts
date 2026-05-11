@@ -338,6 +338,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         // %N is positional (1-indexed): %1 → level 0, %2 → level 1, ...
         // A level whose lvlText omits its own counter (%(level+1)) renders
         // every item with a higher level's number. Statically detectable.
+        // Bullet / none numFmts have no counter to display — skip the check.
+        if (lvl.numFmt === "bullet" || lvl.numFmt === "none") continue
         const ownPlaceholder = `%${lvl.level + 1}`
         if (!lvl.lvlText.includes(ownPlaceholder)) {
           const referenced = lvl.lvlText.match(/%\d/g) ?? []
