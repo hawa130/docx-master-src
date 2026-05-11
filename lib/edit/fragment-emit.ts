@@ -304,6 +304,10 @@ export interface EmitContext {
    * over a bookmark allocator + locator resolver + pending-backfill queue.
    * Absent ctx.emitRef + an InlineRef in input = engine error at emit. */
   emitRef?: RefEmitter
+  /** Called when a `ParagraphBlock.anchor` is set — registers the named
+   * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
+   * + an anchor in input = engine error at emit. */
+  adoptAnchor?: (name: string, pEl: Element) => void
 }
 
 function ensurePPr(p: Element, ownerDoc: Document): Element {
@@ -348,6 +352,14 @@ function emitParagraphBlock(
     }
   }
   for (const r of emitRichText(block.text, ownerDoc, ctx, block.runFormat)) p.appendChild(r)
+  if (block.anchor) {
+    if (!ctx.adoptAnchor) {
+      throw new Error(
+        "ParagraphBlock.anchor encountered but ctx.adoptAnchor was not provided by the engine",
+      )
+    }
+    ctx.adoptAnchor(block.anchor, p)
+  }
   return p
 }
 

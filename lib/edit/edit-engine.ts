@@ -238,35 +238,57 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
     },
     emitRef: (ref, ownerDoc, defaultFormat) => {
-      // Pre-edit resolution: refTo.index is the index in source paragraph
-      // order. Locator resolution handles bounds + table-cell exclusion the
-      // same way every other locator does.
-      const target = resolverCtx.indexed[ref.refTo.index - 1]
-      if (!target || target.index !== ref.refTo.index) {
-        throw new Error(
-          `InlineRef: refTo.paragraph=${ref.refTo.index} is out of range. ` +
-            `Document has ${resolverCtx.indexed.length} indexed paragraphs.`,
-        )
+      // Resolve target → (paragraph element, bookmark name). Two locator
+      // forms: paragraph index (pre-edit, validates against the indexed
+      // paragraph map) and anchor name (looks up adopted anchors from this
+      // run + source bookmarks via the allocator).
+      let targetEl: Element
+      let bookmarkName: string
+      if (ref.refTo.type === "paragraph") {
+        const target = resolverCtx.indexed[ref.refTo.index - 1]
+        if (!target || target.index !== ref.refTo.index) {
+          throw new Error(
+            `InlineRef: refTo.paragraph=${ref.refTo.index} is out of range. ` +
+              `Document has ${resolverCtx.indexed.length} indexed paragraphs.`,
+          )
+        }
+        targetEl = target.element
+        bookmarkName = bookmarkAllocator.getOrAllocate(targetEl).name
+      } else {
+        const found = bookmarkAllocator.resolveByName(ref.refTo.name)
+        if (!found) {
+          throw new Error(
+            `InlineRef: refTo.anchor="${ref.refTo.name}" was not found. ` +
+              `Anchors must be declared on a ParagraphBlock.anchor earlier in this edits[] ` +
+              `array, or already exist as a bookmark on a paragraph in the source document.`,
+          )
+        }
+        targetEl = found.element
+        bookmarkName = ref.refTo.name
       }
-      // Target must be bound to a numbering scheme — otherwise REF has
-      // nothing to render via \\n / \\r switches. Numbering can be either
-      // direct on the paragraph (<w:p>/<w:pPr>/<w:numPr>) or inherited from
-      // the paragraph's style cascade. Check both paths.
-      if (!paragraphIsAutoNumbered(target.element, stylesDoc ?? null)) {
-        throw new Error(
-          `InlineRef: target paragraph #${ref.refTo.index} is not bound to a numbering scheme. ` +
-            `Cross-references require an auto-numbered target — bind the target's pStyle to a numbering[] level, or change the locator to a numbered paragraph.`,
-        )
-      }
-      const { name } = bookmarkAllocator.getOrAllocate(target.element)
       const display = ref.display ?? "label"
+      // Target must be bound to a numbering scheme for label / number
+      // (REF \n and \r switches render the lvlText / counter). The "full"
+      // display resolves to the bookmark's text content, which any
+      // non-empty paragraph supports — so we relax the check there.
+      if (display !== "full" && !paragraphIsAutoNumbered(targetEl, stylesDoc ?? null)) {
+        const where =
+          ref.refTo.type === "paragraph"
+            ? `target paragraph #${ref.refTo.index}`
+            : `target of anchor "${ref.refTo.name}"`
+        throw new Error(
+          `InlineRef: ${where} is not bound to a numbering scheme. ` +
+            `display="${display}" requires an auto-numbered target (Word's \\n / \\r switches render from the numbering binding). ` +
+            `Either bind the target's pStyle to a numbering[] level, or set display: "full" to use the paragraph's body text instead.`,
+        )
+      }
       // Placeholder text is empty here; backfilled post-edit once the
       // numbering counter simulator yields rendered values. settings.xml's
       // updateFields=true also ensures Word resolves on open, so users who
       // skip the backfill (e.g. parser called outside the apply pipeline)
       // still see correct text after their first F9.
       const runs = emitRefField(ownerDoc, {
-        bookmarkName: name,
+        bookmarkName,
         switches: switchesForDisplay(display),
         placeholder: "",
         format: ref.format ?? defaultFormat,
@@ -279,11 +301,14 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       if (placeholderT) {
         pendingBackfills.push({
           placeholderTextEl: placeholderT,
-          targetParagraph: target.element,
+          targetParagraph: targetEl,
           display,
         })
       }
       return runs
+    },
+    adoptAnchor: (name, pEl) => {
+      bookmarkAllocator.adoptName(name, pEl)
     },
   }
   const perOp: ApplyEditsReport["perOp"] = []

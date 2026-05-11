@@ -76,18 +76,46 @@ export const InlineRunSchema = z.strictObject({
   format: z.optional(RunFormatSchema),
 })
 
+/** Word bookmark name. ECMA-376 §17.13.7 mandates start-with-letter-or-
+ * underscore + alphanumerics; Word's UI lenient set adds hyphens. Capped
+ * at 40 chars to match Word's UI bookmark name limit (file format permits
+ * more but going above 40 is asking for cross-tool friction). */
+const AnchorNameSchema = z.string().check(
+  z.refine((s) => /^[A-Za-z_][A-Za-z0-9_-]{0,39}$/.test(s), {
+    error:
+      'anchor name must start with a letter or underscore and contain only letters, digits, underscores, or hyphens (max 40 chars). Example: "fig-architecture", "ref_smith2024".',
+  }),
+)
+
+const RefToParagraphSchema = z.strictObject({
+  type: z.literal("paragraph"),
+  index: z.number().check(z.gte(1)),
+})
+
+const RefToAnchorSchema = z.strictObject({
+  type: z.literal("anchor"),
+  name: AnchorNameSchema,
+})
+
 /** Inline cross-reference to an auto-numbered paragraph. Emits as an
  * OOXML REF field; Word resolves the visible text from the target's
- * bookmark at render time. The target locator resolves against the
- * pre-edit document state (same as every other edits[] locator); the
- * referenced paragraph must be bound to a numbering scheme in this apply
- * — the engine refuses unbound targets at apply time. See
- * references/cross-references.md for the full contract. */
+ * bookmark at render time. Two locator forms:
+ *
+ *   `{ type: "paragraph", index: N }` — resolves against the pre-edit
+ *     document state. Target paragraph must be in the source and bound
+ *     to a numbering scheme (unless display === "full").
+ *
+ *   `{ type: "anchor", name: "..." }` — resolves against
+ *     (a) anchors declared on ParagraphBlock.anchor in earlier ops of
+ *     this same edits[] array, or (b) bookmarks already present in the
+ *     source document. Lets refs target paragraphs created in the same
+ *     apply run, which the paragraph-index form cannot do.
+ *
+ * The target must be bound to a numbering scheme when display is "label"
+ * or "number"; "full" resolves to the target paragraph's body text and
+ * works on any paragraph. See references/cross-references.md. */
 export const InlineRefSchema = z.strictObject({
-  refTo: z.strictObject({
-    type: z.literal("paragraph"),
-    index: z.number().check(z.gte(1)),
-  }),
+  refTo: z.union([RefToParagraphSchema, RefToAnchorSchema]),
   display: z.optional(z.enum(["full", "label", "number"])),
   format: z.optional(RunFormatSchema),
 })
@@ -114,6 +142,13 @@ const ParagraphBlockSchema = z.strictObject({
   paraFormat: z.optional(ParagraphFormatSchema),
   runFormat: z.optional(RunFormatSchema),
   numbering: z.optional(NumberingRefSchema),
+  /** Optional stable name that later InlineRefs in the same edits[] (or
+   * future apply runs) can target via `refTo: { type: "anchor", name }`.
+   * The engine wraps the emitted paragraph with `<w:bookmarkStart>` /
+   * `<w:bookmarkEnd>` carrying this name. Collisions with existing source
+   * bookmark names or with anchors declared earlier in this run fail at
+   * apply time. */
+  anchor: z.optional(AnchorNameSchema),
 })
 
 const ImageBlockSchema = z.strictObject({

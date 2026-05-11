@@ -30,27 +30,71 @@ Page-number citations ("on page 12") are still out of scope (PAGEREF, not REF) �
 ```
 
 Fields:
-- `refTo` — locator. **Pre-edit paragraph index** (1-based, same as every `edits[]` locator). The target must be a paragraph that exists in the source document.
+- `refTo` — locator. Two forms:
+  - `{ "type": "paragraph", "index": N }` — pre-edit 1-based paragraph index, same as every other `edits[]` locator. Target must exist in the source document.
+  - `{ "type": "anchor", "name": "fig-arch" }` — named bookmark. Resolves against (a) anchors declared on `ParagraphBlock.anchor` earlier in this same `edits[]` array, or (b) bookmarks already in the source document (only those wrapping a single paragraph). Name must match `^[A-Za-z_][A-Za-z0-9_-]{0,39}$`.
 - `display` — what Word shows. Each maps to a specific REF switch (see "Display option behavior" below):
   - `"label"` (default) — full numbered paragraph text resolved from `lvlText`, e.g. `图 1` / `1.2` / `[3]` / `第二章`. Word switch: `\n \h`.
   - `"number"` — relative-context paragraph number via `\r \h`. **Reliable only for single-level numbering schemes** (figure captions, reference lists `[%1]`), where it equals the level's counter — `1` / `2` / `3`. For multi-level schemes use `"label"` and rely on the lvlText to format what you want; `\r`'s relative-context semantics get hierarchy-dependent.
-  - `"full"` — the target paragraph's body text content (caption title without the auto-numbered prefix, since the prefix is rendered from numbering and lives outside the bookmark's text). Word switch: `\h`.
+  - `"full"` — the target paragraph's body text content (caption title without the auto-numbered prefix, since the prefix is rendered from numbering and lives outside the bookmark's text). Word switch: `\h`. **Does not require an auto-numbered target** — works on any paragraph.
 - `format` — optional `RunFormat` (color, italic, size, …) applied to the rendered text
 
 ## Target requirements
 
-The target paragraph must be **bound to a numbering scheme in this apply run** — either pre-existing in the source's `pStyle → numId` binding, or freshly bound by this run's `numbering[]` config.
+For `display: "label"` and `display: "number"`: target must be **bound to a numbering scheme in this apply run** — either pre-existing in the source's `pStyle → numId` binding, or freshly bound by this run's `numbering[]` config. Word's `\n` / `\r` switches render from the numbering binding, so an unbound target has nothing to display.
 
-If the target has no `<w:numPr>` after the apply pipeline's numbering pass, the engine refuses at apply time:
+For `display: "full"`: any paragraph works. The bookmark resolves to the target's text content directly, no numbering required.
+
+When `label` / `number` hits an unbound target, the engine refuses at apply time:
 
 ```
 edits[5] (insert-after): InlineRef: target paragraph #42 is not bound
-to a numbering scheme. Cross-references require an auto-numbered target —
-bind the target's pStyle to a numbering[] level, or change the locator
-to a numbered paragraph.
+to a numbering scheme. display="label" requires an auto-numbered target …
+Either bind the target's pStyle to a numbering[] level, or set display:
+"full" to use the paragraph's body text instead.
 ```
 
-Fix by adding a `numbering[]` entry that binds the target's style, or by re-pointing the locator.
+## Named anchors — ref new paragraphs in the same apply
+
+When an `edits[]` insert creates a paragraph that later refs will cite, give it an `anchor` so the refs can address it by name:
+
+```jsonc
+{
+  "edits": [
+    {
+      "op": "insert-after",
+      "at": { "type": "paragraph", "index": 50 },
+      "content": [
+        { "type": "image", "src": "diagrams/arch.png", "widthPt": 360, "heightPt": 240 },
+        {
+          "type": "paragraph",
+          "styleId": "FigureCaption",
+          "anchor": "fig-architecture",
+          "text": "系统总体架构"
+        }
+      ]
+    },
+    {
+      "op": "insert-after",
+      "at": { "type": "paragraph", "index": 60 },
+      "content": [
+        {
+          "type": "paragraph",
+          "text": [
+            { "text": "本文系统的架构如" },
+            { "refTo": { "type": "anchor", "name": "fig-architecture" }, "display": "label" },
+            { "text": " 所示。" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Anchors are processed in `edits[]` array order: a ref can address any anchor declared earlier in the array, but not a later one (forward refs not supported in v1 — Reorder edits if needed). Anchor names collide with source bookmarks (same flat namespace) — picking a name that already exists in the source throws at apply time.
+
+`anchor` can also be used on an inserted paragraph that no current `InlineRef` cites — the bookmark stays in the output for future apply runs to ref by name.
 
 ## Word's first-open behavior
 
@@ -115,10 +159,11 @@ OOXML REF switches map directly to display choices:
 // Heading2 bound to lvlText="%1.%2": "详细方法见 3.2。"
 ```
 
-## Limitations (v1)
+## Limitations
 
-- **No source-bookmark refs**: this v1 doesn't address bookmarks that exist in the source document but not bound to numbering. The skill only creates bookmarks for paragraphs it auto-numbers in this run.
 - **No PAGEREF**: page-number citations ("on page 12") aren't supported — they require a different field type and depend on Word's pagination layer.
 - **No HYPERLINK to external resources**: only intra-document REF fields.
 - **No `\p` (above/below) switch**: REF targeting relative position isn't supported.
+- **No forward anchor refs**: a ref can only address an anchor declared earlier in the same `edits[]` array. Reorder edits if needed.
+- **Source bookmarks must wrap a single paragraph**: source bookmarks spanning multiple paragraphs (or sitting at body level outside any `<w:p>`) aren't resolvable via `refTo: { type: "anchor" }` — there's no paragraph-level target to surface for REF rendering. Such bookmarks are silently skipped at allocator construction.
 - **Custom `lvlRestart` not honored in placeholder**: the simulator uses Word's default reset-on-higher-level behavior. Custom restart points produce correct text after `F9` (Word re-renders) but the placeholder may diverge. Cosmetic only.
