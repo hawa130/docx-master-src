@@ -40,19 +40,32 @@ import type {
 
 /** Heuristic checks on a resolved style entry. The engine doesn't reject
  * these — they're informational signals surfaced in dry-run + the change
- * report so the agent can fix before commit. */
-function detectStyleResolutionWarnings(final: StyleConfigEntry): string[] {
+ * report so the agent can fix before commit. Narrow by design: only fire
+ * on Mode A extraction artifacts, not on Mode B explicit declarations
+ * (agent may legitimately want the CJK font's Latin glyphs for English /
+ * digit text, which is what `fontLatin` controls). */
+function detectStyleResolutionWarnings(
+  def: StyleConfigEntry,
+  final: StyleConfigEntry,
+): string[] {
   const out: string[] = []
-  // fontLatin slot is for ascii / hAnsi (Latin / Western text). A CJK
-  // character in the value usually means the agent extracted from a source
-  // paragraph whose rPr put a CJK font on the ascii slot (common Word /
-  // POI authoring artifact). Latin chars in the new style would render in
-  // that CJK font; CJK chars fall through to docDefaults eastAsia.
-  if (typeof final.fontLatin === "string" && /[一-鿿]/.test(final.fontLatin)) {
+  // fromParagraph extraction + Latin slot holds a CJK-character value +
+  // no fontCJK extracted = source paragraph almost certainly had the CJK
+  // font on its ascii/hAnsi slot (common Word/POI authoring artifact);
+  // extraction faithfully reproduced the slot mismatch. CJK characters in
+  // the new style will fall through to docDefaults eastAsia at render.
+  if (
+    def.fromParagraph !== undefined &&
+    typeof final.fontLatin === "string" &&
+    /[一-鿿]/.test(final.fontLatin) &&
+    final.fontCJK === undefined
+  ) {
     out.push(
-      `fontLatin="${final.fontLatin}" contains CJK characters — likely meant fontCJK. ` +
-        `The Latin slot governs ascii/Western text rendering; a CJK font name here ` +
-        `displays English/digits in that font and falls through to docDefaults for CJK.`,
+      `fromParagraph extracted fontLatin="${final.fontLatin}" with no fontCJK — ` +
+        `source paragraph likely had the CJK font on its ascii/hAnsi slot only ` +
+        `(common Word authoring artifact). CJK characters fall through to ` +
+        `docDefaults eastAsia at render; add fontCJK to this style if you want ` +
+        `consistent CJK appearance, or ignore if the Latin-only slot was intentional.`,
     )
   }
   return out
@@ -164,7 +177,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     // source's pre-apply definition for each styleId.
     const priorState = extractPriorDisplayFields(resolver, def.id)
     const final = resolveStyleDef(def, parsed.paragraphs)
-    const warnings = detectStyleResolutionWarnings(final)
+    const warnings = detectStyleResolutionWarnings(def, final)
     styleResolutions.push({
       styleId: def.id,
       userSpec: config.requirements?.[def.id] ?? null,
