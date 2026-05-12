@@ -273,15 +273,19 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
 
   // Pre-scan declared anchors so forward refs (a ref citing an anchor in a
   // later edit, or in a later Block of the same op) resolve correctly.
-  // Reserves the name + records the predicted styleId; the anchor binds to
-  // its Element when its ParagraphBlock / EquationBlock emits later. Run
+  // Reserves the name + captures a numbering hint (styleId + whether the
+  // block declares `numbering` directly) so a forward ref can answer
+  // "target is auto-numbered?" before the target element exists. Run
   // before the main applyOne loop so duplicate / colliding names surface
   // ahead of any mutation.
   for (const op of edits) {
     const fragment = fragmentOf(op)
     if (!fragment) continue
-    walkBlocksForAnchors(fragment, (block) => {
-      bookmarkAllocator.reserveName(block.anchor, { styleId: block.styleId })
+    walkBlocksForAnchors(fragment, (hint) => {
+      bookmarkAllocator.reserveName(hint.anchor, {
+        styleId: hint.styleId,
+        directlyNumbered: hint.directlyNumbered,
+      })
     })
   }
 
@@ -333,14 +337,18 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // display resolves to the bookmark's text content, which any
       // non-empty paragraph supports — so we relax the check there.
       if (display !== "full") {
-        const ok = targetEl
-          ? paragraphIsAutoNumbered(targetEl, stylesDoc ?? null)
-          : styleIsAutoNumbered(
-              ref.refTo.type === "anchor"
-                ? bookmarkAllocator.predictedStyleIdFor(ref.refTo.name)
-                : undefined,
-              stylesDoc ?? null,
-            )
+        const predicted =
+          ref.refTo.type === "anchor"
+            ? bookmarkAllocator.predictedNumberingFor(ref.refTo.name)
+            : undefined
+        const ok = targetIsAutoNumbered(
+          {
+            element: targetEl,
+            styleId: predicted?.styleId,
+            directlyNumbered: predicted?.directlyNumbered,
+          },
+          stylesDoc ?? null,
+        )
         if (!ok) {
           const where =
             ref.refTo.type === "paragraph"
@@ -372,7 +380,6 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       if (placeholderT) {
         pendingBackfills.push({
           placeholderTextEl: placeholderT,
-          targetParagraph: targetEl,
           targetName: bookmarkName,
           display,
         })
@@ -416,37 +423,32 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   }
 }
 
-/** Does a paragraph render with auto-numbering? Checks both the direct
- * `<w:p>/<w:pPr>/<w:numPr>` shortcut and the style cascade traced through
- * stylesDoc. Used by InlineRef target validation; stylesDoc is the live
- * (post-binding) document so cascade-only bindings injected by this apply
- * run are honored. */
-function paragraphIsAutoNumbered(pEl: Element, stylesDoc: Document | null): boolean {
-  const pPr = firstChildNS(pEl, w, "pPr")
-  if (pPr) {
-    if (firstChildNS(pPr, w, "numPr")) return true
-    const pStyle = firstChildNS(pPr, w, "pStyle")
-    if (pStyle && stylesDoc) {
-      const styleId = pStyle.getAttributeNS(w, "val") ?? pStyle.getAttribute("w:val") ?? ""
-      if (styleId && styleHasNumPrInCascade(stylesDoc, styleId)) return true
+/** Single auto-numbering check for InlineRef targets. The target is
+ * represented either as a live paragraph element (already emitted — direct
+ * `<w:p>/<w:pPr>/<w:numPr>` and pStyle cascade both observable) or as a
+ * pre-scan hint (forward ref, target not yet emitted — `directlyNumbered`
+ * mirrors the Block's direct `numbering` field, `styleId` runs the cascade
+ * walk). Both representations now cover the same fact set; forward refs
+ * are no longer blind to direct-numbering targets. */
+function targetIsAutoNumbered(
+  spec: { element: Element | null; styleId?: string; directlyNumbered?: boolean },
+  stylesDoc: Document | null,
+): boolean {
+  if (spec.element) {
+    const pPr = firstChildNS(spec.element, w, "pPr")
+    if (pPr) {
+      if (firstChildNS(pPr, w, "numPr")) return true
+      const pStyle = firstChildNS(pPr, w, "pStyle")
+      if (pStyle && stylesDoc) {
+        const styleId = pStyle.getAttributeNS(w, "val") ?? pStyle.getAttribute("w:val") ?? ""
+        if (styleId && styleHasNumPrInCascade(stylesDoc, styleId)) return true
+      }
     }
+    return false
   }
+  if (spec.directlyNumbered) return true
+  if (spec.styleId && stylesDoc && styleHasNumPrInCascade(stylesDoc, spec.styleId)) return true
   return false
-}
-
-/** Same auto-numbering check, but starts from a styleId instead of a
- * paragraph element — used when a forward InlineRef must verify its
- * target's numbering binding before the target's paragraph has emitted.
- * Returns false when styleId is undefined or stylesDoc is missing.
- *
- * Limitation vs `paragraphIsAutoNumbered`: doesn't see direct `<w:p>/<w:pPr>
- * /<w:numPr>` overrides — agents declaring `numbering` directly on a
- * ParagraphBlock (rather than via pStyle cascade) won't satisfy this check.
- * Forward refs to such targets should use `display: "full"` or move the
- * anchor before the citing ref. */
-function styleIsAutoNumbered(styleId: string | undefined, stylesDoc: Document | null): boolean {
-  if (!styleId || !stylesDoc) return false
-  return styleHasNumPrInCascade(stylesDoc, styleId)
 }
 
 function styleHasNumPrInCascade(stylesDoc: Document, styleId: string): boolean {
@@ -626,26 +628,36 @@ function fragmentOf(op: EditOp): Fragment | null {
 }
 
 /** Visit every block in a fragment that carries an `anchor` field, recursing
- * into table cell content. Currently `ParagraphBlock` and `EquationBlock`
- * both declare `anchor`; the visitor narrows to "any block with a
- * non-empty `anchor`" so additions to the schema pick up automatically.
+ * into table cell content. Duck-types on `anchor` presence so future Block
+ * variants with an `anchor` field are picked up automatically — no per-type
+ * whitelist to keep in sync with the schema.
  *
- * The callback receives the block plus its declared styleId (for the
- * pre-scan reservation's style-cascade numbering check). */
-function walkBlocksForAnchors(
-  fragment: Fragment,
-  visit: (block: { anchor: string; styleId: string | undefined }) => void,
-): void {
+ * The callback receives the anchor name plus a `numbering` hint extracted
+ * from the block's `styleId` and direct `numbering` field (when present).
+ * That hint is what the forward-ref numbering check consumes via
+ * `targetIsAutoNumbered`. */
+interface AnchorHint {
+  anchor: string
+  styleId: string | undefined
+  directlyNumbered: boolean
+}
+
+function walkBlocksForAnchors(fragment: Fragment, visit: (hint: AnchorHint) => void): void {
   for (const block of fragment) walkBlockForAnchors(block, visit)
 }
 
-function walkBlockForAnchors(
-  block: Fragment[number],
-  visit: (block: { anchor: string; styleId: string | undefined }) => void,
-): void {
-  if (block.type === "paragraph" || block.type === "equation") {
-    if (block.anchor) visit({ anchor: block.anchor, styleId: block.styleId })
-    return
+function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) => void): void {
+  const b = block as Partial<{
+    anchor: string
+    styleId: string
+    numbering: { numId: string; level: number }
+  }>
+  if (typeof b.anchor === "string" && b.anchor) {
+    visit({
+      anchor: b.anchor,
+      styleId: b.styleId,
+      directlyNumbered: !!b.numbering,
+    })
   }
   if (block.type === "table") {
     for (const row of block.rows) {

@@ -55,11 +55,12 @@ export interface NameRecord {
    * the paragraph yet. Reserved records don't carry an element and are
    * not surfaced via `resolveByName` until upgraded by `adoptName`. */
   origin: "source" | "allocated" | "adopted" | "reserved"
-  /** Predicted styleId for `"reserved"` records — captured from the
-   * forthcoming ParagraphBlock.styleId so a forward InlineRef can run the
-   * style-cascade numbering check before the target element exists. Unset
-   * for non-reserved records (use the element instead). */
-  predictedStyleId?: string
+  /** Numbering hint for `"reserved"` records — captured from the
+   * forthcoming Block's `styleId` and direct `numbering` field. Lets a
+   * forward InlineRef answer "target is auto-numbered?" before the
+   * target element exists. Unset for non-reserved records (the element
+   * carries the answer directly). */
+  predictedNumbering?: { styleId?: string; directlyNumbered?: boolean }
 }
 
 export class BookmarkAllocator {
@@ -117,17 +118,18 @@ export class BookmarkAllocator {
     return assignment
   }
 
-  /** Pre-scan reservation: register a name that an upcoming ParagraphBlock
-   * will adopt, so a forward InlineRef emitted earlier in the pipeline can
+  /** Pre-scan reservation: register a name that an upcoming Block will
+   * adopt, so a forward InlineRef emitted earlier in the pipeline can
    * still recognize the name. The element isn't known yet — `adoptName`
-   * fills it in once the block emits. Optional `ctx.styleId` is captured
-   * for the style-cascade numbering check that the forward ref will run
-   * against `styleIsAutoNumbered`.
+   * fills it in once the block emits. Optional `ctx` captures the
+   * Block's `styleId` and whether it declares `numbering` directly, so
+   * a forward ref can answer "target is auto-numbered?" via
+   * `targetIsAutoNumbered` before the target element exists.
    *
    * Throws on collision with a source bookmark, an existing reservation,
    * or an already-adopted name — the engine runs this once per declared
    * anchor before emit starts, so duplicates surface before any mutation. */
-  reserveName(name: string, ctx?: { styleId?: string }): void {
+  reserveName(name: string, ctx?: { styleId?: string; directlyNumbered?: boolean }): void {
     if (this.usedNames.has(name)) {
       const existingRec = this.nameIndex.get(name)
       const where =
@@ -144,7 +146,10 @@ export class BookmarkAllocator {
     this.nameIndex.set(name, {
       element: null,
       origin: "reserved",
-      predictedStyleId: ctx?.styleId,
+      predictedNumbering:
+        ctx?.styleId !== undefined || ctx?.directlyNumbered !== undefined
+          ? { styleId: ctx.styleId, directlyNumbered: ctx.directlyNumbered }
+          : undefined,
     })
   }
 
@@ -155,11 +160,13 @@ export class BookmarkAllocator {
     return this.nameIndex.get(name)?.origin === "reserved"
   }
 
-  /** Predicted styleId captured at reservation time. Returns undefined when
-   * the name isn't reserved or no styleId was supplied. */
-  predictedStyleIdFor(name: string): string | undefined {
+  /** Numbering hint captured at reservation time. Returns undefined when
+   * the name isn't reserved or no hint was supplied. */
+  predictedNumberingFor(
+    name: string,
+  ): { styleId?: string; directlyNumbered?: boolean } | undefined {
     const rec = this.nameIndex.get(name)
-    return rec?.origin === "reserved" ? rec.predictedStyleId : undefined
+    return rec?.origin === "reserved" ? rec.predictedNumbering : undefined
   }
 
   /** Adopt a caller-supplied name for this paragraph (the `anchor` field

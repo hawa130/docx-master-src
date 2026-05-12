@@ -165,20 +165,19 @@ export function switchesForDisplay(display: "full" | "label" | "number"): string
 /** A pending REF whose placeholder text must be backfilled after numbering
  * counters are simulated. The engine stages these during edits and the
  * apply orchestrator commits them once the post-edit counter pass yields
- * resolved label/number/full strings per target paragraph. */
+ * resolved label/number/full strings per target paragraph. The target
+ * element is always resolved via `targetName` against the post-emit
+ * allocator — every InlineRef path (paragraph-index ref, anchor ref,
+ * forward anchor ref) ends up with a name that the allocator can map
+ * to its element by then. */
 export interface PendingRefBackfill {
   /** The `<w:t>` element inside the placeholder run. textContent is set
    * during commit. */
   placeholderTextEl: Element
-  /** Element ref to the target paragraph — looked up against the counter
-   * simulator's output map. `null` when the ref was forward (target's
-   * paragraph hadn't emitted yet at the time we wrote the placeholder);
-   * the backfill consumer resolves via `targetName` against the now-fully-
-   * populated allocator. */
-  targetParagraph: Element | null
-  /** Anchor name used for late-resolution when `targetParagraph` is null.
-   * Always set so the consumer can produce an actionable error if the
-   * anchor disappeared somehow (it shouldn't — pre-scan guards that). */
+  /** Bookmark name. The backfill consumer resolves this against the
+   * allocator to recover the target element for the counter-simulator
+   * lookup. Pre-scan guarantees the name is registered before emit; a
+   * resolution failure here is an engine bug, not an agent input error. */
   targetName: string
   /** Which rendered field to use as the placeholder. */
   display: "full" | "label" | "number"

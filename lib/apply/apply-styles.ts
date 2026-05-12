@@ -501,26 +501,23 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // pairs so REF can resolve. (4) Flip settings.xml's updateFields flag.
       const { bookmarkAllocator, pendingBackfills } = result.crossRefs
       if (bookmarkAllocator.hasAllocations()) {
-        // Late-bind forward refs: a pending backfill whose `targetParagraph`
-        // is null was a forward ref at emit time — the anchor's paragraph
-        // hadn't emitted yet. By now all anchors have run through emit, so
-        // resolve against the allocator. Missing here is a hard error
-        // (pre-scan should have caught it, so this guards against engine
-        // bugs rather than agent inputs).
+        // Resolve each pending backfill's target via the allocator. Every
+        // emit path (paragraph-index ref, anchor ref already-adopted,
+        // anchor ref forward) registered the name with the allocator by
+        // now, so a single resolve handles all three. A miss here is an
+        // engine bug — pre-scan + emit-time presence checks should have
+        // failed earlier.
         const resolvedBackfills: Array<{
           placeholderTextEl: Element
           targetParagraph: Element
           targetName: string
           display: "full" | "label" | "number"
         }> = pendingBackfills.map((pending) => {
-          if (pending.targetParagraph) {
-            return { ...pending, targetParagraph: pending.targetParagraph }
-          }
           const rec = bookmarkAllocator.resolveByName(pending.targetName)
           if (!rec || !rec.element) {
             throw new Error(
-              `InlineRef: forward ref to anchor "${pending.targetName}" could not be resolved post-emit. ` +
-                `This indicates the anchor's paragraph never emitted; check edits[] for a missing ParagraphBlock.anchor.`,
+              `InlineRef: target bookmark "${pending.targetName}" could not be resolved post-emit. ` +
+                `This is an engine invariant violation; pre-scan should have caught a missing anchor.`,
             )
           }
           return { ...pending, targetParagraph: rec.element }
