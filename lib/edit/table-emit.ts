@@ -35,62 +35,26 @@ import {
   TR_PR_CHILD_ORDER,
   insertChildInOrder,
 } from "@lib/xml/xml-order.ts"
-import type { Block } from "@lib/config/edit-types.ts"
+import type { Block, RichText } from "@lib/config/edit-types.ts"
 import { emitBlock, emitRichText, type EmitContext } from "@lib/edit/fragment-emit.ts"
 
 const w = NS.w
 
-/* ------------- types: normalized internal model -------------
+/* ------------- types: derived from BlockSchema -------------
  *
- * These mirror the schema definitions in edit-config-schema.ts but stay
- * independent (no z.infer) — the schema's recursive ZodMiniType loses
- * field-level inference. Schema validation guarantees the shapes upstream;
- * here we work with hand-typed structures.
+ * TableBlock is the discriminated `"table"` variant of the inferred Block
+ * union. Internal helper aliases below name the sub-shapes to keep emit
+ * code readable — they're projections of TableBlock's fields, not
+ * independent definitions.
  */
 
-type BorderStyleString = "none" | "single" | "thick" | "double" | "dotted" | "dashed"
-interface BorderEdgeObject {
-  style: "single" | "thick" | "double" | "dotted" | "dashed"
-  size?: number
-  color?: string
-}
-type BorderEdge = BorderStyleString | BorderEdgeObject
-
-interface BordersCustom {
-  top?: BorderEdge
-  bottom?: BorderEdge
-  left?: BorderEdge
-  right?: BorderEdge
-  insideH?: BorderEdge
-  insideV?: BorderEdge
-}
-type BordersPreset = "all" | "none" | "outer" | "three-line"
-type Borders = BordersPreset | BordersCustom
-
-type ColWidth = "auto" | number
-
-interface CellObj {
-  content: string | ReadonlyArray<unknown> // schema-validated; emit by shape inspection
-  colspan?: number
-  rowspan?: number
-  vAlign?: "top" | "center" | "bottom"
-  borders?: BordersCustom
-  shading?: string
-}
-
-interface TableBlock {
-  type: "table"
-  rows: ReadonlyArray<ReadonlyArray<TableCell>>
-  headerRows?: number
-  headerStyle?: string
-  cols?: ReadonlyArray<{ width: ColWidth }>
-  borders?: Borders
-  alignment?: "left" | "center" | "right"
-  vAlign?: "top" | "center" | "bottom"
-  layout?: "fixed" | "autofit"
-}
-
-type TableCell = string | ReadonlyArray<unknown> | CellObj
+export type TableBlock = Extract<Block, { type: "table" }>
+type TableCell = TableBlock["rows"][number][number]
+type CellObj = Exclude<TableCell, string | readonly unknown[]>
+type Borders = NonNullable<TableBlock["borders"]>
+type BordersCustom = Exclude<Borders, string>
+type BorderEdge = NonNullable<BordersCustom["top"]>
+type ColWidth = NonNullable<TableBlock["cols"]>[number]["width"]
 
 interface GridSlot {
   kind: "restart" | "vmerge-continue"
@@ -535,8 +499,11 @@ function emitCellContent(
     }
     return out
   }
-  // InlineNode[] — wrap in a single paragraph using emitRichText
-  return [emitParagraphFromRichText(content, headerStyle, ownerDoc, ctx)]
+  // InlineNode[] — we've ruled out string (typeof check above) and Block[]
+  // (first element has no `type` field). What's left is `RichText`'s array
+  // arm. TS can't narrow through the runtime shape check; cast is the
+  // tightest expression of the schema invariant verified here.
+  return [emitParagraphFromRichText(content as RichText, headerStyle, ownerDoc, ctx)]
 }
 
 function emitParagraphFromText(
@@ -552,16 +519,14 @@ function emitParagraphFromText(
 }
 
 function emitParagraphFromRichText(
-  // InlineNode[] — schema-typed but erased here. emitRichText accepts.
-  inline: unknown,
+  inline: RichText,
   headerStyle: string | undefined,
   ownerDoc: Document,
   ctx: EmitContext,
 ): Element {
   const p = ownerDoc.createElementNS(w, "w:p")
   if (headerStyle) applyDefaultPStyle(p, headerStyle, ownerDoc)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const r of emitRichText(inline as any, ownerDoc, ctx, undefined)) p.appendChild(r)
+  for (const r of emitRichText(inline, ownerDoc, ctx, undefined)) p.appendChild(r)
   return p
 }
 

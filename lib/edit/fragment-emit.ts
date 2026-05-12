@@ -431,8 +431,7 @@ export function emitBlock(block: Block, ownerDoc: Document, ctx: EmitContext): E
     case "horizontal-rule":
       return emitHorizontalRuleBlock(ownerDoc)
     case "table":
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return emitTableBlock(block as any, ownerDoc, ctx)
+      return emitTableBlock(block, ownerDoc, ctx)
     default:
       return assertNever(block)
   }
