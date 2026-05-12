@@ -514,7 +514,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
           display: "full" | "label" | "number"
         }> = pendingBackfills.map((pending) => {
           const rec = bookmarkAllocator.resolveByName(pending.targetName)
-          if (!rec || !rec.element) {
+          if (!rec) {
             throw new Error(
               `InlineRef: target bookmark "${pending.targetName}" could not be resolved post-emit. ` +
                 `This is an engine invariant violation; pre-scan should have caught a missing anchor.`,

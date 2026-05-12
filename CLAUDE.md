@@ -108,6 +108,8 @@ Litmus test for any new "helpful hint": could a human reader derive this from th
 
 When SKILL.md presents "intent → path / tool / option" mappings, the LLM pattern-matches surface phrasings instead of understanding intent. Write concept-first and mark example phrasings as illustrative. Avoid lookup-table forms (`If user says | Pick this`) and the literal words *Triggers* / *Keywords*.
 
+Same with concrete Bad/Good code or text excerpts in skill docs: they freeze the rule to *this* document's terms, and the agent applies it as a literal match instead of recognizing the underlying category. State the rule in general terms, then illustrate only when the failure shape isn't derivable from the rule. If a reader can't picture the failure without the example, the rule isn't general enough yet — fix the rule, don't add another example.
+
 ### Verification must check against intent, not interpretation
 
 If a check grades the system's output against the same system's interpretation of the input, it's a tautology and passes regardless of correctness. Real verification compares against ground truth: human-readable side-by-side (e.g. Style Resolution shows raw user text + resolved fields for visual review), or output re-parsed against an independent invariant (apply_styles validates by re-reading the produced docx).
