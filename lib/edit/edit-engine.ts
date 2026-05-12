@@ -62,7 +62,11 @@ import {
 } from "@lib/edit/track-changes.ts"
 import { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
-import { emitRefField, switchesForDisplay, type PendingRefBackfill } from "@lib/edit/field-ref.ts"
+import {
+  emitRefField,
+  switchesForDisplay,
+  type PendingRefBackfill,
+} from "@lib/edit/fields/ref-field.ts"
 
 const w = NS.w
 
@@ -366,24 +370,17 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // updateFields=true also ensures Word resolves on open, so users who
       // skip the backfill (e.g. parser called outside the apply pipeline)
       // still see correct text after their first F9.
-      const runs = emitRefField(ownerDoc, {
+      const { runs, resultTextEl } = emitRefField(ownerDoc, {
         bookmarkName,
         switches: switchesForDisplay(display),
         placeholder: "",
         format: ref.format ?? defaultFormat,
       })
-      // The 4th run is the placeholder run; its <w:t> is the textContent we
-      // backfill. Locate it explicitly rather than indexing by position so
-      // refactors to emitRefField's run layout don't silently break this.
-      const placeholderRun = runs[3]!
-      const placeholderT = firstChildNS(placeholderRun, w, "t")
-      if (placeholderT) {
-        pendingBackfills.push({
-          placeholderTextEl: placeholderT,
-          targetName: bookmarkName,
-          display,
-        })
-      }
+      pendingBackfills.push({
+        placeholderTextEl: resultTextEl,
+        targetName: bookmarkName,
+        display,
+      })
       return runs
     },
     adoptAnchor: (name, pEl) => {
