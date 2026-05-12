@@ -48,11 +48,17 @@ export default defineConfig({
   shims: true,
   sourcemap: false,
   minify: false,
-  // Bundle every dep except xmllint-wasm — its index-node.js loads the
-  // sibling `xmllint-node.js` and `xmllint.wasm` via `require`, paths that
-  // can't survive bundling. build-skill.ts copies the package's runtime
-  // files into _shared/ alongside the bundled scripts.
-  external: ["xmllint-wasm"],
+  // Bundle every dep except a handful that bundling corrupts or breaks:
+  //   - xmllint-wasm: index-node.js does runtime `require("./xmllint-node.js")`
+  //     and references the `.wasm` by relative path; bundling rewrites those
+  //     paths out of existence.
+  //   - temml: source uses `\uD800-\uDFFF` lone-surrogate ranges in string
+  //     literals to drive its tokenizer regex. oxc/rolldown replaces lone
+  //     surrogates with U+FFFD on output, corrupting the regex so `\frac`
+  //     and friends fail to tokenize.
+  // build-skill.ts copies each package's runtime files into _shared/
+  // alongside the bundled scripts so the dynamic-import fallback resolves.
+  external: ["xmllint-wasm", "temml"],
   deps: { alwaysBundle: [/.*/] },
   outputOptions: {
     chunkFileNames: "_shared/[name].js",

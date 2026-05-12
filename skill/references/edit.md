@@ -60,13 +60,16 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 { "type": "paragraph", "text": "...", "styleId"?, "paraFormat"?, "runFormat"?, "numbering"?, "anchor"? }
 { "type": "image", "src": "path", "widthPt": N, "heightPt": N, "alt"?, "styleId"?, "paraFormat"? }
 { "type": "table", "rows": [[...]], "headerRows"?, "headerStyle"?, "cols"?, "borders"?, "alignment"?, "layout"? }
+{ "type": "equation", "latex": "...", "styleId"?, "paraFormat"?, "anchor"? }
 { "type": "page-break" }
 { "type": "horizontal-rule" }
 ```
 
 `anchor` attaches a stable bookmark name (Word's `[A-Za-z_][\w-]{0,39}` rule) so later `InlineRef` nodes can target this new paragraph via `refTo: { "type": "anchor", "name": ... }`. The only way to ref a paragraph created in this same `apply` run — paragraph-index locators reference pre-edit state. See [`cross-references.md`](cross-references.md).
 
-`text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required. To cross-ref a figure, attach `anchor` to its caption paragraph — image paragraphs carry no numbering or text content for `display: "label"` / `"number"` / `"full"` to resolve against. **Table** block has its own schema for rows / cells / merging / borders / column widths / header repetition; details + four progressive cell-content forms in [`tables.md`](tables.md).
+`text` is either a plain string (single run) or an array of inline nodes: `{ text, format }` runs, `{ refTo, display, format }` cross-references, or `{ math }` inline equations. Image dimensions are required. To cross-ref a figure, attach `anchor` to its caption paragraph — image paragraphs carry no numbering or text content for `display: "label"` / `"number"` / `"full"` to resolve against. **Table** block has its own schema for rows / cells / merging / borders / column widths / header repetition; details + four progressive cell-content forms in [`tables.md`](tables.md).
+
+For display math, `equation` block carries LaTeX (rendered to native OMML via Temml). Inline math uses `{ "math": "..." }` inside Paragraph.text alongside `{ text, format }` and `{ refTo, ... }` nodes. See [`equations.md`](equations.md) — LaTeX coverage, caption + cross-ref pattern, and the v1 n-ary operand visual quirk.
 
 **Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. Two paths to numbering:
 - **styleId-bound** (preferred): if the styleId you set is bound to a numbering scheme via `numbering[].levels[].styleId`, the binding handles auto-numbering automatically — don't supply a `numbering` field on the block. Use for headings (`Heading1..N`) and list-bound styles (`ListNumber` / `ListBullet`).

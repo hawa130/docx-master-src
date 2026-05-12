@@ -120,7 +120,16 @@ export const InlineRefSchema = z.strictObject({
   format: z.optional(RunFormatSchema),
 })
 
-export const InlineNodeSchema = z.union([InlineRunSchema, InlineRefSchema])
+/** Inline math expression. Embedded as OMML alongside ordinary text runs in
+ * the paragraph. The `math` field is LaTeX (Temml subset — see
+ * references/equations.md for the supported command set and the v1 n-ary
+ * operand bug). No `format` field: math runs carry their own OMML typography
+ * (italic variables, upright numerals) which doesn't map cleanly to w:rPr. */
+export const InlineEquationSchema = z.strictObject({
+  math: NonEmptyString,
+})
+
+export const InlineNodeSchema = z.union([InlineRunSchema, InlineRefSchema, InlineEquationSchema])
 
 /** Plain string is shorthand for a single run with no inline formatting.
  * The emitter expands strings on the fly — most paragraphs are plain text. */
@@ -177,6 +186,18 @@ const HorizontalRuleBlockSchema = z.strictObject({
   type: z.literal("horizontal-rule"),
 })
 
+/** Display equation. Becomes its own paragraph carrying `<m:oMathPara>`
+ * (centered by Word's default OMML rendering, or override via styleId /
+ * paraFormat). Caption + numbering follow the same caption-paragraph
+ * pattern as figures and tables — see references/equations.md. */
+const EquationBlockSchema = z.strictObject({
+  type: z.literal("equation"),
+  latex: NonEmptyString,
+  styleId: z.optional(NonEmptyString),
+  paraFormat: z.optional(ParagraphFormatSchema),
+  anchor: z.optional(AnchorNameSchema),
+})
+
 /** Subset of blocks that may appear INSIDE a table cell. Excludes
  * TableBlock — nested tables via Block[] cell content are not supported in
  * v1 (schema would be cyclic, blocking type inference). Agents needing a
@@ -187,6 +208,7 @@ const CellBlockSchema = z.union([
   ImageBlockSchema,
   PageBreakBlockSchema,
   HorizontalRuleBlockSchema,
+  EquationBlockSchema,
 ])
 
 /* ------------- table block ------------- */
@@ -331,6 +353,7 @@ export const BlockSchema = z.union([
   PageBreakBlockSchema,
   HorizontalRuleBlockSchema,
   TableBlockSchema,
+  EquationBlockSchema,
 ])
 
 export const FragmentSchema = z.array(BlockSchema)

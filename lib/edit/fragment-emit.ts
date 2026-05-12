@@ -30,6 +30,7 @@ import {
 import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
+import { emitEquationBlock, emitInlineEquation } from "@lib/edit/math/equation-emit.ts"
 
 export type InlineRef = z.infer<typeof InlineRefSchema>
 
@@ -278,6 +279,10 @@ export function emitRichText(
       for (const r of ctx.emitRef(piece, ownerDoc, fmt)) out.push(r)
       continue
     }
+    if ("math" in piece) {
+      out.push(emitInlineEquation(piece.math, ownerDoc))
+      continue
+    }
     out.push(emitRun(piece.text, piece.format ?? defaultFormat, ownerDoc))
   }
   return out
@@ -432,6 +437,8 @@ export function emitBlock(block: Block, ownerDoc: Document, ctx: EmitContext): E
       return emitHorizontalRuleBlock(ownerDoc)
     case "table":
       return emitTableBlock(block, ownerDoc, ctx)
+    case "equation":
+      return emitEquationBlock(block, ownerDoc, ctx)
     default:
       return assertNever(block)
   }

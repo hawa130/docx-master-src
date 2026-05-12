@@ -9,6 +9,7 @@
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -82,6 +83,23 @@ cpSync(xmllintSrc, xmllintDst, {
     return !["README.md", "COPYING", ".npmignore"].includes(base)
   },
 })
+
+// 2d. Copy temml runtime. Marked external in tsdown.config because the
+// bundler corrupts the surrogate-range string literals in temml's
+// tokenizer. We only need temml.cjs + package.json (so Node's module
+// resolution finds the CJS entry); CSS, web fonts, and the unbuilt source
+// tree are not needed at runtime.
+const temmlSrc = join(ROOT, "node_modules", "temml")
+const temmlDst = join(SCRIPTS_DIR, "_shared", "temml")
+rmSync(temmlDst, { recursive: true, force: true })
+if (!existsSync(temmlSrc)) {
+  console.error(`temml not installed; run \`bun install\` first.`)
+  process.exit(1)
+}
+const temmlDistDst = join(temmlDst, "dist")
+mkdirSync(temmlDistDst, { recursive: true })
+cpSync(join(temmlSrc, "dist", "temml.cjs"), join(temmlDistDst, "temml.cjs"))
+cpSync(join(temmlSrc, "package.json"), join(temmlDst, "package.json"))
 
 // 3. Zip the staged dir
 await zipDir(STAGE_DIR, ZIP_PATH, SKILL_NAME)

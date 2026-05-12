@@ -21,9 +21,11 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "mathml2omml": "^0.5.0",
     "oxfmt": "^0.48.0",
     "oxlint": "^1.63.0",
     "oxlint-tsgolint": "^0.22.1",
+    "temml": "^0.13.2",
     "tsdown": "^0.21.10",
     "typescript": "^5"
   }

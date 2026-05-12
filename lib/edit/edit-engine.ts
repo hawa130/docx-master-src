@@ -51,6 +51,7 @@ import {
   type EmitContext,
 } from "@lib/edit/fragment-emit.ts"
 import { normalizeTableSequencing } from "@lib/edit/table-emit.ts"
+import { prepareLatex } from "@lib/edit/math/latex-to-omml.ts"
 import {
   attachPPrChange,
   attachRPrChange,
@@ -224,10 +225,11 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
 
   validateAgainstBlockers(resolved, blockers, resolverCtx.indexByElement)
 
-  // TrackChanges + new TableBlock: not supported. OOXML's tracked-changes
-  // model wraps run / paragraph mutation; there's no equivalent container
-  // for "table inserted" — at best each cell paragraph would appear as a
-  // separate insertion, which agents won't read correctly. Throw at the
+  // TrackChanges + new TableBlock / equation content: not supported.
+  // OOXML's tracked-changes model wraps run / paragraph mutation; there's no
+  // equivalent container for "table inserted" or "equation inserted" — at
+  // best each cell paragraph or math element would appear as a separate /
+  // partial insertion, which agents won't read correctly. Throw at the
   // boundary so it's a clear contract, not a half-rendered output.
   if (trackChanges) {
     for (const [i, op] of edits.entries()) {
@@ -237,14 +239,25 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
           : op.op === "insert-before" || op.op === "insert-after"
             ? op.content
             : null
-      if (frag && fragmentContainsTable(frag)) {
+      if (!frag) continue
+      if (fragmentContainsTable(frag)) {
         throw new Error(
           `edits[${i}] (${op.op}): inserting a TableBlock under trackChanges=true is not supported. ` +
             `Run table insertion in a separate apply without trackChanges, then use trackChanges for subsequent cell edits.`,
         )
       }
+      if (fragmentContainsEquation(frag)) {
+        throw new Error(
+          `edits[${i}] (${op.op}): inserting an equation (block or inline) under trackChanges=true is not supported. ` +
+            `Run equation insertion in a separate apply without trackChanges, then use trackChanges for surrounding edits.`,
+        )
+      }
     }
   }
+
+  // Pre-resolve every LaTeX expression to OMML before the synchronous emit
+  // chain runs. Single batch keeps temml warm; emit reads from the cache.
+  await prepareLatex(collectLatexFromEdits(edits))
 
   const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
@@ -451,6 +464,69 @@ function fragmentContainsTable(fragment: Fragment): boolean {
     if ((b as { type?: string }).type === "table") return true
   }
   return false
+}
+
+function fragmentContainsEquation(fragment: Fragment): boolean {
+  for (const b of fragment) {
+    if (collectLatexFromBlock(b).length > 0) return true
+  }
+  return false
+}
+
+interface LatexItem {
+  latex: string
+  displayMode: boolean
+}
+
+function collectLatexFromBlock(b: Fragment[number]): LatexItem[] {
+  const out: LatexItem[] = []
+  if (b.type === "equation") {
+    out.push({ latex: b.latex, displayMode: true })
+  } else if (b.type === "paragraph") {
+    if (Array.isArray(b.text)) {
+      for (const piece of b.text) {
+        if ("math" in piece) out.push({ latex: piece.math, displayMode: false })
+      }
+    }
+  } else if (b.type === "table") {
+    for (const row of b.rows) {
+      for (const cell of row) {
+        let cellContent: unknown
+        if (typeof cell === "string" || Array.isArray(cell)) {
+          cellContent = cell
+        } else if (cell && typeof cell === "object" && "content" in cell) {
+          cellContent = cell.content
+        }
+        if (Array.isArray(cellContent)) {
+          for (const piece of cellContent) {
+            if (piece && typeof piece === "object") {
+              if ("math" in piece && typeof piece.math === "string") {
+                out.push({ latex: piece.math, displayMode: false })
+              } else if ("type" in piece) {
+                out.push(...collectLatexFromBlock(piece as Fragment[number]))
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return out
+}
+
+function collectLatexFromEdits(edits: ReadonlyArray<EditOp>): LatexItem[] {
+  const out: LatexItem[] = []
+  for (const op of edits) {
+    const frag =
+      op.op === "replace"
+        ? op.with
+        : op.op === "insert-before" || op.op === "insert-after"
+          ? op.content
+          : null
+    if (!frag) continue
+    for (const b of frag) out.push(...collectLatexFromBlock(b))
+  }
+  return out
 }
 
 /* ------------- per-op apply ------------- */
