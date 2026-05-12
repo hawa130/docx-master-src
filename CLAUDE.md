@@ -21,7 +21,8 @@ lib/                               every non-tool TypeScript module, grouped
   lib/parse/                         read-side parsing (document-parser,
                                        style-resolver, fingerprint,
                                        table-classifier, format,
-                                       manual-numbering-detect, types)
+                                       manual-numbering-detect,
+                                       section-metrics, types)
   lib/config/                        zod schemas + derived types for both
                                        sub-commands (config-schema,
                                        config-types, edit-config-schema,
@@ -33,7 +34,8 @@ lib/                               every non-tool TypeScript module, grouped
   lib/edit/                          edit sub-command engine (edit-engine,
                                        locator, text-search, blockers,
                                        fragment-emit, track-changes,
-                                       image-asset)
+                                       image-asset, bookmark, field-ref,
+                                       table-emit, math/)
   lib/shared/                        cross-engine helpers (cli-helpers,
                                        docx-validate, report)
                                      Two type files split by concern:
@@ -87,6 +89,12 @@ Every line of agent-facing doc loads on every invocation. Examples are bloat unl
 Test for any line: could a reader derive it from the rule + surrounding context? Yes → cut. No → keep. Same when distilling a fix into a principle here: state the conclusion, drop the illustration. If a reader can't picture the failure without an example, the rule isn't general enough yet.
 
 Reactive maintenance is the main vector for bloat: each external feedback adds a paragraph; over rounds the doc accretes restatements. When feedback comes in, ask first whether the agent's own judgment covers it. Periodically zoom out and audit holistically — patch-by-patch additions each looked justified; the sum often isn't.
+
+### Address root cause; consolidate to canonical locations
+
+When a class of failure recurs (each iteration breaks on a different specific case but the same axis — agent over-declaring fields, over-typing markers, mis-classifying chrome vs slot), patching each manifestation enumerates instances without removing the axis. The structural fix reframes the schema or workflow so the bad choice isn't reachable — e.g., making `fromParagraph` required for represented roles removed the agent's opportunity to over-declare typography, retiring several "warn against X" patches at once. Ask: is the next failure on this axis a different instance, or a different axis? Different instance → look for the structural reframe.
+
+Within the doc bundle: SKILL.md is the router (decision + pointer); `references/*` carry detail. A rule lives in one canonical location; other places point. Cross-doc duplication accretes during patch cycles — when consolidating, push detail back to its owning ref doc and leave a one-line pointer in callers.
 
 ### Tools expose visible facts; agents make role judgments
 
