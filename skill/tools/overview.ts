@@ -24,6 +24,7 @@ import { NS, type DocumentElement, type ParsedParagraph } from "@lib/parse/types
 import type { LoadedDoc } from "@lib/xml/load.ts"
 import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
 import { pad, paperName, truncate, tw2mm } from "@lib/parse/format.ts"
+import { sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
 
 type ParasMode = "full" | "none" | { from: number; to: number }
 
@@ -127,6 +128,12 @@ function renderPageSetup(doc: LoadedDoc): string[] {
   lines.push(
     `Margins:     top=${tw2mm(s.margins.top)} bottom=${tw2mm(s.margins.bottom)} left=${tw2mm(s.margins.left)} right=${tw2mm(s.margins.right)} mm`,
   )
+  const usable = sectionUsableWidthTwips(s)
+  if (usable > 0) {
+    // Content-area width (pgSz − pgMar). mm + pt for direct use as
+    // ImageBlock.widthPt / TableBlock.cols widths.
+    lines.push(`Text width:  ${tw2mm(usable)} mm / ${(usable / 20).toFixed(1)} pt`)
+  }
   return lines
 }
 

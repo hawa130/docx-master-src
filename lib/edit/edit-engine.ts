@@ -17,7 +17,8 @@
  */
 
 import { DocxReader } from "@lib/xml/reader.ts"
-import { NS, type ParsedParagraph } from "@lib/parse/types.ts"
+import { NS, type ParsedParagraph, type SectionInfo } from "@lib/parse/types.ts"
+import { sectionForParagraph, sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
 import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
 import { PPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import {
@@ -182,6 +183,12 @@ export interface RunEditOpsInput {
    * to the parsed paragraph's pre-apply pPr.numId, which still
    * catches source-bound targets but may reject newly-bound targets.  */
   stylesDoc?: Document | null
+  /** Parsed section list — used to look up the host section per op and
+   * derive its usable content width (LaTeX `\textwidth`). Drives autofit
+   * gridCol seeds for inserted tables so they don't overflow narrow page
+   * setups. Optional: when absent, table emit falls back to a conservative
+   * A4-tight constant. */
+  sections?: SectionInfo[]
 }
 
 export interface RunEditOpsOutput {
@@ -353,7 +360,11 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
         )
       }
     }
-    const touched = applyOne(edit, documentDoc, trackContext, emitCtx, stale, resolverCtx)
+    const perOpCtx: EmitContext = {
+      ...emitCtx,
+      usableWidthTwips: usableWidthForTarget(edit.target, input.sections, resolverCtx),
+    }
+    const touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx)
     perOp.push({ index: i, op: edit.op.op, touched })
   }
 
@@ -427,6 +438,38 @@ function resolveOneEdit(op: EditOp, resolverCtx: ResolverContext, _opIndex: numb
     }
   }
   return { op, target: resolveLocator(op.at, resolverCtx) }
+}
+
+/* ------------- per-op host section lookup ------------- */
+
+/** Resolve the usable content width (twips) for the section the op's target
+ * lives in. Returns `undefined` for cell-internal targets (we don't read
+ * tcW in v1; emitters fall back to a constant) and when no section info
+ * is supplied or no section claims the target's paragraph index. */
+function usableWidthForTarget(
+  target: ResolvedTarget,
+  sections: SectionInfo[] | undefined,
+  resolverCtx: ResolverContext,
+): number | undefined {
+  if (!sections || sections.length === 0) return undefined
+  // Cell-internal ops: skip section lookup; cell width is the real
+  // constraint, not the section's. Future improvement: read tcW.
+  if (target.container.namespaceURI === w && target.container.localName === "tc") return undefined
+  // Pick the first target paragraph's index; for "whole-body" inserts at
+  // the end (no resolved paragraphs), use the last section.
+  const firstP = target.paragraphs[0]
+  if (firstP === undefined) {
+    const last = sections[sections.length - 1]
+    if (!last) return undefined
+    const width = sectionUsableWidthTwips(last)
+    return width > 0 ? width : undefined
+  }
+  const idx = resolverCtx.indexByElement.get(firstP)
+  if (idx === undefined) return undefined
+  const sec = sectionForParagraph(sections, idx)
+  if (!sec) return undefined
+  const width = sectionUsableWidthTwips(sec)
+  return width > 0 ? width : undefined
 }
 
 /* ------------- blocker enforcement ------------- */

@@ -140,17 +140,17 @@ Bind a paragraph style to all header-row cells with `headerStyle`:
 
 ## Column widths and layout
 
-`cols` declares per-column widths; length must equal the effective column count (declared cells + rowspan claims, expanded by colspans). When omitted, engine auto-generates `<w:gridCol w:w="0"/>` × N — Word treats this as autofit.
+`cols` declares per-column widths; length must match the effective column count (see Cell merging). Mixing explicit pt with `"auto"` works — auto columns split the remaining budget after explicit ones.
 
 ```jsonc
 "cols": [{ "width": "auto" }, { "width": 100 }, { "width": 200 }]
 ```
 
-`layout` interpretation:
-- `"autofit"` (default) — Word reflows column widths to fit content and page.
-- `"fixed"` — Declared widths are honored even if total exceeds page width; content may overflow horizontally. Pair with explicit pt widths for predictable column sizing.
+Omit `cols` for autofit: engine seeds even-split widths from the host section's content width; Word reflows on open. Inside a `cell` locator the cell's actual width isn't auto-detected — declare `cols` matching the cell when it's narrow, especially under `layout: "fixed"`.
 
-Percentage widths (e.g. `{ pct: 30 }`) are deferred out of v1 — they require coordinated `tblW` + per-cell `tcW` emission with OOXML's fiftiethPercent units. Use fixed pt widths instead.
+`layout`:
+- `"autofit"` (default) — Word reflows columns to fit content.
+- `"fixed"` — declared widths win; total exceeding the page width overflows the edge.
 
 ## Alignment axes
 
@@ -209,3 +209,4 @@ Then in body text:
 - **Word built-in styles like "Grid Table 4 - Accent 1"** — not referenced; declare equivalent borders + shading manually.
 - **Same-apply edit of a freshly inserted table's cells** — paragraph indices and cell locators reference pre-edit state. Insert the table in one apply, edit cells in a second.
 - **Hyperlinks in cells** — hyperlink blocks are out of scope for this skill globally; not specific to tables.
+- **Percentage column widths** — use fixed pt or `"auto"` instead.

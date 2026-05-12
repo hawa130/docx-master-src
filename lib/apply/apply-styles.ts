@@ -475,6 +475,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         edits: config.edits,
         trackChanges: config.trackChanges ?? false,
         stylesDoc,
+        sections: parsed.sections,
       })
       imageRegistry = result.imageRegistry
       editsApplied = result.report.applied

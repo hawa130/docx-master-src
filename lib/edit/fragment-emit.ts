@@ -314,6 +314,13 @@ export interface EmitContext {
    * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
    * + an anchor in input = engine error at emit. */
   adoptAnchor?: (name: string, pEl: Element) => void
+  /** Usable content width (LaTeX `\textwidth`) of the section the current
+   * op is targeting, in twips. Consumed by `emitTableBlock` to seed
+   * autofit gridCol widths. Populated per-op by the engine (different ops
+   * can target different sections); absent for ops targeting a `<w:tc>`
+   * container or when the document's sectPr lacks pgSz/pgMar — emitters
+   * fall back to a conservative constant in that case. */
+  usableWidthTwips?: number
 }
 
 function ensurePPr(p: Element, ownerDoc: Document): Element {

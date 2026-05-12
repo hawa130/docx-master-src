@@ -82,9 +82,11 @@ export function emitTableBlock(block: TableBlock, ownerDoc: Document, ctx: EmitC
   }
 
   const tbl = ownerDoc.createElementNS(w, "w:tbl")
-  const tblPr = buildTblPr(block, ownerDoc)
+  const usableWidth = ctx.usableWidthTwips ?? DEFAULT_USABLE_WIDTH_TWIPS
+  const autoShareTwips = computeAutoShareTwips(block.cols, effectiveCols, usableWidth)
+  const tblPr = buildTblPr(block, autoShareTwips, usableWidth, ownerDoc)
   tbl.appendChild(tblPr)
-  tbl.appendChild(buildTblGrid(block.cols, effectiveCols, ownerDoc))
+  tbl.appendChild(buildTblGrid(block.cols, effectiveCols, autoShareTwips, ownerDoc))
 
   for (let r = 0; r < grid.length; r++) {
     const rowEl = ownerDoc.createElementNS(w, "w:tr")
@@ -204,7 +206,23 @@ function normalizeCell(cell: TableCell): CellObj {
 
 /* ------------- tblPr ------------- */
 
-function buildTblPr(block: TableBlock, ownerDoc: Document): Element {
+/** Fallback usable width when ctx doesn't supply one — covers ops targeting
+ * an existing `<w:tc>` via a `cell` locator (a TableBlock inserted into a
+ * cell can't know the cell's width without reading `<w:tcW>`; deferred
+ * out of v1), sections with missing pgSz/pgMar, and pre-emit synthetic
+ * paths. A4 portrait with 30 mm side margins gives 150 mm ≈ 8504 twips;
+ * 8500 stays just inside that. For an `autofit` table the fallback only
+ * sets a seed and Word reflows on open; for a `fixed` table inserted into
+ * a narrower cell the fallback overflows permanently — agent should
+ * declare `cols` widths to match the cell. */
+const DEFAULT_USABLE_WIDTH_TWIPS = 8500
+
+function buildTblPr(
+  block: TableBlock,
+  autoShareTwips: number,
+  usableWidth: number,
+  ownerDoc: Document,
+): Element {
   const tblPr = ownerDoc.createElementNS(w, "w:tblPr")
 
   if (block.alignment) {
@@ -212,6 +230,21 @@ function buildTblPr(block: TableBlock, ownerDoc: Document): Element {
     jc.setAttributeNS(w, "w:val", block.alignment)
     insertChildInOrder(tblPr, jc, TBL_PR_CHILD_ORDER)
   }
+
+  // <w:tblW>: explicit width-type declaration. Without it Word's reflow
+  // logic doesn't fire reliably; combined with non-zero gridCol widths it
+  // makes "autofit" actually autofit on open. For fixed layout, declare
+  // the table's total width in twips so Word honors the per-column sizes.
+  const tblW = ownerDoc.createElementNS(w, "w:tblW")
+  if (block.layout === "fixed") {
+    const totalTwips = computeFixedTotalTwips(block.cols, autoShareTwips, usableWidth)
+    tblW.setAttributeNS(w, "w:w", String(totalTwips))
+    tblW.setAttributeNS(w, "w:type", "dxa")
+  } else {
+    tblW.setAttributeNS(w, "w:w", "0")
+    tblW.setAttributeNS(w, "w:type", "auto")
+  }
+  insertChildInOrder(tblPr, tblW, TBL_PR_CHILD_ORDER)
 
   const borders = resolveTableBorders(block)
   if (borders) {
@@ -225,6 +258,42 @@ function buildTblPr(block: TableBlock, ownerDoc: Document): Element {
     insertChildInOrder(tblPr, tblLayout, TBL_PR_CHILD_ORDER)
   }
   return tblPr
+}
+
+/** Share allocated to each `"auto"` column: distribute the leftover budget
+ * (usable width minus the sum of explicit columns) evenly across auto slots.
+ * Same number is used for gridCol seeds AND the fixed-mode `tblW` total —
+ * if the two diverged, fixed-mode tables would either overflow the page or
+ * leave a phantom gap between declared widths and the table edge. Returns
+ * the even-split share when `cols` is omitted (all columns are "auto"). */
+function computeAutoShareTwips(
+  cols: TableBlock["cols"],
+  effectiveCols: number,
+  usableWidth: number,
+): number {
+  if (cols === undefined) return Math.max(0, Math.round(usableWidth / effectiveCols))
+  let explicitSum = 0
+  let autoCount = 0
+  for (const c of cols) {
+    if (c.width === "auto") autoCount += 1
+    else explicitSum += Math.round(c.width * 20)
+  }
+  if (autoCount === 0) return 0
+  return Math.max(0, Math.round((usableWidth - explicitSum) / autoCount))
+}
+
+function computeFixedTotalTwips(
+  cols: TableBlock["cols"],
+  autoShareTwips: number,
+  usableWidth: number,
+): number {
+  if (cols === undefined) return usableWidth
+  let sum = 0
+  for (const c of cols) {
+    if (c.width === "auto") sum += autoShareTwips
+    else sum += Math.round(c.width * 20)
+  }
+  return sum
 }
 
 /** Resolve preset → BordersCustom + apply default. Returns null when borders
@@ -347,26 +416,29 @@ function buildBorderElement(qname: string, edge: BorderEdge, ownerDoc: Document)
 function buildTblGrid(
   cols: TableBlock["cols"],
   effectiveCols: number,
+  autoShareTwips: number,
   ownerDoc: Document,
 ): Element {
   const grid = ownerDoc.createElementNS(w, "w:tblGrid")
   if (cols !== undefined) {
-    for (const c of cols) grid.appendChild(buildGridCol(c.width, ownerDoc))
+    for (const c of cols) grid.appendChild(buildGridCol(c.width, autoShareTwips, ownerDoc))
   } else {
-    for (let i = 0; i < effectiveCols; i++) grid.appendChild(buildGridCol("auto", ownerDoc))
+    for (let i = 0; i < effectiveCols; i++)
+      grid.appendChild(buildGridCol("auto", autoShareTwips, ownerDoc))
   }
   return grid
 }
 
-function buildGridCol(width: ColWidth, ownerDoc: Document): Element {
+function buildGridCol(width: ColWidth, autoTwips: number, ownerDoc: Document): Element {
   const col = ownerDoc.createElementNS(w, "w:gridCol")
-  // <w:gridCol w:w="..."/> expects DXA (twentieths of a pt). "auto"
-  // emits w:w="0" — Word treats zero-width gridCols as autofit hints.
-  if (width === "auto") {
-    col.setAttributeNS(w, "w:w", "0")
-  } else {
-    col.setAttributeNS(w, "w:w", String(Math.round(width * 20)))
-  }
+  // <w:gridCol w:w="..."/> expects DXA (twentieths of a pt). For "auto",
+  // emit an even share of the usable page width — Word's autofit logic
+  // (driven by <w:tblW w:type="auto"/> on tblPr) reflows on open, so the
+  // seed only has to be non-zero and proportional. Emitting w:w="0" makes
+  // Word render columns at minimum width (one character) regardless of
+  // tblW, because tblGrid is the authoritative initial layout.
+  const twips = width === "auto" ? autoTwips : Math.round(width * 20)
+  col.setAttributeNS(w, "w:w", String(twips))
   return col
 }
 
