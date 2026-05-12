@@ -42,11 +42,24 @@ export interface BookmarkAssignment {
   name: string
 }
 
-interface NameRecord {
-  element: Element
+export interface NameRecord {
+  /** Element is null for `"reserved"` records: the pre-scan reserved the
+   * name before the corresponding ParagraphBlock emitted its <w:p>. The
+   * element is filled in when `adoptName` upgrades the record to
+   * `"adopted"`. */
+  element: Element | null
   /** "source" means the bookmark already exists in document.xml — commit
-   * skips it. "allocated" / "adopted" means we'll wrap on commit. */
-  origin: "source" | "allocated" | "adopted"
+   * skips it. "allocated" / "adopted" means we'll wrap on commit.
+   * "reserved" is a pre-scan placeholder: the engine has seen the name
+   * declared on a forthcoming ParagraphBlock.anchor but hasn't emitted
+   * the paragraph yet. Reserved records don't carry an element and are
+   * not surfaced via `resolveByName` until upgraded by `adoptName`. */
+  origin: "source" | "allocated" | "adopted" | "reserved"
+  /** Predicted styleId for `"reserved"` records — captured from the
+   * forthcoming ParagraphBlock.styleId so a forward InlineRef can run the
+   * style-cascade numbering check before the target element exists. Unset
+   * for non-reserved records (use the element instead). */
+  predictedStyleId?: string
 }
 
 export class BookmarkAllocator {
@@ -104,6 +117,51 @@ export class BookmarkAllocator {
     return assignment
   }
 
+  /** Pre-scan reservation: register a name that an upcoming ParagraphBlock
+   * will adopt, so a forward InlineRef emitted earlier in the pipeline can
+   * still recognize the name. The element isn't known yet — `adoptName`
+   * fills it in once the block emits. Optional `ctx.styleId` is captured
+   * for the style-cascade numbering check that the forward ref will run
+   * against `styleIsAutoNumbered`.
+   *
+   * Throws on collision with a source bookmark, an existing reservation,
+   * or an already-adopted name — the engine runs this once per declared
+   * anchor before emit starts, so duplicates surface before any mutation. */
+  reserveName(name: string, ctx?: { styleId?: string }): void {
+    if (this.usedNames.has(name)) {
+      const existingRec = this.nameIndex.get(name)
+      const where =
+        existingRec?.origin === "source"
+          ? "exists in the source document"
+          : existingRec?.origin === "reserved"
+            ? "is already reserved by an earlier ParagraphBlock.anchor in this apply"
+            : "was already adopted in this apply"
+      throw new Error(
+        `BookmarkAllocator.reserveName: bookmark name "${name}" ${where}. Pick a different anchor name.`,
+      )
+    }
+    this.usedNames.add(name)
+    this.nameIndex.set(name, {
+      element: null,
+      origin: "reserved",
+      predictedStyleId: ctx?.styleId,
+    })
+  }
+
+  /** True iff `name` has been pre-scan reserved but not yet bound to an
+   * element via `adoptName`. Lets the emitter branch into forward-ref
+   * handling (style-cascade numbering check, late-bound backfill). */
+  isReserved(name: string): boolean {
+    return this.nameIndex.get(name)?.origin === "reserved"
+  }
+
+  /** Predicted styleId captured at reservation time. Returns undefined when
+   * the name isn't reserved or no styleId was supplied. */
+  predictedStyleIdFor(name: string): string | undefined {
+    const rec = this.nameIndex.get(name)
+    return rec?.origin === "reserved" ? rec.predictedStyleId : undefined
+  }
+
   /** Adopt a caller-supplied name for this paragraph (the `anchor` field
    * on a ParagraphBlock). Two failure modes:
    *
@@ -114,6 +172,9 @@ export class BookmarkAllocator {
    *     paragraph carries at most one anchor; if you need a second handle,
    *     refTo it by paragraph index instead).
    *
+   * If the name was already `"reserved"` by the pre-scan, the record is
+   * upgraded to `"adopted"` with `element` filled in — not a duplicate.
+   *
    * Idempotent for the same `(name, pEl)` pair. */
   adoptName(name: string, pEl: Element): BookmarkAssignment {
     const existing = this.byElement.get(pEl)
@@ -123,10 +184,10 @@ export class BookmarkAllocator {
         `BookmarkAllocator.adoptName: paragraph already bound to bookmark "${existing.name}" — cannot also adopt "${name}". Each paragraph carries at most one named anchor.`,
       )
     }
-    if (this.usedNames.has(name)) {
-      const existingRec = this.nameIndex.get(name)
+    const existingRec = this.nameIndex.get(name)
+    if (existingRec && existingRec.origin !== "reserved") {
       const where =
-        existingRec?.origin === "source"
+        existingRec.origin === "source"
           ? "exists in the source document"
           : "was already adopted in this apply"
       throw new Error(
@@ -137,16 +198,22 @@ export class BookmarkAllocator {
     this.usedNames.add(name)
     const assignment: BookmarkAssignment = { id, name }
     this.byElement.set(pEl, assignment)
+    // Upgrade the reserved record (or insert a fresh adopted one).
     this.nameIndex.set(name, { element: pEl, origin: "adopted" })
     return assignment
   }
 
   /** Resolve a bookmark name to its paragraph element. Searches adopted
-   * anchors (this run's ParagraphBlock.anchor) and source bookmarks. Returns
-   * undefined when the name isn't found in either; caller throws with
-   * agent-readable context. */
+   * anchors (this run's ParagraphBlock.anchor), source bookmarks, and
+   * auto-allocated names. Returns undefined when the name isn't found at
+   * all, OR when the only matching record is a pre-scan `"reserved"`
+   * placeholder (no element bound yet — caller branches via `isReserved`).
+   * Caller throws with agent-readable context. */
   resolveByName(name: string): NameRecord | undefined {
-    return this.nameIndex.get(name)
+    const rec = this.nameIndex.get(name)
+    if (!rec) return undefined
+    if (rec.element === null) return undefined
+    return rec
   }
 
   /** True iff at least one bookmark will be wrapped at commit. Source

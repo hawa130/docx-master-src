@@ -501,13 +501,37 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // pairs so REF can resolve. (4) Flip settings.xml's updateFields flag.
       const { bookmarkAllocator, pendingBackfills } = result.crossRefs
       if (bookmarkAllocator.hasAllocations()) {
+        // Late-bind forward refs: a pending backfill whose `targetParagraph`
+        // is null was a forward ref at emit time — the anchor's paragraph
+        // hadn't emitted yet. By now all anchors have run through emit, so
+        // resolve against the allocator. Missing here is a hard error
+        // (pre-scan should have caught it, so this guards against engine
+        // bugs rather than agent inputs).
+        const resolvedBackfills: Array<{
+          placeholderTextEl: Element
+          targetParagraph: Element
+          targetName: string
+          display: "full" | "label" | "number"
+        }> = pendingBackfills.map((pending) => {
+          if (pending.targetParagraph) {
+            return { ...pending, targetParagraph: pending.targetParagraph }
+          }
+          const rec = bookmarkAllocator.resolveByName(pending.targetName)
+          if (!rec || !rec.element) {
+            throw new Error(
+              `InlineRef: forward ref to anchor "${pending.targetName}" could not be resolved post-emit. ` +
+                `This indicates the anchor's paragraph never emitted; check edits[] for a missing ParagraphBlock.anchor.`,
+            )
+          }
+          return { ...pending, targetParagraph: rec.element }
+        })
         // Detached-target guard: a later edit op may have removed the
         // paragraph an earlier InlineRef pointed at. The stale-element
         // check below catches this BEFORE the counter sim (which iterates
         // only attached paragraphs and would silently leave the placeholder
         // empty). Throw with the original locator so the agent can see
         // which ref needs updating.
-        for (const pending of pendingBackfills) {
+        for (const pending of resolvedBackfills) {
           if (!isAttachedToDoc(pending.targetParagraph, documentDoc)) {
             throw new Error(
               `InlineRef target paragraph was removed by a later edit op. ` +
@@ -517,7 +541,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
           }
         }
         const counters = simulateNumberingCounters(documentDoc, numberingDoc, stylesDoc)
-        for (const pending of pendingBackfills) {
+        for (const pending of resolvedBackfills) {
           const rendered = counters.get(pending.targetParagraph)
           if (!rendered && pending.display !== "full") continue
           const text =

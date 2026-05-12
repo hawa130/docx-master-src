@@ -171,8 +171,15 @@ export interface PendingRefBackfill {
    * during commit. */
   placeholderTextEl: Element
   /** Element ref to the target paragraph — looked up against the counter
-   * simulator's output map. */
-  targetParagraph: Element
+   * simulator's output map. `null` when the ref was forward (target's
+   * paragraph hadn't emitted yet at the time we wrote the placeholder);
+   * the backfill consumer resolves via `targetName` against the now-fully-
+   * populated allocator. */
+  targetParagraph: Element | null
+  /** Anchor name used for late-resolution when `targetParagraph` is null.
+   * Always set so the consumer can produce an actionable error if the
+   * anchor disappeared somehow (it shouldn't — pre-scan guards that). */
+  targetName: string
   /** Which rendered field to use as the placeholder. */
   display: "full" | "label" | "number"
 }

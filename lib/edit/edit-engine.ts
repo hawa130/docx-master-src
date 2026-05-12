@@ -270,6 +270,21 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   const stale = new Set<Element>()
   const imageRegistry = await ImageAssetRegistry.open(reader)
   const bookmarkAllocator = new BookmarkAllocator(documentDoc)
+
+  // Pre-scan declared anchors so forward refs (a ref citing an anchor in a
+  // later edit, or in a later Block of the same op) resolve correctly.
+  // Reserves the name + records the predicted styleId; the anchor binds to
+  // its Element when its ParagraphBlock / EquationBlock emits later. Run
+  // before the main applyOne loop so duplicate / colliding names surface
+  // ahead of any mutation.
+  for (const op of edits) {
+    const fragment = fragmentOf(op)
+    if (!fragment) continue
+    walkBlocksForAnchors(fragment, (block) => {
+      bookmarkAllocator.reserveName(block.anchor, { styleId: block.styleId })
+    })
+  }
+
   const pendingBackfills: PendingRefBackfill[] = []
   const emitCtx: EmitContext = {
     emitImage: (src, widthPt, heightPt, alt, ownerDoc) => {
@@ -277,11 +292,17 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
     },
     emitRef: (ref, ownerDoc, defaultFormat) => {
-      // Resolve target → (paragraph element, bookmark name). Two locator
-      // forms: paragraph index (pre-edit, validates against the indexed
-      // paragraph map) and anchor name (looks up adopted anchors from this
-      // run + source bookmarks via the allocator).
-      let targetEl: Element
+      // Resolve target → (paragraph element OR forward-ref name, bookmark
+      // name). Two locator forms:
+      //   - paragraph index: pre-edit, validates against the indexed
+      //     paragraph map. Always element-bound at emit time.
+      //   - anchor name: looks up adopted anchors / source bookmarks via
+      //     the allocator. A forward ref (anchor declared later in edits[]
+      //     or later in this op's Block list) finds the name in the
+      //     pre-scan reservation table — `resolveByName` returns null, but
+      //     `isReserved` is true, and the numbering check runs against the
+      //     reserved record's predicted styleId instead of an element.
+      let targetEl: Element | null
       let bookmarkName: string
       if (ref.refTo.type === "paragraph") {
         const target = resolverCtx.indexed[ref.refTo.index - 1]
@@ -295,15 +316,15 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
         bookmarkName = bookmarkAllocator.getOrAllocate(targetEl).name
       } else {
         const found = bookmarkAllocator.resolveByName(ref.refTo.name)
-        if (!found) {
+        const reserved = !found && bookmarkAllocator.isReserved(ref.refTo.name)
+        if (!found && !reserved) {
           throw new Error(
             `InlineRef: refTo.anchor="${ref.refTo.name}" was not found. ` +
-              `Anchors must be declared on a ParagraphBlock.anchor earlier in emit order — ` +
-              `across edits[] AND within one op's with/content Block list — ` +
-              `or already exist as a bookmark on a paragraph in the source document.`,
+              `Declare a ParagraphBlock.anchor (or EquationBlock.anchor) with this name somewhere in edits[], ` +
+              `or reference an existing bookmark on a paragraph in the source document.`,
           )
         }
-        targetEl = found.element
+        targetEl = found?.element ?? null
         bookmarkName = ref.refTo.name
       }
       const display = ref.display ?? "label"
@@ -311,16 +332,26 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // (REF \n and \r switches render the lvlText / counter). The "full"
       // display resolves to the bookmark's text content, which any
       // non-empty paragraph supports — so we relax the check there.
-      if (display !== "full" && !paragraphIsAutoNumbered(targetEl, stylesDoc ?? null)) {
-        const where =
-          ref.refTo.type === "paragraph"
-            ? `target paragraph #${ref.refTo.index}`
-            : `target of anchor "${ref.refTo.name}"`
-        throw new Error(
-          `InlineRef: ${where} is not bound to a numbering scheme. ` +
-            `display="${display}" requires an auto-numbered target (Word's \\n / \\r switches render from the numbering binding). ` +
-            `Either bind the target's pStyle to a numbering[] level, or set display: "full" to use the paragraph's body text instead.`,
-        )
+      if (display !== "full") {
+        const ok = targetEl
+          ? paragraphIsAutoNumbered(targetEl, stylesDoc ?? null)
+          : styleIsAutoNumbered(
+              ref.refTo.type === "anchor"
+                ? bookmarkAllocator.predictedStyleIdFor(ref.refTo.name)
+                : undefined,
+              stylesDoc ?? null,
+            )
+        if (!ok) {
+          const where =
+            ref.refTo.type === "paragraph"
+              ? `target paragraph #${ref.refTo.index}`
+              : `target of anchor "${ref.refTo.name}"`
+          throw new Error(
+            `InlineRef: ${where} is not bound to a numbering scheme. ` +
+              `display="${display}" requires an auto-numbered target (Word's \\n / \\r switches render from the numbering binding). ` +
+              `Either bind the target's pStyle to a numbering[] level, or set display: "full" to use the paragraph's body text instead.`,
+          )
+        }
       }
       // Placeholder text is empty here; backfilled post-edit once the
       // numbering counter simulator yields rendered values. settings.xml's
@@ -342,6 +373,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
         pendingBackfills.push({
           placeholderTextEl: placeholderT,
           targetParagraph: targetEl,
+          targetName: bookmarkName,
           display,
         })
       }
@@ -400,6 +432,21 @@ function paragraphIsAutoNumbered(pEl: Element, stylesDoc: Document | null): bool
     }
   }
   return false
+}
+
+/** Same auto-numbering check, but starts from a styleId instead of a
+ * paragraph element — used when a forward InlineRef must verify its
+ * target's numbering binding before the target's paragraph has emitted.
+ * Returns false when styleId is undefined or stylesDoc is missing.
+ *
+ * Limitation vs `paragraphIsAutoNumbered`: doesn't see direct `<w:p>/<w:pPr>
+ * /<w:numPr>` overrides — agents declaring `numbering` directly on a
+ * ParagraphBlock (rather than via pStyle cascade) won't satisfy this check.
+ * Forward refs to such targets should use `display: "full"` or move the
+ * anchor before the citing ref. */
+function styleIsAutoNumbered(styleId: string | undefined, stylesDoc: Document | null): boolean {
+  if (!styleId || !stylesDoc) return false
+  return styleHasNumPrInCascade(stylesDoc, styleId)
 }
 
 function styleHasNumPrInCascade(stylesDoc: Document, styleId: string): boolean {
@@ -561,16 +608,63 @@ function collectLatexFromBlock(b: Fragment[number]): LatexItem[] {
 function collectLatexFromEdits(edits: ReadonlyArray<EditOp>): LatexItem[] {
   const out: LatexItem[] = []
   for (const op of edits) {
-    const frag =
-      op.op === "replace"
-        ? op.with
-        : op.op === "insert-before" || op.op === "insert-after"
-          ? op.content
-          : null
+    const frag = fragmentOf(op)
     if (!frag) continue
     for (const b of frag) out.push(...collectLatexFromBlock(b))
   }
   return out
+}
+
+/** Return the inserted/replaced Block[] for an op, or null when the op has
+ * no fragment (delete / format / set-run). Centralizes the
+ * `with` / `content` discriminant used by the latex collector and the
+ * anchor pre-scan. */
+function fragmentOf(op: EditOp): Fragment | null {
+  if (op.op === "replace") return op.with
+  if (op.op === "insert-before" || op.op === "insert-after") return op.content
+  return null
+}
+
+/** Visit every block in a fragment that carries an `anchor` field, recursing
+ * into table cell content. Currently `ParagraphBlock` and `EquationBlock`
+ * both declare `anchor`; the visitor narrows to "any block with a
+ * non-empty `anchor`" so additions to the schema pick up automatically.
+ *
+ * The callback receives the block plus its declared styleId (for the
+ * pre-scan reservation's style-cascade numbering check). */
+function walkBlocksForAnchors(
+  fragment: Fragment,
+  visit: (block: { anchor: string; styleId: string | undefined }) => void,
+): void {
+  for (const block of fragment) walkBlockForAnchors(block, visit)
+}
+
+function walkBlockForAnchors(
+  block: Fragment[number],
+  visit: (block: { anchor: string; styleId: string | undefined }) => void,
+): void {
+  if (block.type === "paragraph" || block.type === "equation") {
+    if (block.anchor) visit({ anchor: block.anchor, styleId: block.styleId })
+    return
+  }
+  if (block.type === "table") {
+    for (const row of block.rows) {
+      for (const cell of row) {
+        let cellContent: unknown
+        if (typeof cell === "string" || Array.isArray(cell)) {
+          cellContent = cell
+        } else if (cell && typeof cell === "object" && "content" in cell) {
+          cellContent = cell.content
+        }
+        if (!Array.isArray(cellContent)) continue
+        for (const piece of cellContent) {
+          if (piece && typeof piece === "object" && "type" in piece) {
+            walkBlockForAnchors(piece as Fragment[number], visit)
+          }
+        }
+      }
+    }
+  }
 }
 
 /* ------------- per-op apply ------------- */

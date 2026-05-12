@@ -101,10 +101,12 @@ const RefToAnchorSchema = z.strictObject({
  *     to a numbering scheme (unless display === "full").
  *
  *   `{ type: "anchor", name: "..." }` — resolves against
- *     (a) anchors declared on ParagraphBlock.anchor in earlier ops of
- *     this same edits[] array, or (b) bookmarks already present in the
- *     source document. Lets refs target paragraphs created in the same
- *     apply run, which the paragraph-index form cannot do.
+ *     (a) any ParagraphBlock.anchor / EquationBlock.anchor declared
+ *     anywhere in this same edits[] array (a pre-scan reserves the names
+ *     before emit, so refs can address anchors that emit later — forward
+ *     refs are fine), or (b) bookmarks already present in the source
+ *     document. Lets refs target paragraphs created in the same apply
+ *     run, which the paragraph-index form cannot do.
  *
  * The target must be bound to a numbering scheme when display is "label"
  * or "number"; "full" resolves to the target paragraph's body text and
@@ -146,12 +148,13 @@ const ParagraphBlockSchema = z.strictObject({
   paraFormat: z.optional(ParagraphFormatSchema),
   runFormat: z.optional(RunFormatSchema),
   numbering: z.optional(NumberingRefSchema),
-  /** Optional stable name that later InlineRefs in the same edits[] (or
-   * future apply runs) can target via `refTo: { type: "anchor", name }`.
-   * The engine wraps the emitted paragraph with `<w:bookmarkStart>` /
-   * `<w:bookmarkEnd>` carrying this name. Collisions with existing source
-   * bookmark names or with anchors declared earlier in this run fail at
-   * apply time. */
+  /** Optional stable name that InlineRefs in the same edits[] (or future
+   * apply runs) can target via `refTo: { type: "anchor", name }`. The
+   * engine wraps the emitted paragraph with `<w:bookmarkStart>` /
+   * `<w:bookmarkEnd>` carrying this name. Names live in a flat namespace
+   * with source bookmarks; collisions fail at pre-scan, before any
+   * mutation. Refs can address an anchor regardless of declaration order
+   * (forward refs are pre-scanned and resolved at backfill time). */
   anchor: z.optional(AnchorNameSchema),
 })
 
