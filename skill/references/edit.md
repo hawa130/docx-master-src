@@ -65,11 +65,13 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 
 `anchor` attaches a stable bookmark name (Word's `[A-Za-z_][\w-]{0,39}` rule) so later `InlineRef` nodes can target this new paragraph via `refTo: { "type": "anchor", "name": ... }`. The only way to ref a paragraph created in this same `apply` run — paragraph-index locators reference pre-edit state. See [`cross-references.md`](cross-references.md).
 
-`text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required. `styleId` / `paraFormat` on an `image` block set the wrapping `<w:p>`'s pPr the same way they do on a paragraph block — use for centering, keep-with-next, and spacing on figures; omit for the legacy bare-image emit (no pPr, default left-aligned). To cross-ref a figure, attach `anchor` to its caption paragraph, not to the image — image paragraphs carry no numbering or text content for `display: "label"` / `"number"` / `"full"` to resolve against.
+`text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required. To cross-ref a figure, attach `anchor` to its caption paragraph — image paragraphs carry no numbering or text content for `display: "label"` / `"number"` / `"full"` to resolve against.
 
 **Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. Two paths to numbering:
 - **styleId-bound** (preferred): if the styleId you set is bound to a numbering scheme via `numbering[].levels[].styleId`, the binding handles auto-numbering automatically — don't supply a `numbering` field on the block. Use for headings (`Heading1..N`) and list-bound styles (`ListNumber` / `ListBullet`).
 - **ad-hoc** `numbering: { numId, level }`: for one-off paragraph-level numbering not tied to a style. Rare; used when you want a paragraph numbered without committing the style to a scheme.
+
+Same applies to images in styled documents: bind `styleId` (typically `FigureImage`) so centering / spacing come from the cascade rather than per-call `paraFormat`. The bare-image emit (no pPr) is only correct for inline / unstyled context.
 
 If the styleId or numId you reference doesn't exist in the doc, add `styles[]` / `numbering` to the same `apply` config so they get installed before `edits[]` runs (see SKILL.md Target state).
 
