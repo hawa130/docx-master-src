@@ -1,3 +1,23 @@
+/**
+ * overview <docx> [--paras=A..B | --paras=none] [--include-unused]
+ *
+ * Default output is the full survey (metadata, page setup, theme, style
+ * definitions, numbering schemes, visual style summary, direct-format per
+ * fingerprint, document skeleton). Two scoping flags trim long-doc output
+ * without losing what an agent needs for first-time orientation:
+ *
+ *   --paras=A..B      Render the skeleton only for paragraphs in [A, B].
+ *                     Structural elements (tables / images / breaks) that
+ *                     fall within the range are kept; everything else is
+ *                     dropped. Use for second-look drilling after the
+ *                     initial full survey.
+ *   --paras=none      Skip the skeleton entirely. Useful when the agent
+ *                     only needs the style / numbering / theme dictionary
+ *                     (e.g. composing a small-scope `edits[]` config).
+ *   --include-unused  Show styles with usage=0 (hidden by default — Word
+ *                     and template residue often leaves dozens of declared-
+ *                     but-unused style definitions that drown the table).
+ */
 import { loadDocx, parseNumbering } from "@lib/xml/load.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { NS, type DocumentElement, type ParsedParagraph } from "@lib/parse/types.ts"
@@ -5,14 +25,61 @@ import type { LoadedDoc } from "@lib/xml/load.ts"
 import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
 import { pad, paperName, truncate, tw2mm } from "@lib/parse/format.ts"
 
-async function main() {
-  const file = process.argv[2]
+type ParasMode = "full" | "none" | { from: number; to: number }
+
+interface Args {
+  file: string
+  paras: ParasMode
+  includeUnused: boolean
+}
+
+function parseArgs(): Args {
+  const argv = process.argv.slice(2)
+  let paras: ParasMode = "full"
+  let includeUnused = false
+  const positional: string[] = []
+  for (const a of argv) {
+    if (a === "--include-unused") {
+      includeUnused = true
+    } else if (a.startsWith("--paras=")) {
+      const spec = a.slice("--paras=".length)
+      if (spec === "none") {
+        paras = "none"
+      } else {
+        const m = spec.match(/^(\d+)\.\.(\d+)$/)
+        if (!m) {
+          console.error(`--paras: expected "A..B" or "none", got "${spec}"`)
+          process.exit(1)
+        }
+        const from = parseInt(m[1]!, 10)
+        const to = parseInt(m[2]!, 10)
+        if (from < 1 || to < from) {
+          console.error(`--paras: invalid range ${from}..${to} (require 1 ≤ from ≤ to)`)
+          process.exit(1)
+        }
+        paras = { from, to }
+      }
+    } else if (a.startsWith("--")) {
+      console.error(`unknown flag: ${a}`)
+      process.exit(1)
+    } else {
+      positional.push(a)
+    }
+  }
+  const file = positional[0]
   if (!file) {
-    console.error("Usage: node scripts/overview.js <docx-path>")
+    console.error(
+      "Usage: node scripts/overview.js <docx-path> [--paras=A..B | --paras=none] [--include-unused]",
+    )
     process.exit(1)
   }
+  return { file, paras, includeUnused }
+}
+
+async function main() {
+  const args = parseArgs()
   try {
-    const doc = await loadDocx(file)
+    const doc = await loadDocx(args.file)
     const out: string[] = []
     out.push(...renderMetadata(doc))
     out.push("")
@@ -20,7 +87,7 @@ async function main() {
     out.push("")
     out.push(...renderTheme(doc))
     out.push("")
-    out.push(...renderStyleDefinitions(doc))
+    out.push(...renderStyleDefinitions(doc, args.includeUnused))
     out.push("")
     out.push(...renderNumbering(doc))
     out.push("")
@@ -28,7 +95,7 @@ async function main() {
     out.push("")
     out.push(...renderDirectFormatPerFingerprint(doc))
     out.push("")
-    out.push(...renderSkeleton(doc))
+    out.push(...renderSkeleton(doc, args.paras))
     console.log(out.join("\n"))
   } catch (err) {
     console.error(`Error: ${(err as Error).message}`)
@@ -82,29 +149,34 @@ function renderTheme(doc: LoadedDoc): string[] {
   return lines
 }
 
-function renderStyleDefinitions(doc: LoadedDoc): string[] {
+function renderStyleDefinitions(doc: LoadedDoc, includeUnused: boolean): string[] {
   const lines = ["=== Style Definitions (styles.xml) ==="]
-  const all = doc.resolver
-    .getAllStyles()
-    .filter((s) => !s.isDefault)
-    .sort((a, b) => b.usageCount - a.usageCount || a.id.localeCompare(b.id))
-  if (all.length === 0) {
+  const allNonDefault = doc.resolver.getAllStyles().filter((s) => !s.isDefault)
+  const shown = includeUnused ? allNonDefault : allNonDefault.filter((s) => s.usageCount > 0)
+  shown.sort((a, b) => b.usageCount - a.usageCount || a.id.localeCompare(b.id))
+  if (shown.length === 0) {
     lines.push("(no styles)")
-    return lines
+  } else {
+    for (const s of shown) {
+      const props: string[] = []
+      if (s.rPr.size !== undefined) props.push(`${s.rPr.size / 2}pt`)
+      if (s.rPr.bold) props.push("Bold")
+      if (s.rPr.italic) props.push("Italic")
+      if (s.rPr.fontEastAsia || s.rPr.fontAscii)
+        props.push(s.rPr.fontEastAsia || s.rPr.fontAscii || "")
+      if (s.pPr.alignment) props.push(s.pPr.alignment)
+      if (s.pPr.outlineLevel !== undefined) props.push(`outlineLvl=${s.pPr.outlineLevel}`)
+      if (s.pPr.numId) props.push(`numId=${s.pPr.numId}`)
+      const based = s.basedOn ? ` basedOn=${s.basedOn}` : ""
+      lines.push(
+        `  ${s.id} "${s.name}" [${s.type}]${based}  usage=${s.usageCount}  {${props.join(", ")}}`,
+      )
+    }
   }
-  for (const s of all) {
-    const props: string[] = []
-    if (s.rPr.size !== undefined) props.push(`${s.rPr.size / 2}pt`)
-    if (s.rPr.bold) props.push("Bold")
-    if (s.rPr.italic) props.push("Italic")
-    if (s.rPr.fontEastAsia || s.rPr.fontAscii)
-      props.push(s.rPr.fontEastAsia || s.rPr.fontAscii || "")
-    if (s.pPr.alignment) props.push(s.pPr.alignment)
-    if (s.pPr.outlineLevel !== undefined) props.push(`outlineLvl=${s.pPr.outlineLevel}`)
-    if (s.pPr.numId) props.push(`numId=${s.pPr.numId}`)
-    const based = s.basedOn ? ` basedOn=${s.basedOn}` : ""
+  const hidden = allNonDefault.length - shown.length
+  if (hidden > 0) {
     lines.push(
-      `  ${s.id} "${s.name}" [${s.type}]${based}  usage=${s.usageCount}  {${props.join(", ")}}`,
+      `  (${hidden} unused style${hidden === 1 ? "" : "s"} hidden — pass --include-unused to show)`,
     )
   }
   return lines
@@ -233,8 +305,20 @@ function renderDirectFormatPerFingerprint(doc: LoadedDoc): string[] {
   return lines
 }
 
-function renderSkeleton(doc: LoadedDoc): string[] {
-  const lines = ["=== Document Skeleton ==="]
+function renderSkeleton(doc: LoadedDoc, paras: ParasMode): string[] {
+  if (paras === "none") {
+    return [
+      "=== Document Skeleton ===",
+      "(omitted — pass --paras=A..B or remove the flag to render the skeleton)",
+    ]
+  }
+  const range = paras === "full" ? null : paras
+  const header =
+    range === null
+      ? "=== Document Skeleton ==="
+      : `=== Document Skeleton (paragraphs #${pad(range.from)}–#${pad(range.to)} of ${doc.paragraphs.length}) ===`
+  const lines = [header]
+
   // group elements by section
   const sectionElements = new Map<number, DocumentElement[]>()
   for (const el of doc.elements) {
@@ -243,9 +327,11 @@ function renderSkeleton(doc: LoadedDoc): string[] {
     sectionElements.get(idx)!.push(el)
   }
 
+  let renderedAnything = false
   for (const sec of doc.sections) {
-    const range = `(para #${sec.paraRange[0]}-#${sec.paraRange[1]})`
-    lines.push(`--- Section ${sec.index + 1} ${range} ---`)
+    if (range && (sec.paraRange[1] < range.from || sec.paraRange[0] > range.to)) continue
+    const headerLine = `--- Section ${sec.index + 1} (para #${sec.paraRange[0]}-#${sec.paraRange[1]}) ---`
+    lines.push(headerLine)
     if (sec.header !== null) lines.push(`Header: ${truncate(sec.header, 60)}`)
     else lines.push(`Header: (none)`)
     if (sec.footer !== null) lines.push(`Footer: ${truncate(sec.footer, 60)}`)
@@ -253,12 +339,57 @@ function renderSkeleton(doc: LoadedDoc): string[] {
     if (sec.footerPageNumFormat) lines.push(`Footer page num: ${sec.footerPageNumFormat}`)
     lines.push("")
     const elems = sectionElements.get(sec.index) || []
+    // Track running paragraph index so non-indexed elements (data/form tables,
+    // images, page breaks, equations) can be filtered by their positional
+    // context — they belong to the slice iff a preceding-or-current indexed
+    // paragraph falls inside it.
+    let anchor = sec.paraRange[0]
     for (const el of elems) {
-      lines.push(...renderElement(el, ""))
+      const elemAnchor = updateAnchor(el, anchor)
+      anchor = elemAnchor
+      if (range && !elementInRange(el, range, elemAnchor)) continue
+      lines.push(...renderElement(el, "", range))
+      renderedAnything = true
     }
     lines.push("")
   }
+  if (range && !renderedAnything) {
+    lines.push(`(no paragraphs in range #${range.from}-#${range.to})`)
+  }
   return lines
+}
+
+function updateAnchor(el: DocumentElement, prev: number): number {
+  if (el.kind === "paragraph") return el.paragraph.index
+  if (el.kind === "emptyRun") return el.firstIndex
+  if (el.kind === "table" && el.classification === "layout" && el.paragraphs.length > 0) {
+    return el.paragraphs[0]!.index
+  }
+  return prev
+}
+
+function elementInRange(
+  el: DocumentElement,
+  range: { from: number; to: number },
+  anchor: number,
+): boolean {
+  if (el.kind === "paragraph") {
+    const i = el.paragraph.index
+    return i >= range.from && i <= range.to
+  }
+  if (el.kind === "emptyRun") {
+    // A run of empty paragraphs spans firstIndex..firstIndex+count-1; include
+    // it whenever any of its paragraphs overlaps the slice.
+    const lastIndex = el.firstIndex + el.count - 1
+    return lastIndex >= range.from && el.firstIndex <= range.to
+  }
+  if (el.kind === "table" && el.classification === "layout") {
+    if (el.paragraphs.length === 0) return false
+    return el.paragraphs.some((p) => p.index >= range.from && p.index <= range.to)
+  }
+  // Non-indexed elements (data/form tables, image, pageBreak, equation,
+  // sectionBreak): treat as attached to their positional anchor.
+  return anchor >= range.from && anchor <= range.to
 }
 
 function elementSectionIndex(el: DocumentElement): number {
@@ -266,7 +397,11 @@ function elementSectionIndex(el: DocumentElement): number {
   return (el as any).sectionIndex ?? 0
 }
 
-function renderElement(el: DocumentElement, indent: string): string[] {
+function renderElement(
+  el: DocumentElement,
+  indent: string,
+  range: { from: number; to: number } | null,
+): string[] {
   const lines: string[] = []
   if (el.kind === "paragraph") {
     const p = el.paragraph
@@ -275,6 +410,7 @@ function renderElement(el: DocumentElement, indent: string): string[] {
     if (el.classification === "layout") {
       lines.push(`${indent}--- LAYOUT TABLE ---`)
       for (const p of el.paragraphs) {
+        if (range && (p.index < range.from || p.index > range.to)) continue
         lines.push(`${indent}    #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
       }
       lines.push(`${indent}--- END LAYOUT TABLE ---`)

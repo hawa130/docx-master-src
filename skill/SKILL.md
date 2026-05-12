@@ -113,7 +113,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 
 | Tool | Invocation | When to Use |
 |------|------------|-------------|
-| `overview` | `node scripts/overview.js <file>` | First call on any task. Metadata, page setup (mm), theme, style defs, numbering schemes (clustered by pattern), visual style statistics, **direct-format summary per fingerprint** (which pPr / run-level rPr attributes content chrome carries — drives the "don't redeclare" rule), document skeleton. |
+| `overview` | `node scripts/overview.js <file> [--paras=A..B\|none] [--include-unused]` | First call on any task. Metadata, page setup (mm), theme, style defs, numbering schemes (clustered by pattern), visual style statistics, **direct-format summary per fingerprint** (which pPr / run-level rPr attributes content chrome carries — drives the "don't redeclare" rule), document skeleton. `--paras=A..B` slices the skeleton to a range (re-consult after first survey); `--paras=none` drops the skeleton (when only the style / numbering dictionary is needed). Unused styles (usage=0) are hidden by default; `--include-unused` shows them. |
 | `inspect_range` | `node scripts/inspect_range.js <file> <from> <to>` | Full text and computed styles for a paragraph range. |
 | `inspect_runs` | `node scripts/inspect_runs.js <file> <para>` | Per-run rPr dump. Use for paragraphs with mixed run-level formatting OR **form-fill segments** (label + underscore-blank pattern) — see how the blank is structured before deciding the edit shape. |
 | `inspect_neighbors` | `node scripts/inspect_neighbors.js <file> <para> [--radius N]` | What surrounds a paragraph. First choice for figure-caption / table-caption / first-after-heading classification. |
