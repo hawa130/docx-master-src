@@ -308,6 +308,12 @@ export const TableBlockSchema = z
      * behavior (no `<w:jc>` emitted) is left. Academic / formal
      * documents typically center tables. */
     alignment: z.optional(z.enum(["left", "center", "right"])),
+    /** Default vertical alignment for every cell whose object form
+     * doesn't carry its own `vAlign`. Skill default is `"center"`
+     * (academic / formal typography norm); set `"top"` for form-style
+     * layouts where labels should hug the top of each cell. The
+     * per-cell `vAlign` on the object form still wins per-cell. */
+    vAlign: z.optional(z.enum(["top", "center", "bottom"])),
     /** Column-width interpretation. `"autofit"` (default) lets Word
      * adjust columns to content; `"fixed"` enforces declared widths even
      * if total exceeds page width (content may overflow). */

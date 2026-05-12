@@ -27,6 +27,7 @@ TableBlock {
   cols?: { width: TableWidth }[]   // length = effective column count; if omitted, engine auto-generates <w:gridCol w:w="0"/>
   borders?: BordersPreset | BordersCustom    // default "all"
   alignment?: "left" | "center" | "right"    // whole-table horizontal alignment on page
+  vAlign?: "top" | "center" | "bottom"       // default cell vertical alignment; skill default "center"
   layout?: "fixed" | "autofit"               // default "autofit"
 }
 
@@ -158,8 +159,11 @@ Three distinct alignment fields apply at different scopes:
 | Field | Scope | Affects |
 |---|---|---|
 | `alignment` on TableBlock | whole table on page | Horizontal position of the table (left / center / right). Academic / formal documents typically center. |
-| `vAlign` on cell object form | within cell | Vertical position of cell content (top / center / bottom). |
+| `vAlign` on TableBlock (table-level) | every cell that doesn't carry its own `vAlign` | Skill default `"center"` — matches the academic / formal typography norm. Set `"top"` for form-style layouts where labels should hug the top of each cell. |
+| `vAlign` on cell object form | within one cell | Overrides the table-level default for that cell only. |
 | `paraFormat.alignment` on a Paragraph block inside a cell | within paragraph | Horizontal text alignment within the cell — separate from `vAlign`. |
+
+Resolution for any given cell: `cell.vAlign ?? block.vAlign ?? "center"`. The engine ALWAYS emits `<w:vAlign>` on each `<w:tc>`, overriding Word's native top default. To restore Word's top-default behavior on the whole table, set `vAlign: "top"` at the table level.
 
 ## Edge cases the engine handles
 

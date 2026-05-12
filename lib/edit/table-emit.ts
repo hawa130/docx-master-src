@@ -86,6 +86,7 @@ interface TableBlock {
   cols?: ReadonlyArray<{ width: ColWidth }>
   borders?: Borders
   alignment?: "left" | "center" | "right"
+  vAlign?: "top" | "center" | "bottom"
   layout?: "fixed" | "autofit"
 }
 
@@ -467,11 +468,13 @@ function buildTcPr(slot: GridSlot, block: TableBlock, ownerDoc: Document): Eleme
     shd.setAttributeNS(w, "w:fill", slot.cell.shading)
     insertChildInOrder(tcPr, shd, TC_PR_CHILD_ORDER)
   }
-  if (slot.cell.vAlign) {
-    const vAlign = ownerDoc.createElementNS(w, "w:vAlign")
-    vAlign.setAttributeNS(w, "w:val", slot.cell.vAlign)
-    insertChildInOrder(tcPr, vAlign, TC_PR_CHILD_ORDER)
-  }
+  // vAlign is ALWAYS emitted — Word's default (no w:vAlign) renders top,
+  // but the skill default is "center" to match academic / formal
+  // typography. Resolution order: per-cell explicit > table-level > "center".
+  const resolvedVAlign = slot.cell.vAlign ?? block.vAlign ?? "center"
+  const vAlign = ownerDoc.createElementNS(w, "w:vAlign")
+  vAlign.setAttributeNS(w, "w:val", resolvedVAlign)
+  insertChildInOrder(tcPr, vAlign, TC_PR_CHILD_ORDER)
   return tcPr
 }
 
