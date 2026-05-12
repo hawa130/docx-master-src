@@ -298,8 +298,9 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
         if (!found) {
           throw new Error(
             `InlineRef: refTo.anchor="${ref.refTo.name}" was not found. ` +
-              `Anchors must be declared on a ParagraphBlock.anchor earlier in this edits[] ` +
-              `array, or already exist as a bookmark on a paragraph in the source document.`,
+              `Anchors must be declared on a ParagraphBlock.anchor earlier in emit order — ` +
+              `across edits[] AND within one op's with/content Block list — ` +
+              `or already exist as a bookmark on a paragraph in the source document.`,
           )
         }
         targetEl = found.element
