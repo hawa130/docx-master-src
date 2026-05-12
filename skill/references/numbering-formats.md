@@ -71,6 +71,8 @@ Use a separate `numId` per caption family so figures and tables count independen
 
 Pair the caption style with a `FigureImage` body style (`alignment: "center"`, small `spaceBefore` / `spaceAfter` to butt the image against its caption) and set the image block's `styleId: "FigureImage"` — without it the image paragraph emits no pPr and renders left-aligned with default spacing regardless of what the caption style declares.
 
+**Position convention.** Place `FigureCaption` paragraphs **below** the image; `TableCaption` paragraphs **above** the `{ "type": "table", ... }` block. Both styles bind to single-level continuous counters (default `restart`); both are referenced from body text via `InlineRef` on the caption's `anchor`, never the figure / table itself.
+
 ### Chapter-Prefixed Caption (`图 1-1`, `表 1-1`, `图 2-1`, ...)
 ```
 Level 0: (mirrors Heading1's counter; no display)  numFmt=decimal  lvlText=""        suff="nothing"

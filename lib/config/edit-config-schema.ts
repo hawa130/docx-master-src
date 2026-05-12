@@ -177,11 +177,155 @@ const HorizontalRuleBlockSchema = z.strictObject({
   type: z.literal("horizontal-rule"),
 })
 
+/** Subset of blocks that may appear INSIDE a table cell. Excludes
+ * TableBlock — nested tables via Block[] cell content are not supported in
+ * v1 (schema would be cyclic, blocking type inference). Agents needing a
+ * table inside an existing cell use a separate apply with a `cell` locator
+ * + insert op. */
+const CellBlockSchema = z.union([
+  ParagraphBlockSchema,
+  ImageBlockSchema,
+  PageBreakBlockSchema,
+  HorizontalRuleBlockSchema,
+])
+
+/* ------------- table block ------------- */
+
+/** Per-edge or per-table-side border specification. */
+const BorderEdgeStyle = z.enum(["single", "thick", "double", "dotted", "dashed"])
+
+const BorderEdgeObjectSchema = z.strictObject({
+  style: BorderEdgeStyle,
+  /** Line size in pt. Engine multiplies by 8 to produce OOXML `w:sz` (1/8 pt
+   * units). Defaults: "single" → 0.5, "thick" → 1.5. */
+  size: z.optional(z.number().check(z.gt(0))),
+  /** Hex RGB without leading "#", or "auto" to inherit document defaults. */
+  color: z.optional(z.union([ColorHex, z.literal("auto")])),
+})
+
+/** A single table border edge. String shorthand selects style with default
+ * size + color "auto"; object form for full control. `"none"` suppresses
+ * the edge — useful as a per-cell override. */
+const BorderEdgeSchema = z.union([
+  z.enum(["none", "single", "thick", "double", "dotted", "dashed"]),
+  BorderEdgeObjectSchema,
+])
+
+/** Border preset for the entire table.
+ *
+ *   "all"        every edge thin black (Word's default-looking table)
+ *   "none"       no borders anywhere
+ *   "outer"      only the four outer edges
+ *   "three-line" academic three-line table: thick top + thick bottom +
+ *                thin line under header row. Requires `headerRows >= 1`
+ *                to render the header-bottom line; with `headerRows: 0`
+ *                degrades silently to "top + bottom only".
+ */
+const BordersPresetSchema = z.enum(["all", "none", "outer", "three-line"])
+
+const BordersCustomSchema = z.strictObject({
+  top: z.optional(BorderEdgeSchema),
+  bottom: z.optional(BorderEdgeSchema),
+  left: z.optional(BorderEdgeSchema),
+  right: z.optional(BorderEdgeSchema),
+  insideH: z.optional(BorderEdgeSchema),
+  insideV: z.optional(BorderEdgeSchema),
+})
+
+export const BordersSchema = z.union([BordersPresetSchema, BordersCustomSchema])
+
+/** Column width: `"auto"` (Word fits content), a positive number (pt), or
+ * `{ pct: N }` (percentage of table / page width, 0–100). */
+const TableWidthSchema = z.union([
+  z.literal("auto"),
+  z.number().check(z.gt(0)),
+  z.strictObject({ pct: z.number().check(z.gte(0), z.lte(100)) }),
+])
+
+const ColSpecSchema = z.strictObject({
+  width: TableWidthSchema,
+})
+
+/** Per-cell properties available when content is wrapped in object form.
+ * `borders` here override the table-level borders for THIS cell only.
+ * Note that adjacent cells do not auto-coordinate — see tables.md. */
+const TableCellObjectSchema = z.strictObject({
+  content: z.union([RichTextSchema, z.array(CellBlockSchema)]),
+  /** Number of columns this cell spans (gridSpan). Default 1. */
+  colspan: z.optional(z.number().check(z.gte(1))),
+  /** Number of rows this cell spans (vMerge restart). Engine inserts
+   * continuation cells in subsequent rows at the same column position;
+   * the agent must NOT declare cells at those claimed positions. */
+  rowspan: z.optional(z.number().check(z.gte(1))),
+  vAlign: z.optional(z.enum(["top", "center", "bottom"])),
+  borders: z.optional(BordersCustomSchema),
+  /** Cell background color, hex RGB. */
+  shading: z.optional(ColorHex),
+})
+
+/** Cell content in four progressive forms:
+ *
+ *   string             plain text, single paragraph, no formatting
+ *   InlineNode[]       mixed-format text or inline cross-refs, single para
+ *   Block[]            multi-paragraph / images / (no nested tables — see below)
+ *   { content, ... }   any of the above wrapped in an object that also
+ *                      carries spans, vAlign, per-cell borders, shading
+ *
+ * The first three are unambiguously discriminated: string by type, the two
+ * arrays by element shape (Block has `type` literal, InlineNode has only
+ * `text` or `refTo`). The object form is recognized by its `content` key.
+ *
+ * Block[] excludes nested TableBlock in v1 to keep the schema acyclic
+ * (recursion breaks TS inference). To put a table inside an existing
+ * cell, use a separate apply with a `cell` locator + insert op.
+ */
+export const TableCellSchema = z.union([
+  RichTextSchema,
+  z.array(CellBlockSchema),
+  TableCellObjectSchema,
+])
+
+export const TableBlockSchema = z
+  .strictObject({
+    type: z.literal("table"),
+    rows: z.array(z.array(TableCellSchema).check(z.minLength(1))).check(z.minLength(1)),
+    /** Number of top rows that repeat as the header on page breaks
+     * (`<w:tblHeader/>`). Default 0 — no repeating header. Does NOT
+     * auto-bold the header text; bind a styled paragraph via
+     * `headerStyle`, or format each header cell explicitly. */
+    headerRows: z.optional(z.number().check(z.gte(0))),
+    /** styleId to apply to each cell paragraph in the header rows (top
+     * `headerRows` rows). Cells that already carry an explicit styleId
+     * via Block[] form win — this is a default, not a override. */
+    headerStyle: z.optional(NonEmptyString),
+    /** Per-column widths. Length must match the effective column count
+     * (declared cells + cells claimed by ongoing rowspans, expanded by
+     * colspans). When omitted, engine emits `<w:gridCol w:w="auto"/>` per
+     * effective column. */
+    cols: z.optional(z.array(ColSpecSchema)),
+    /** Table-level borders. Default `"all"`. */
+    borders: z.optional(BordersSchema),
+    /** Horizontal alignment of the table on the page. Default Word
+     * behavior (no `<w:jc>` emitted) is left. Academic / formal
+     * documents typically center tables. */
+    alignment: z.optional(z.enum(["left", "center", "right"])),
+    /** Column-width interpretation. `"autofit"` (default) lets Word
+     * adjust columns to content; `"fixed"` enforces declared widths even
+     * if total exceeds page width (content may overflow). */
+    layout: z.optional(z.enum(["fixed", "autofit"])),
+  })
+  .check(
+    z.refine((block) => block.headerRows === undefined || block.headerRows <= block.rows.length, {
+      error: "table: headerRows cannot exceed rows.length",
+    }),
+  )
+
 export const BlockSchema = z.union([
   ParagraphBlockSchema,
   ImageBlockSchema,
   PageBreakBlockSchema,
   HorizontalRuleBlockSchema,
+  TableBlockSchema,
 ])
 
 export const FragmentSchema = z.array(BlockSchema)

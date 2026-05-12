@@ -64,6 +64,70 @@ export const RPR_CHILD_ORDER = [
   "specVanish",
 ] as const
 
+/** CT_TblPr child order, per ECMA-376 17.4.62. Truncated to children the
+ * engine emits. Out-of-order writes (e.g. `tblBorders` before `jc`)
+ * produce "needs repair" warnings on open. */
+export const TBL_PR_CHILD_ORDER = [
+  "tblStyle",
+  "tblpPr",
+  "tblOverlap",
+  "bidiVisual",
+  "tblStyleRowBandSize",
+  "tblStyleColBandSize",
+  "tblW",
+  "jc",
+  "tblCellSpacing",
+  "tblInd",
+  "tblBorders",
+  "shd",
+  "tblLayout",
+  "tblCellMar",
+  "tblLook",
+  "tblCaption",
+  "tblDescription",
+  "tblPrChange",
+] as const
+
+/** CT_TcPr child order, per ECMA-376 17.4.69. Truncated to children the
+ * engine emits. `gridSpan` and `vMerge` come BEFORE `tcBorders` — Word
+ * loaders that re-render mis-ordered cells silently break merging. */
+export const TC_PR_CHILD_ORDER = [
+  "cnfStyle",
+  "tcW",
+  "gridSpan",
+  "hMerge",
+  "vMerge",
+  "tcBorders",
+  "shd",
+  "noWrap",
+  "tcMar",
+  "textDirection",
+  "tcFitText",
+  "vAlign",
+  "hideMark",
+  "headers",
+  "tcPrChange",
+] as const
+
+/** CT_TrPr child order, per ECMA-376 17.4.82. Truncated. */
+export const TR_PR_CHILD_ORDER = [
+  "cnfStyle",
+  "divId",
+  "gridBefore",
+  "gridAfter",
+  "wBefore",
+  "wAfter",
+  "cantSplit",
+  "trHeight",
+  "tblHeader",
+  "tblCellSpacing",
+  "jc",
+  "hidden",
+  "ins",
+  "del",
+  "trPrChange",
+] as const
+
 /** CT_PPr child order, per ECMA-376 17.3.1.26. Truncated to children we
  * encounter when building or mutating paragraph properties. */
 export const PPR_CHILD_ORDER = [

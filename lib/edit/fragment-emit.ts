@@ -29,6 +29,7 @@ import {
 } from "@lib/config/edit-types.ts"
 import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
+import { emitTableBlock } from "@lib/edit/table-emit.ts"
 
 export type InlineRef = z.infer<typeof InlineRefSchema>
 
@@ -258,7 +259,7 @@ function emitRun(text: string, format: RunFormat | undefined, ownerDoc: Document
   return r
 }
 
-function emitRichText(
+export function emitRichText(
   rt: RichText,
   ownerDoc: Document,
   ctx: EmitContext,
@@ -429,6 +430,9 @@ export function emitBlock(block: Block, ownerDoc: Document, ctx: EmitContext): E
       return emitPageBreakBlock(ownerDoc)
     case "horizontal-rule":
       return emitHorizontalRuleBlock(ownerDoc)
+    case "table":
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return emitTableBlock(block as any, ownerDoc, ctx)
     default:
       return assertNever(block)
   }

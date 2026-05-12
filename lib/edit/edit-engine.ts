@@ -50,6 +50,7 @@ import {
   RPR_MANAGED_LOCAL_NAMES,
   type EmitContext,
 } from "@lib/edit/fragment-emit.ts"
+import { normalizeTableSequencing } from "@lib/edit/table-emit.ts"
 import {
   attachPPrChange,
   attachRPrChange,
@@ -222,6 +223,28 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   }
 
   validateAgainstBlockers(resolved, blockers, resolverCtx.indexByElement)
+
+  // TrackChanges + new TableBlock: not supported. OOXML's tracked-changes
+  // model wraps run / paragraph mutation; there's no equivalent container
+  // for "table inserted" — at best each cell paragraph would appear as a
+  // separate insertion, which agents won't read correctly. Throw at the
+  // boundary so it's a clear contract, not a half-rendered output.
+  if (trackChanges) {
+    for (const [i, op] of edits.entries()) {
+      const frag =
+        op.op === "replace"
+          ? op.with
+          : op.op === "insert-before" || op.op === "insert-after"
+            ? op.content
+            : null
+      if (frag && fragmentContainsTable(frag)) {
+        throw new Error(
+          `edits[${i}] (${op.op}): inserting a TableBlock under trackChanges=true is not supported. ` +
+            `Run table insertion in a separate apply without trackChanges, then use trackChanges for subsequent cell edits.`,
+        )
+      }
+    }
+  }
 
   const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
@@ -418,6 +441,16 @@ function validateAgainstBlockers(
       `${failures.length} edit(s) targeted blocked paragraphs:\n  ${failures.join("\n  ")}`,
     )
   }
+}
+
+/** Detect any TableBlock anywhere in a fragment (handles direct table
+ * blocks; doesn't recurse into cell Block[] content because the schema
+ * already forbids nested tables in cells). */
+function fragmentContainsTable(fragment: Fragment): boolean {
+  for (const b of fragment) {
+    if ((b as { type?: string }).type === "table") return true
+  }
+  return false
 }
 
 /* ------------- per-op apply ------------- */
@@ -654,10 +687,12 @@ function applyInsertBefore(
     for (const el of newEls) markParagraphAsInserted(el, documentDoc, trackContext)
   }
   if (anchor) {
-    const parent = anchor.parentNode!
+    const parent = anchor.parentNode! as Element
     for (const el of newEls) parent.insertBefore(el, anchor)
+    normalizeTableSequencing(parent, documentDoc)
   } else {
     insertAtContainerEnd(target.container, newEls, resolverCtx)
+    normalizeTableSequencing(target.container, documentDoc)
   }
   return newEls.length
 }
@@ -678,12 +713,14 @@ function applyInsertAfter(
     for (const el of newEls) markParagraphAsInserted(el, documentDoc, trackContext)
   }
   if (anchor) {
-    const parent = anchor.parentNode!
+    const parent = anchor.parentNode! as Element
     const next = anchor.nextSibling
     if (next) for (const el of newEls) parent.insertBefore(el, next)
     else for (const el of newEls) parent.appendChild(el)
+    normalizeTableSequencing(parent, documentDoc)
   } else {
     insertAtContainerEnd(target.container, newEls, resolverCtx)
+    normalizeTableSequencing(target.container, documentDoc)
   }
   return newEls.length
 }
@@ -749,6 +786,7 @@ function applyReplace(
       stale.add(p)
     }
   }
+  normalizeTableSequencing(parent as Element, documentDoc)
   return newEls.length
 }
 
