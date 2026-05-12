@@ -487,36 +487,11 @@ export const EditConfigSchema = z.strictObject({
 
 /* ------------- error formatting ------------- */
 
-function formatPath(path: readonly PropertyKey[]): string {
-  let out = ""
-  for (const seg of path) {
-    if (typeof seg === "number") out += `[${seg}]`
-    else out += out ? `.${String(seg)}` : String(seg)
-  }
-  return out
-}
-
-function valueAtPath(raw: unknown, path: readonly PropertyKey[]): unknown {
-  let cur: unknown = raw
-  for (const seg of path) {
-    if (cur == null || typeof cur !== "object") return undefined
-    cur = (cur as Record<PropertyKey, unknown>)[seg]
-  }
-  return cur
-}
+import { formatZodError, type HintFn } from "@lib/config/zod-format.ts"
 
 /** Domain hints that augment zod's defaults for known issue shapes. Returning
  * null falls back to the generic formatter. */
-function customHint(issue: z.core.$ZodIssue, pathStr: string, _raw: unknown): string | null {
-  // Tag absent locator discriminator with a list of the supported kinds. The
-  // raw zod message ("invalid input") doesn't tell the agent what the
-  // alternatives are.
-  if (
-    issue.code === "invalid_union" &&
-    (pathStr.endsWith(".at") || pathStr.endsWith(".target") || pathStr === "")
-  ) {
-    // No-op: the union message is already path-prefixed; let it through.
-  }
+const customHint: HintFn = (issue, pathStr, _raw) => {
   // Color hex regex — explain what's accepted.
   if (issue.code === "invalid_format" && pathStr.endsWith(".color")) {
     return `color must be 6 hex digits without leading "#" (e.g. "1F4E79"). Use "auto" via styleId for theme-aware colors.`
@@ -524,95 +499,8 @@ function customHint(issue: z.core.$ZodIssue, pathStr: string, _raw: unknown): st
   return null
 }
 
-function formatIssue(issue: z.core.$ZodIssue, _pathStr: string, raw: unknown): string {
-  const got = valueAtPath(raw, issue.path)
-  const gotStr = got === undefined ? "(missing)" : JSON.stringify(got)
-  switch (issue.code) {
-    case "unrecognized_keys": {
-      const keys = (issue as { keys?: string[] }).keys ?? []
-      const noun = keys.length === 1 ? "key" : "keys"
-      return `unknown ${noun} ${keys.map((k) => `"${k}"`).join(", ")}`
-    }
-    case "invalid_type": {
-      const expected = (issue as { expected?: string }).expected ?? "value"
-      return got === undefined
-        ? `missing required field (expected ${expected})`
-        : `expected ${expected}, got ${gotStr}`
-    }
-    case "invalid_value": {
-      const allowed = (issue as { values?: readonly unknown[] }).values ?? []
-      return `invalid value ${gotStr}. Allowed: [${allowed.map((v) => JSON.stringify(v)).join(", ")}]`
-    }
-    case "too_small": {
-      const min = (issue as { minimum?: unknown }).minimum
-      const origin = (issue as { origin?: string }).origin
-      if (origin === "string") return `must be a non-empty string (got ${gotStr})`
-      if (origin === "array") return `must contain at least ${String(min)} item(s)`
-      return `value too small (minimum ${String(min)})`
-    }
-    case "too_big": {
-      const max = (issue as { maximum?: unknown }).maximum
-      return `value too large (maximum ${String(max)})`
-    }
-    case "invalid_format":
-      return `format check failed (${(issue as { format?: string }).format ?? "unknown"})`
-    default:
-      return issue.message
-  }
-}
-
-/** When zod reports `invalid_union`, the real issues are nested per-variant.
- * Pick the variant that matched the discriminator (its issues are not just
- * `invalid_value` on a `type` field) and surface those. Recurse if the
- * matched variant itself fails another union. */
-function flattenUnionIssues(issue: z.core.$ZodIssue): z.core.$ZodIssue[] {
-  if (issue.code !== "invalid_union") return [issue]
-  const variants = (issue as { errors?: z.core.$ZodIssue[][] }).errors ?? []
-  // Score each variant by "real issue count" (excluding type-discriminator
-  // mismatches). Prefer the variant with the lowest non-discriminator score
-  // and at least one such issue — that's the variant the agent intended.
-  let best: { issues: z.core.$ZodIssue[]; score: number } | null = null
-  for (const variant of variants) {
-    const realIssues = variant.filter(
-      (sub) =>
-        !(
-          sub.code === "invalid_value" &&
-          sub.path.length === 1 &&
-          (sub.path[0] === "type" || sub.path[0] === "op")
-        ),
-    )
-    if (realIssues.length === 0) continue
-    const score = realIssues.length
-    if (!best || score < best.score) best = { issues: realIssues, score }
-  }
-  if (!best) {
-    // All variants failed only at the discriminator — surface those raw so
-    // the agent sees which `type` / `op` values are accepted.
-    const first = variants.flat()[0]
-    if (first) return [first]
-    return [issue]
-  }
-  return best.issues.flatMap((sub) => {
-    const merged: z.core.$ZodIssue = {
-      ...sub,
-      // Merge the union's path prefix with the variant-internal path.
-      path: [...issue.path, ...sub.path],
-    } as z.core.$ZodIssue
-    return flattenUnionIssues(merged)
-  })
-}
-
 export function formatEditConfigError(error: z.core.$ZodError, raw: unknown): string {
-  const lines: string[] = []
-  for (const top of error.issues) {
-    for (const issue of flattenUnionIssues(top)) {
-      const pathStr = formatPath(issue.path)
-      const hint = customHint(issue, pathStr, raw)
-      const msg = hint ?? formatIssue(issue, pathStr, raw)
-      lines.push(pathStr ? `${pathStr}: ${msg}` : msg)
-    }
-  }
-  return lines.join("\n")
+  return formatZodError(error, raw, customHint)
 }
 
 export function parseEditConfig(raw: unknown): z.infer<typeof EditConfigSchema> {

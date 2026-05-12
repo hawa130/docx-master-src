@@ -227,35 +227,13 @@ export type ApplyConfig = z.infer<typeof ApplyConfigSchema>
 
 /* ------------- error formatting ------------- */
 
-/** Convert a zod issue.path (PropertyKey[]) to dotted/bracketed JS form,
- * e.g. `["numbering","levels",0,"styleId"]` → `numbering.levels[0].styleId`. */
-function formatPath(path: readonly PropertyKey[]): string {
-  let out = ""
-  for (const seg of path) {
-    if (typeof seg === "number") out += `[${seg}]`
-    else out += out ? `.${String(seg)}` : String(seg)
-  }
-  return out
-}
-
-/** Walk `path` into `raw` and return the value at that location, or undefined
- * if any segment is missing. Used so error messages can echo the actual
- * value the agent supplied — `issue.input` is unreliable across issue codes
- * in zod mini, the raw config is always the ground truth. */
-function valueAtPath(raw: unknown, path: readonly PropertyKey[]): unknown {
-  let cur: unknown = raw
-  for (const seg of path) {
-    if (cur == null || typeof cur !== "object") return undefined
-    cur = (cur as Record<PropertyKey, unknown>)[seg]
-  }
-  return cur
-}
+import { formatZodError, valueAtPath, type HintFn } from "@lib/config/zod-format.ts"
 
 /** Domain-specific hints that override or augment zod's default message for
  * particular issue shapes. Returning null means "use the default zod
  * message". The hints replicate the agent-friendly guidance the hand-written
  * checks used to emit. */
-function customHint(issue: z.core.$ZodIssue, pathStr: string, raw: unknown): string | null {
+const customHint: HintFn = (issue, pathStr, raw) => {
   // Top-of-numbering misplacement: stripPrefixPatterns naturally feels like
   // it should broadcast across all levels, but it lives per-level. The old
   // hand-written validator surfaced this; preserve the message verbatim.
@@ -286,57 +264,8 @@ function customHint(issue: z.core.$ZodIssue, pathStr: string, raw: unknown): str
   return null
 }
 
-/** Format a single zod issue into an agent-readable line. Falls back to the
- * issue's default message only when no specific code matches; for the common
- * codes we render concrete details (unknown keys, expected types, allowed
- * enum values) instead of the bare "Invalid input" zod emits at low cost. */
-function formatIssue(issue: z.core.$ZodIssue, pathStr: string, raw: unknown): string {
-  const got = valueAtPath(raw, issue.path)
-  const gotStr = got === undefined ? "(missing)" : JSON.stringify(got)
-  switch (issue.code) {
-    case "unrecognized_keys": {
-      const keys = (issue as { keys?: string[] }).keys ?? []
-      const noun = keys.length === 1 ? "key" : "keys"
-      return `unknown ${noun} ${keys.map((k) => `"${k}"`).join(", ")}`
-    }
-    case "invalid_type": {
-      const expected = (issue as { expected?: string }).expected ?? "value"
-      return got === undefined
-        ? `missing required field (expected ${expected})`
-        : `expected ${expected}, got ${gotStr}`
-    }
-    case "invalid_value": {
-      const allowed = (issue as { values?: readonly unknown[] }).values ?? []
-      return `invalid value ${gotStr}. Allowed: [${allowed.map((v) => JSON.stringify(v)).join(", ")}]`
-    }
-    case "too_small": {
-      const min = (issue as { minimum?: unknown }).minimum
-      const origin = (issue as { origin?: string }).origin
-      if (origin === "string") return `must be a non-empty string (got ${gotStr})`
-      if (origin === "array") return `must contain at least ${String(min)} item(s)`
-      return `value too small (minimum ${String(min)})`
-    }
-    case "too_big": {
-      const max = (issue as { maximum?: unknown }).maximum
-      return `value too large (maximum ${String(max)})`
-    }
-    default:
-      return issue.message
-  }
-}
-
-/** Format a ZodError as a multi-line, agent-readable string. Each issue
- * gets a path prefix and either a custom hint, a code-specific render, or
- * zod's default message as a final fallback. */
 export function formatConfigError(error: z.core.$ZodError, raw: unknown): string {
-  const lines: string[] = []
-  for (const issue of error.issues) {
-    const pathStr = formatPath(issue.path)
-    const hint = customHint(issue, pathStr, raw)
-    const msg = hint ?? formatIssue(issue, pathStr, raw)
-    lines.push(pathStr ? `${pathStr}: ${msg}` : msg)
-  }
-  return lines.join("\n")
+  return formatZodError(error, raw, customHint)
 }
 
 /** Parse + validate a raw JSON config. Throws an Error with a multi-line,

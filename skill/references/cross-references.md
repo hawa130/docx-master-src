@@ -22,7 +22,7 @@ Never write `"如图 1 所示"` or `"见 [3]"` as plain runs — use `InlineRef`
 Fields:
 - `refTo` — locator. Two forms:
   - `{ "type": "paragraph", "index": N }` — pre-edit 1-based paragraph index, same as every other `edits[]` locator. Target must exist in the source document.
-  - `{ "type": "anchor", "name": "fig-arch" }` — named bookmark. Resolves against (a) `ParagraphBlock.anchor` declared earlier in this same `edits[]` array, or (b) bookmarks already in the source document that wrap a single paragraph. Name must match `^[A-Za-z_][A-Za-z0-9_-]{0,39}$`.
+  - `{ "type": "anchor", "name": "fig-arch" }` — named bookmark. Resolves against (a) an anchor declared **earlier in emit order** — earlier in `edits[]`, and within one op's `with` / `content`, earlier in the Block array — or (b) bookmarks already in the source document that wrap a single paragraph. Name must match `^[A-Za-z_][A-Za-z0-9_-]{0,39}$`.
 - `display` — what Word renders. `\h` is always added so the rendered text is clickable:
   - `"label"` (default) — full numbered paragraph text from `lvlText`: `图 1` / `1.2` / `第二章`. Switch: `\n \h`.
   - `"number"` — paragraph number in relative context via `\r \h`. **Reliable only for single-level schemes** (figure captions, `[%1]` reference lists), where it equals the counter. For multi-level schemes prefer `"label"`.
@@ -75,7 +75,7 @@ When an `edits[]` insert creates a paragraph later refs will cite, give it an `a
 }
 ```
 
-Anchors are processed in `edits[]` array order: a ref can address any anchor declared earlier, but not a later one (reorder edits if needed). Anchor names share a flat namespace with source bookmarks — picking one that already exists throws at apply time.
+Anchors resolve in **emit order** = `edits[]` array order with each op's `with` / `content` Blocks expanded in array order. A ref can address any anchor declared earlier in this combined order — **including anchors in earlier Blocks of the same op**. If a natural cite-then-anchor reading order would create a forward ref ("如表 1 所示，下表展示..." with the table after the cite), reorder so the anchor-bearing Block precedes the citing Block. Anchor names share a flat namespace with source bookmarks — picking one that already exists throws at apply time.
 
 `anchor` on an insert with no current ref is still useful: the bookmark stays in the output for future apply runs to ref by name.
 
@@ -119,6 +119,6 @@ Asymmetric variant (rare — list uses `1.`, cites use `[1]`): leave `lvlText: "
 ## Limitations
 
 - **No PAGEREF**: page-number citations aren't supported (different field type, depends on Word's pagination layer).
-- **No forward anchor refs**: a ref can only address an anchor declared earlier in the same `edits[]`. Reorder edits if needed.
+- **No forward anchor refs**: a ref can only address an anchor declared earlier in emit order — across `edits[]` AND within one op's `with` / `content` Block list. Reorder Blocks / edits if needed.
 - **Source bookmarks must wrap a single paragraph**: source bookmarks spanning multiple paragraphs or sitting at body level aren't resolvable via `refTo: { type: "anchor" }` — silently skipped at allocator construction.
 - **Custom `lvlRestart` not honored in placeholder**: the counter simulator uses Word's default reset-on-higher-level. Custom restart points still produce correct text after Word updates the fields; the pre-update placeholder may diverge. Cosmetic only.
