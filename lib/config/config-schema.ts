@@ -33,10 +33,7 @@ import * as z from "zod/mini"
 
 /* ------------- atomic helpers ------------- */
 
-const NonEmptyString = z.string().check(z.minLength(1))
-
-/** Indent value: "Nchar" / "Npt" / fixed pt number / null. */
-const IndentValue = z.union([z.string(), z.number(), z.null()])
+import { IndentValue, NonEmptyString } from "@lib/config/zod-primitives.ts"
 
 /** Fields shared between Mode B (`styles[i].*`) direct values and the
  * `styles[i].overrides` block. Kept as a plain object so it can be spread

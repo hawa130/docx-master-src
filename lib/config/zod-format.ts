@@ -16,11 +16,7 @@
 
 import type * as z from "zod/mini"
 
-export type HintFn = (
-  issue: z.core.$ZodIssue,
-  pathStr: string,
-  raw: unknown,
-) => string | null
+export type HintFn = (issue: z.core.$ZodIssue, pathStr: string, raw: unknown) => string | null
 
 /** Convert a zod issue.path (PropertyKey[]) to dotted/bracketed JS form,
  * e.g. `["numbering","levels",0,"styleId"]` → `numbering.levels[0].styleId`. */
@@ -133,11 +129,7 @@ export function flattenUnionIssues(issue: z.core.$ZodIssue): z.core.$ZodIssue[] 
  * render from `formatIssue`, or zod's default message as a final fallback.
  * `invalid_union` issues drill into the matched variant so the agent sees
  * the inner field path, not just `edits[0]: Invalid input`. */
-export function formatZodError(
-  error: z.core.$ZodError,
-  raw: unknown,
-  hint?: HintFn,
-): string {
+export function formatZodError(error: z.core.$ZodError, raw: unknown, hint?: HintFn): string {
   const lines: string[] = []
   for (const top of error.issues) {
     for (const issue of flattenUnionIssues(top)) {

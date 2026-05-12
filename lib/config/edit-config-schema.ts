@@ -25,12 +25,7 @@ import * as z from "zod/mini"
 
 /* ------------- atomic helpers ------------- */
 
-const NonEmptyString = z.string().check(z.minLength(1))
-
-/** Indent value: "Nchar" / "Npt" / fixed pt number / null. Matches the
- * convention in lib/config-schema.ts so configs are uniform across
- * standardize and edit. */
-const IndentValue = z.union([z.string(), z.number(), z.null()])
+import { IndentValue, NonEmptyString } from "@lib/config/zod-primitives.ts"
 
 /** RGB hex without leading "#". Six-hex form, case-insensitive. Same shape
  * as styles in lib/config-schema.ts (which is laxer there for legacy
