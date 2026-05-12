@@ -17,10 +17,9 @@
  * 30 extra lines.
  */
 
-import { DOMParser } from "@xmldom/xmldom"
-import { DocxReader, serializeXml } from "@lib/xml/reader.ts"
+import { DocxReader, parseXml, serializeXml } from "@lib/xml/reader.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
 
 const w = NS.w
 const PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -68,8 +67,7 @@ export async function ensureUpdateFieldsFlag(
   // Path 3: fabricate. Parse the minimal stub into a Document so the
   // serializer produces consistent output formatting with the rest of the
   // docx, then register the new part in Content_Types and the doc rels.
-  const parser = new DOMParser({ onError: () => {} } as any)
-  const fabricated = parser.parseFromString(MINIMAL_SETTINGS_XML, "text/xml") as unknown as Document
+  const fabricated = parseXml(MINIMAL_SETTINGS_XML)
   replacements.set("word/settings.xml", serializeXml(fabricated))
   await registerSettingsContentType(reader, replacements)
   await registerSettingsRelationship(reader, replacements)
@@ -108,11 +106,7 @@ const SETTINGS_AFTER_UPDATEFIELDS = new Set([
 ])
 
 function insertSettingsChildInOrder(root: Element, newEl: Element): void {
-  const children = root.childNodes
-  for (let i = 0; i < children.length; i++) {
-    const c = children[i]
-    if (!c || (c as any).nodeType !== 1) continue
-    const el = c as Element
+  for (const el of getChildren(root)) {
     if (el.namespaceURI === w && SETTINGS_AFTER_UPDATEFIELDS.has(el.localName!)) {
       root.insertBefore(newEl, el)
       return
@@ -129,12 +123,7 @@ async function registerSettingsContentType(
   const path = "[Content_Types].xml"
   const ctSerialized = replacements.get(path)
   const ctDoc =
-    typeof ctSerialized === "string"
-      ? (new DOMParser({ onError: () => {} } as any).parseFromString(
-          ctSerialized,
-          "text/xml",
-        ) as unknown as Document)
-      : await reader.readXml(path)
+    typeof ctSerialized === "string" ? parseXml(ctSerialized) : await reader.readXml(path)
   if (!ctDoc) return
   const root = ctDoc.documentElement
   if (!root) return
@@ -158,12 +147,7 @@ async function registerSettingsRelationship(
   const path = "word/_rels/document.xml.rels"
   const relsSerialized = replacements.get(path)
   const relsDoc =
-    typeof relsSerialized === "string"
-      ? (new DOMParser({ onError: () => {} } as any).parseFromString(
-          relsSerialized,
-          "text/xml",
-        ) as unknown as Document)
-      : await reader.readXml(path)
+    typeof relsSerialized === "string" ? parseXml(relsSerialized) : await reader.readXml(path)
   if (!relsDoc) return
   const root = relsDoc.documentElement
   if (!root) return

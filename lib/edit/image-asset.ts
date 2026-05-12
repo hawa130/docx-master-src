@@ -17,8 +17,7 @@
 
 import { existsSync, readFileSync } from "node:fs"
 import { extname, resolve as resolvePath } from "node:path"
-import { DOMParser } from "@xmldom/xmldom"
-import type { DocxReader } from "@lib/xml/reader.ts"
+import { type DocxReader, parseXml } from "@lib/xml/reader.ts"
 import { NS } from "@lib/parse/types.ts"
 
 const PT_TO_EMU = 12700
@@ -205,10 +204,7 @@ export class ImageAssetRegistry {
   }
 
   private parseRels(): void {
-    const doc = new DOMParser({ onError: () => {} } as never).parseFromString(
-      this.relsText,
-      "text/xml",
-    ) as unknown as Document
+    const doc = parseXml(this.relsText)
     const root = doc.documentElement
     if (!root) return
     let maxNum = 0

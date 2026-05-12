@@ -561,10 +561,13 @@ function hasCJK(s: string): boolean {
 }
 
 function mergeStyle<T extends object>(base: T, overlay: T): T {
+  // Per-key Object.assign keeps the type narrow without an `as any` —
+  // T[keyof T] = T[keyof T] hits TS's known structural-assignment
+  // limitation when K is generic.
   const out = { ...base }
   for (const k of Object.keys(overlay) as (keyof T)[]) {
     const v = overlay[k]
-    if (v !== undefined) (out as any)[k] = v
+    if (v !== undefined) Object.assign(out as object, { [k]: v })
   }
   return out
 }

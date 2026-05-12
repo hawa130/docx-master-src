@@ -393,8 +393,11 @@ function elementInRange(
 }
 
 function elementSectionIndex(el: DocumentElement): number {
+  // Every non-paragraph DocumentElement variant carries a sectionIndex
+  // field (image / table / equation / pageBreak / sectionBreak / emptyRun).
+  // The paragraph variant exposes it via paragraph.context instead.
   if (el.kind === "paragraph") return el.paragraph.context.sectionIndex
-  return (el as any).sectionIndex ?? 0
+  return el.sectionIndex
 }
 
 function renderElement(

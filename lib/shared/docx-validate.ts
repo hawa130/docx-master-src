@@ -29,9 +29,8 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { DOMParser } from "@xmldom/xmldom"
 import type { XMLFileInfo, validateXML as ValidateXMLFn } from "xmllint-wasm"
-import { DocxReader } from "@lib/xml/reader.ts"
+import { DocxReader, parseXml } from "@lib/xml/reader.ts"
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 
@@ -583,11 +582,10 @@ function resolveRelativePath(baseDir: string, target: string): string {
   return out.join("/")
 }
 
-const xmlParser = new DOMParser({ onError: () => {} })
 function parseXmlOrNull(text: string | null): Document | null {
   if (!text) return null
   try {
-    return xmlParser.parseFromString(text, "text/xml") as unknown as Document
+    return parseXml(text)
   } catch {
     return null
   }

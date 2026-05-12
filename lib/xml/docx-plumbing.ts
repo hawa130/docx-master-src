@@ -1,19 +1,18 @@
-import { DOMParser } from "@xmldom/xmldom"
-import type { DocxReader } from "@lib/xml/reader.ts"
+import { type DocxReader, parseXml } from "@lib/xml/reader.ts"
 import { NS } from "@lib/parse/types.ts"
 
 /* ------------- bootstrap blank docs ------------- */
 
 export function blankStylesDoc(): Document {
-  const text = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="${NS.w}"></w:styles>`
-  return new DOMParser().parseFromString(text, "text/xml") as unknown as Document
+  return parseXml(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:styles xmlns:w="${NS.w}"></w:styles>`,
+  )
 }
 
 export function blankNumberingDoc(): Document {
-  const text = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:numbering xmlns:w="${NS.w}"></w:numbering>`
-  return new DOMParser().parseFromString(text, "text/xml") as unknown as Document
+  return parseXml(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:numbering xmlns:w="${NS.w}"></w:numbering>`,
+  )
 }
 
 export async function ensureNumberingContentType(

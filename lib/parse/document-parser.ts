@@ -280,9 +280,12 @@ export class DocumentParser {
     // overlay paragraph-level pPr direct formatting onto computed pPr
     const directPPr = this.resolver.parsePPr(pPr)
     const finalPPr: ComputedParaStyle = { ...computed.pPr }
+    // Overlay non-undefined direct values onto computed defaults. Per-key
+    // Object.assign avoids TS's well-known limitation that `T[K] = T[K]`
+    // with K bound to `keyof T` widens to a union the target can't accept.
     for (const k of Object.keys(directPPr) as (keyof ComputedParaStyle)[]) {
       const v = directPPr[k]
-      if (v !== undefined) (finalPPr as any)[k] = v
+      if (v !== undefined) Object.assign(finalPPr, { [k]: v })
     }
 
     // text

@@ -1,14 +1,13 @@
 import { NS } from "@lib/parse/types.ts"
 
-function isElement(node: any): node is Element {
-  return node && node.nodeType === 1
+function isElement(node: Node | null | undefined): node is Element {
+  return !!node && node.nodeType === 1
 }
 
 export function getChildren(parent: Element | Document | null): Element[] {
   if (!parent) return []
   const out: Element[] = []
-  const children = (parent as any).childNodes
-  if (!children) return out
+  const children = parent.childNodes
   for (let i = 0; i < children.length; i++) {
     const n = children[i]
     if (isElement(n)) out.push(n)
@@ -43,15 +42,14 @@ export function descendantsNS(
 ): Element[] {
   if (!parent) return []
   const out: Element[] = []
-  walk(parent as any, (n) => {
+  walk(parent, (n) => {
     if (n.namespaceURI === ns && n.localName === localName) out.push(n)
   })
   return out
 }
 
-function walk(node: any, fn: (e: Element) => void) {
+function walk(node: Element | Document, fn: (e: Element) => void) {
   const children = node.childNodes
-  if (!children) return
   for (let i = 0; i < children.length; i++) {
     const c = children[i]
     if (isElement(c)) {
@@ -82,12 +80,12 @@ export function wVal(el: Element | null): string | null {
 
 export function textContent(el: Element): string {
   let out = ""
-  const children = (el as any).childNodes
-  if (!children) return out
+  const children = el.childNodes
   for (let i = 0; i < children.length; i++) {
     const n = children[i]
+    if (!n) continue
     if (n.nodeType === 3 || n.nodeType === 4) out += n.nodeValue || ""
-    else if (n.nodeType === 1) out += textContent(n)
+    else if (isElement(n)) out += textContent(n)
   }
   return out
 }

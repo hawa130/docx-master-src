@@ -2,11 +2,19 @@ import { readFileSync, writeFileSync } from "node:fs"
 import JSZip from "jszip"
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom"
 
+/** @xmldom/xmldom's `Document` is structurally compatible with TS's
+ * `lib.dom` `Document` but typed as a separate nominal type. Every call
+ * site that produces a Document via `DOMParser` would otherwise repeat a
+ * `as unknown as Document` cast; centralizing here keeps the type-erasure
+ * in one place. The same module owns serialization for symmetry. */
+const xmlParser = new DOMParser({ onError: () => {} } as ConstructorParameters<typeof DOMParser>[0])
+
+export function parseXml(text: string): Document {
+  return xmlParser.parseFromString(text, "text/xml") as unknown as Document
+}
+
 export class DocxReader {
   private zip: JSZip
-  private parser = new DOMParser({
-    onError: () => {},
-  } as any)
   filePath: string
   fileSize: number
 
@@ -31,7 +39,7 @@ export class DocxReader {
   async readXml(entryPath: string): Promise<Document | null> {
     const text = await this.readText(entryPath)
     if (text === null) return null
-    return this.parser.parseFromString(text, "text/xml") as unknown as Document
+    return parseXml(text)
   }
 
   /** Path-only list of every entry in the archive. Used by the validator to
@@ -74,7 +82,10 @@ const xmlSerializer = new XMLSerializer()
 export function serializeXml(doc: Document): string {
   // @xmldom omits the XML declaration when serializing a Document; re-add it
   // since Word expects the standard `<?xml ...?>` prelude on every part.
-  const out = xmlSerializer.serializeToString(doc as any)
+  // The cross-type cast: see parseXml above for the nominal-type rationale.
+  const out = xmlSerializer.serializeToString(
+    doc as unknown as Parameters<XMLSerializer["serializeToString"]>[0],
+  )
   if (out.startsWith("<?xml")) return out
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${out}`
 }
