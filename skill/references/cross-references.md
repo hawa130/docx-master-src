@@ -94,18 +94,27 @@ Round-trip to verify:
 
 Schema validation and emit-time inspection both pass the broken case; only a real Word round-trip catches the regression.
 
-## Example — reference list with explicit brackets
+## Example — reference list citations
 
-`display: "number"` returns just the counter; wrap with literal `[` / `]` to control the bracket form independently of the target's lvlText. For brackets baked into lvlText (`lvlText="[%1]"`) use `display: "label"` instead.
+Declare the bracket form **once** in `lvlText` and use `display: "label"` at the cite site. Never type literal `[` / `]` around an InlineRef whose target's lvlText already contains them — the brackets stack visibly.
 
 ```jsonc
+// numbering scheme for the reference list:
+{ "levels": [
+  { "level": 0, "numFmt": "decimal", "lvlText": "[%1]", "suff": "space",
+    "styleId": "Reference" }
+]}
+
+// body-text cite:
 { "type": "paragraph", "text": [
-  { "text": "本文方法借鉴了 [" },
-  { "refTo": { "type": "paragraph", "index": 180 }, "display": "number" },
-  { "text": "] 中的思路。" }
+  { "text": "本文方法借鉴了 " },
+  { "refTo": { "type": "anchor", "name": "ref-smith2024" }, "display": "label" },
+  { "text": " 中的思路。" }
 ]}
 // → 本文方法借鉴了 [3] 中的思路。
 ```
+
+Asymmetric variant (rare — list uses `1.`, cites use `[1]`): leave `lvlText: "%1"`, use `display: "number"`, wrap literal `[` / `]` at the cite site. Don't mix the two — either the brackets live in `lvlText` and nowhere else, or in the cite and nowhere else.
 
 ## Limitations
 
