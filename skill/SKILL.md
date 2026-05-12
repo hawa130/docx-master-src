@@ -28,7 +28,7 @@ A well-formed Word document expresses structure through **styles + numbering + s
 
 - Every paragraph carries a semantic styleId (Heading1..N / BodyText / ListNumber / Caption / etc.); direct paragraph format only as one-off exceptions.
 - One unified multi-level numbering scheme bound to all heading styles; one separate single-level scheme per list-bound style.
-- Hierarchy and list markers come from auto-numbering — **never typed text** in either direction. Existing chrome stripped via `pattern_rules`; inserted content omits the prefix in `text`. Display follows the level's `lvlText` pattern (`%N` = the counter at level N, 1-indexed; composite forms like `%1.%2` reference multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
+- Every paragraph-leading counter comes from auto-numbering — heading prefix, **in-prose enumeration marker**, caption number, reference number. **Never typed in `text`**, regardless of shape (CJK ordinal, parenthesized digit, full-width period, circled number, alphabetical, etc.). Existing chrome stripped via `pattern_rules`; inserted content omits the prefix entirely and binds to a numbering scheme via `styleId`. Display follows the level's `lvlText` pattern (`%N` = the counter at level N, 1-indexed; composite forms like `%1.%2` reference multiple levels). See [`references/numbering-formats.md`](references/numbering-formats.md).
 - Heading levels nest without skipping.
 - **Match content shape to slot shape.** List items default to body weight; bold only when the source explicitly emphasizes:
   - **Prose** (multi-paragraph body) → prose typography.
