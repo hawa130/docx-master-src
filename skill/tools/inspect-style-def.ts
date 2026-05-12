@@ -1,5 +1,6 @@
 import { loadDocx, parseNumbering } from "@lib/xml/load.ts"
 import type { ComputedParaStyle, ComputedRunStyle } from "@lib/parse/types.ts"
+import { formatComputedPPrParts, formatComputedRPrParts } from "@lib/parse/format.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -71,36 +72,11 @@ async function main() {
 }
 
 function formatStyleProps(r: ComputedRunStyle, pp: ComputedParaStyle): string {
-  const parts: string[] = []
-  if (r.fontEastAsia) parts.push(`fontCJK: ${r.fontEastAsia}`)
-  const latin = r.fontAscii ?? r.fontHAnsi
-  if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: ${latin}`)
-  if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
-  if (r.bold !== undefined) parts.push(`bold: ${r.bold}`)
-  if (r.italic !== undefined) parts.push(`italic: ${r.italic}`)
-  if (r.color) parts.push(`color: ${r.color}`)
-  if (r.vertAlign) parts.push(`vertAlign: ${r.vertAlign}`)
-  if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
-  if (pp.outlineLevel !== undefined) parts.push(`outlineLevel: ${pp.outlineLevel}`)
-  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
-  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
-  if (pp.lineSpacing !== undefined) {
-    const rule = pp.lineRule || "auto"
-    if (rule === "auto")
-      parts.push(`lineSpacing: ${parseFloat((pp.lineSpacing / 240).toFixed(2))}×`)
-    else parts.push(`lineSpacing: ${pp.lineSpacing / 20}pt ${rule}`)
-  }
-  if (pp.firstLineIndentChars !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndentChars / 100}char`)
-  else if (pp.firstLineIndent !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndent / 20}pt`)
-  if (pp.hangingIndentChars !== undefined)
-    parts.push(`hangingIndent: ${pp.hangingIndentChars / 100}char`)
-  else if (pp.hangingIndent !== undefined) parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
-  if (pp.indentLeft !== undefined) parts.push(`indentLeft: ${pp.indentLeft / 20}pt`)
-  if (pp.numId) parts.push(`numId: ${pp.numId}`)
-  if (parts.length === 0) return "{ }"
-  return `{ ${parts.join(", ")} }`
+  const parts = [
+    ...formatComputedRPrParts(r),
+    ...formatComputedPPrParts(pp, { includeIndentSides: true }),
+  ]
+  return parts.length === 0 ? "{ }" : `{ ${parts.join(", ")} }`
 }
 
 main()

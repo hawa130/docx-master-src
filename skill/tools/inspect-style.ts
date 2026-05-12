@@ -1,6 +1,6 @@
 import { loadDocx } from "@lib/xml/load.ts"
 import type { ParsedParagraph } from "@lib/parse/types.ts"
-import { formatLineSpacing, pad, truncate } from "@lib/parse/format.ts"
+import { formatComputedPPrParts, formatComputedRPrParts, pad, truncate } from "@lib/parse/format.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -44,37 +44,13 @@ async function main() {
 
 function formatRPr(p: ParsedParagraph): string {
   const r = p.rPr
-  const parts: string[] = []
-  if (r.fontEastAsia) parts.push(`fontCJK: "${r.fontEastAsia}"`)
-  const latin = r.fontAscii ?? r.fontHAnsi
-  if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: "${latin}"`)
-  if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
-  if (r.bold) parts.push(`bold: true`)
-  if (r.italic) parts.push(`italic: true`)
-  if (r.color && r.color !== "auto") parts.push(`color: ${r.color}`)
+  const parts = formatComputedRPrParts(r, { truthyToggles: true, filterAutoColor: true })
   if (r.underline) parts.push(`underline: ${r.underline}`)
-  if (r.vertAlign) parts.push(`vertAlign: ${r.vertAlign}`)
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 
 function formatPPr(p: ParsedParagraph, all: ParsedParagraph[]): string {
-  const pp = p.pPr
-  const parts: string[] = []
-  if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
-  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
-  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
-  if (pp.lineSpacing !== undefined)
-    parts.push(`lineSpacing: ${formatLineSpacing(pp.lineSpacing, pp.lineRule)}`)
-  if (pp.firstLineIndentChars !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndentChars / 100}char`)
-  else if (pp.firstLineIndent !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndent / 20}pt`)
-  if (pp.hangingIndentChars !== undefined)
-    parts.push(`hangingIndent: ${pp.hangingIndentChars / 100}char`)
-  else if (pp.hangingIndent !== undefined) parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
-  if (pp.outlineLevel !== undefined) parts.push(`outlineLevel: ${pp.outlineLevel}`)
-  const numIdDisplay = resolveNumId(all)
-  if (numIdDisplay) parts.push(`numId: ${numIdDisplay}`)
+  const parts = formatComputedPPrParts(p.pPr, { numIdDisplay: resolveNumId(all) })
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 

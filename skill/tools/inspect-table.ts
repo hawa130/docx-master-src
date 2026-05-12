@@ -1,7 +1,7 @@
 import { DocxReader } from "@lib/xml/reader.ts"
-import { walkIndexedParagraphs, walkTopLevelTables } from "@lib/edit/locator.ts"
+import { paragraphText, walkIndexedParagraphs, walkTopLevelTables } from "@lib/edit/locator.ts"
 import { NS } from "@lib/parse/types.ts"
-import { getChildren, getChildrenNS, textContent } from "@lib/xml/xml-utils.ts"
+import { getChildrenNS } from "@lib/xml/xml-utils.ts"
 import { summarizeTable } from "@lib/parse/table-classifier.ts"
 
 /**
@@ -73,16 +73,6 @@ function cellText(tc: Element): string {
     if (out) out += " ⏎ "
     const pText = paragraphText(p)
     out += pText
-  }
-  return out
-}
-
-function paragraphText(p: Element): string {
-  let out = ""
-  for (const r of getChildrenNS(p, NS.w, "r")) {
-    for (const c of getChildren(r)) {
-      if (c.namespaceURI === NS.w && c.localName === "t") out += textContent(c)
-    }
   }
   return out
 }

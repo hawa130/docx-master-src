@@ -3,6 +3,7 @@ import { buildResolverContext, paragraphStyleId, paragraphText } from "@lib/edit
 import { detectBlockers, explainBlockerReason, summarizeBlockers } from "@lib/edit/blockers.ts"
 import { DocumentParser } from "@lib/parse/document-parser.ts"
 import { StyleResolver } from "@lib/parse/style-resolver.ts"
+import { pad } from "@lib/parse/format.ts"
 
 /**
  * `inspect_blockers` — list paragraphs that `apply`'s edit phase will refuse
@@ -78,10 +79,6 @@ async function main() {
     console.error(`Error: ${(err as Error).message}`)
     process.exit(1)
   }
-}
-
-function pad(n: number): string {
-  return String(n).padStart(3, " ")
 }
 
 void main()

@@ -1,6 +1,11 @@
 import { loadDocx } from "@lib/xml/load.ts"
-import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "@lib/parse/types.ts"
-import { formatLineSpacing, pad } from "@lib/parse/format.ts"
+import type { ComputedRunStyle, ParsedParagraph } from "@lib/parse/types.ts"
+import {
+  formatComputedPPrParts,
+  formatComputedRPrParts,
+  pad,
+  type RPrFormatOptions,
+} from "@lib/parse/format.ts"
 
 async function main() {
   const file = process.argv[2]
@@ -42,51 +47,21 @@ function renderPara(p: ParsedParagraph): string[] {
     `  style: "${p.styleId}" (${p.styleName})  insideTable: ${p.context.insideTable ?? "(none)"}`,
   )
   lines.push(`  computed rPr: ${formatRPr(p.rPr)}`)
-  lines.push(`  computed pPr: ${formatPPr(p.pPr)}`)
+  lines.push(
+    `  computed pPr: { ${formatComputedPPrParts(p.pPr, { includeIndentSides: true, includeNumLevel: true }).join(", ")} }`,
+  )
   lines.push(`  section: ${p.context.sectionIndex}`)
   return lines
 }
 
-function formatRPr(r: ComputedRunStyle): string {
-  const parts: string[] = []
-  // Output field names match the apply config schema (fontCJK / fontLatin),
-  // so an agent reading inspect_range can drop names directly into config
-  // without translation.
-  if (r.fontEastAsia) parts.push(`fontCJK: "${r.fontEastAsia}"`)
-  const latin = r.fontAscii ?? r.fontHAnsi
-  if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: "${latin}"`)
-  if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
-  if (r.bold !== undefined) parts.push(`bold: ${r.bold}`)
-  if (r.italic !== undefined) parts.push(`italic: ${r.italic}`)
+// Field names match the apply config schema so an agent can drop them into
+// config without translation. Extras beyond the shared subset stay here.
+function formatRPr(r: ComputedRunStyle, opts?: RPrFormatOptions): string {
+  const parts = formatComputedRPrParts(r, opts)
   if (r.underline) parts.push(`underline: ${r.underline}`)
-  if (r.color) parts.push(`color: ${r.color}`)
   if (r.highlight) parts.push(`highlight: ${r.highlight}`)
   if (r.strike) parts.push(`strike: ${r.strike}`)
   if (r.caps) parts.push(`caps: ${r.caps}`)
-  if (r.vertAlign) parts.push(`vertAlign: ${r.vertAlign}`)
-  return `{ ${parts.join(", ")} }`
-}
-
-function formatPPr(pp: ComputedParaStyle): string {
-  const parts: string[] = []
-  if (pp.alignment) parts.push(`alignment: ${pp.alignment}`)
-  if (pp.spaceBefore !== undefined) parts.push(`spaceBefore: ${pp.spaceBefore / 20}pt`)
-  if (pp.spaceAfter !== undefined) parts.push(`spaceAfter: ${pp.spaceAfter / 20}pt`)
-  if (pp.lineSpacing !== undefined) {
-    parts.push(`lineSpacing: ${formatLineSpacing(pp.lineSpacing, pp.lineRule)}`)
-  }
-  if (pp.indentLeft !== undefined) parts.push(`indentLeft: ${pp.indentLeft / 20}pt`)
-  if (pp.indentRight !== undefined) parts.push(`indentRight: ${pp.indentRight / 20}pt`)
-  if (pp.firstLineIndentChars !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndentChars / 100}char`)
-  else if (pp.firstLineIndent !== undefined)
-    parts.push(`firstLineIndent: ${pp.firstLineIndent / 20}pt`)
-  if (pp.hangingIndentChars !== undefined)
-    parts.push(`hangingIndent: ${pp.hangingIndentChars / 100}char`)
-  else if (pp.hangingIndent !== undefined) parts.push(`hangingIndent: ${pp.hangingIndent / 20}pt`)
-  if (pp.outlineLevel !== undefined) parts.push(`outlineLevel: ${pp.outlineLevel}`)
-  if (pp.numId) parts.push(`numId: ${pp.numId}`)
-  if (pp.numLevel !== undefined) parts.push(`numLevel: ${pp.numLevel}`)
   return `{ ${parts.join(", ")} }`
 }
 
