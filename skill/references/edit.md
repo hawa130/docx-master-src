@@ -58,14 +58,14 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 
 ```json
 { "type": "paragraph", "text": "...", "styleId"?, "paraFormat"?, "runFormat"?, "numbering"?, "anchor"? }
-{ "type": "image", "src": "path", "widthPt": N, "heightPt": N, "alt"? }
+{ "type": "image", "src": "path", "widthPt": N, "heightPt": N, "alt"?, "styleId"?, "paraFormat"? }
 { "type": "page-break" }
 { "type": "horizontal-rule" }
 ```
 
 `anchor` attaches a stable bookmark name (Word's `[A-Za-z_][\w-]{0,39}` rule) so later `InlineRef` nodes can target this new paragraph via `refTo: { "type": "anchor", "name": ... }`. The only way to ref a paragraph created in this same `apply` run — paragraph-index locators reference pre-edit state. See [`cross-references.md`](cross-references.md).
 
-`text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required.
+`text` is either a plain string (single run, no inline formatting) or an array of `{ text, format }` for mixed run-level formatting. Image dimensions are required. `styleId` / `paraFormat` on an `image` block set the wrapping `<w:p>`'s pPr the same way they do on a paragraph block — use for centering, keep-with-next, and spacing on figures; omit for the legacy bare-image emit (no pPr, default left-aligned). To cross-ref a figure, attach `anchor` to its caption paragraph, not to the image — image paragraphs carry no numbering or text content for `display: "label"` / `"number"` / `"full"` to resolve against.
 
 **Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. Two paths to numbering:
 - **styleId-bound** (preferred): if the styleId you set is bound to a numbering scheme via `numbering[].levels[].styleId`, the binding handles auto-numbering automatically — don't supply a `numbering` field on the block. Use for headings (`Heading1..N`) and list-bound styles (`ListNumber` / `ListBullet`).

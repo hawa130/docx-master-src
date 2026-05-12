@@ -69,6 +69,8 @@ Level 0: 表 1 / 表 2 / 表 3            numFmt=decimal  lvlText="表 %1"   suf
 ```
 Use a separate `numId` per caption family so figures and tables count independently.
 
+Pair the caption style with a `FigureImage` body style (`alignment: "center"`, small `spaceBefore` / `spaceAfter` to butt the image against its caption) and set the image block's `styleId: "FigureImage"` — without it the image paragraph emits no pPr and renders left-aligned with default spacing regardless of what the caption style declares.
+
 ### Chapter-Prefixed Caption (`图 1-1`, `表 1-1`, `图 2-1`, ...)
 ```
 Level 0: (mirrors Heading1's counter; no display)  numFmt=decimal  lvlText=""        suff="nothing"

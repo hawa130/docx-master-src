@@ -373,6 +373,17 @@ function emitImageBlock(
   }
   const drawing = ctx.emitImage(block.src, block.widthPt, block.heightPt, block.alt, ownerDoc)
   const p = ownerDoc.createElementNS(w, "w:p")
+  if (block.styleId !== undefined || block.paraFormat !== undefined) {
+    const pPr = ensurePPr(p, ownerDoc)
+    if (block.styleId) {
+      const ps = ownerDoc.createElementNS(w, "w:pStyle")
+      ps.setAttributeNS(w, "w:val", block.styleId)
+      pPr.appendChild(ps)
+    }
+    if (block.paraFormat) {
+      for (const c of buildPPrChildren(block.paraFormat, ownerDoc)) pPr.appendChild(c)
+    }
+  }
   const r = ownerDoc.createElementNS(w, "w:r")
   r.appendChild(drawing)
   p.appendChild(r)

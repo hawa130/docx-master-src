@@ -157,6 +157,16 @@ const ImageBlockSchema = z.strictObject({
   widthPt: z.number().check(z.gt(0)),
   heightPt: z.number().check(z.gt(0)),
   alt: z.optional(z.string()),
+  /** Optional paragraph-level style binding for the wrapping `<w:p>` —
+   * lets a figure binding ("FigureImage" or similar) control centering /
+   * keep-with-next / spaceBefore-After. Without it the image paragraph
+   * has no pPr (default left alignment, no managed spacing). */
+  styleId: z.optional(NonEmptyString),
+  /** Per-call paragraph-format override. Same fields and override
+   * precedence as on ParagraphBlock — `paraFormat` wins over `styleId`'s
+   * same-named cascade output. Use for one-off tweaks (e.g. spaceAfter:0
+   * to butt the figure against its caption) without minting a new style. */
+  paraFormat: z.optional(ParagraphFormatSchema),
 })
 
 const PageBreakBlockSchema = z.strictObject({
