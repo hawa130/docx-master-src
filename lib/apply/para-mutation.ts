@@ -301,11 +301,7 @@ function removeRPrConflicts(rPr: Element, styleProvides: Set<string>) {
   const w = NS.w
   const conflicts = new Set<string>(RPR_CONFLICT_NAMES)
   for (const c of Array.from(getChildren(rPr))) {
-    if (
-      c.namespaceURI === w &&
-      conflicts.has(c.localName!) &&
-      styleProvides.has(c.localName!)
-    ) {
+    if (c.namespaceURI === w && conflicts.has(c.localName!) && styleProvides.has(c.localName!)) {
       rPr.removeChild(c)
     }
   }

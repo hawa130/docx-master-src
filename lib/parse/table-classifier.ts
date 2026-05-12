@@ -1,5 +1,11 @@
 import { NS, type TableClassification } from "@lib/parse/types.ts"
-import { descendantsNS, firstChildNS, getChildrenNS, textContent, wVal } from "@lib/xml/xml-utils.ts"
+import {
+  descendantsNS,
+  firstChildNS,
+  getChildrenNS,
+  textContent,
+  wVal,
+} from "@lib/xml/xml-utils.ts"
 
 export interface TableSummary {
   classification: TableClassification

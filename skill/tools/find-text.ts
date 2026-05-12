@@ -66,7 +66,7 @@ async function main() {
   const pattern = positional[1]
   if (!file || pattern === undefined) {
     console.error(
-      'Usage: node scripts/find_text.js <docx-path> <pattern> [--regex] [--paragraph N | --range A-B] [--limit N] [--context N]',
+      "Usage: node scripts/find_text.js <docx-path> <pattern> [--regex] [--paragraph N | --range A-B] [--limit N] [--context N]",
     )
     process.exit(1)
   }
@@ -92,11 +92,12 @@ async function main() {
     })
 
     const lines: string[] = []
-    const scopeStr = paragraph !== undefined
-      ? `paragraph #${paragraph}`
-      : range
-        ? `paragraphs #${range.from}–#${range.to}`
-        : "whole body"
+    const scopeStr =
+      paragraph !== undefined
+        ? `paragraph #${paragraph}`
+        : range
+          ? `paragraphs #${range.from}–#${range.to}`
+          : "whole body"
     lines.push(`Pattern: ${isRegex ? `/${pattern}/` : `literal "${pattern}"`}`)
     lines.push(`Scope:   ${scopeStr}`)
     lines.push("")

@@ -3,32 +3,37 @@ import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
 import { forkNumWithStartOverride, setParagraphNumPr } from "@lib/apply/numbering-mutation.ts"
 
 /**
- * Per-instance restart pass for single-level numbering schemes.
+ * Per-instance restart pass for single-level numbering schemes that opt in
+ * via `restart: "perInstance"`.
  *
  * Word's `<w:num>` element IS the counter. All paragraphs sharing a numId
  * share one counter — so a style-level binding makes the counter run
- * continuously across the whole document. Multi-level heading schemes use
- * `<w:lvlRestart>` to reset sub-levels at parent boundaries, but single-level
- * "list-shaped" schemes have no analogous mechanism: a 1./2./3. list in
- * Chapter 1 would continue as 4./5./6. in Chapter 2.
+ * continuously across the whole document. That's the right behavior for
+ * caption / reference / global-counter shapes and is the default
+ * (`restart: "continuous"`).
  *
- * The fix Word itself uses internally: each separate list instance gets its
- * own `<w:num>` that points to the same abstractNumId but carries
- * `<w:lvlOverride><w:startOverride val="1"/></w:lvlOverride>`. Each instance
- * gets paragraph-level `<w:numPr>` overriding the style-level binding.
+ * For procedural list shapes (ListNumber / ListBullet 1./2./3. lists), a
+ * shared counter is wrong: a list in Chapter 1 would continue numbering in
+ * Chapter 2. Multi-level heading schemes solve this with `<w:lvlRestart>`,
+ * but single-level schemes have no analogous mechanism. The workaround Word
+ * itself uses: each list instance gets its own `<w:num>` pointing to the
+ * same abstractNumId but carrying
+ * `<w:lvlOverride><w:startOverride val="1"/></w:lvlOverride>`. Each
+ * instance's paragraphs get paragraph-level `<w:numPr>` overriding the
+ * style-level binding.
  *
  * "Instance" = contiguous run of paragraphs with the target styleId in
  * document tree order. Non-target paragraphs break the run. Matches user
  * intuition: a list interrupted by a heading or body paragraph starts fresh.
  *
- * Auto-applies to single-level schemes only — multi-level heading schemes
- * use lvlRestart and don't need forking.
+ * Only single-level schemes with `restart === "perInstance"` are forked;
+ * multi-level schemes and continuous single-level schemes are skipped.
  */
 export function applyListRestartPass(
   documentDoc: Document,
   numberingDoc: Document,
   installedSchemes: ReadonlyArray<{
-    levels: ReadonlyArray<{ level: number; styleId: string }>
+    levels: ReadonlyArray<{ level: number; styleId: string; restart: "continuous" | "perInstance" }>
     numId: string
     abstractNumId: string
   }>,
@@ -38,6 +43,7 @@ export function applyListRestartPass(
   for (const scheme of installedSchemes) {
     if (scheme.levels.length !== 1) continue
     const lvl = scheme.levels[0]!
+    if (lvl.restart !== "perInstance") continue
     targets.push({
       styleId: lvl.styleId,
       abstractNumId: scheme.abstractNumId,

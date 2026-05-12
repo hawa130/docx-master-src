@@ -149,6 +149,14 @@ numbering: {
         bold:  false,                    //   title text. Use to keep designs like
                                          //   "blue numbering + black title".
       },
+      restart: "continuous",             // optional. "continuous" (default) | "perInstance".
+                                         //   Single-level schemes only — multi-level uses
+                                         //   lvlRestart instead. "continuous": one counter
+                                         //   shared across the doc (captions / references /
+                                         //   equations / appendix). "perInstance": fork a
+                                         //   fresh numId per contiguous run of same-styleId
+                                         //   paragraphs so each list block restarts at 1
+                                         //   (procedural 1./2./3. lists only).
     },
     ...
   ]

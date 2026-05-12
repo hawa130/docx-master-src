@@ -78,7 +78,11 @@ export class BookmarkAllocator {
         // paragraphs at body level) are intentionally NOT indexed — we
         // have no paragraph-level target to surface for REF rendering.
         const parent = el.parentNode
-        if (parent && (parent as Element).namespaceURI === NS.w && (parent as Element).localName === "p") {
+        if (
+          parent &&
+          (parent as Element).namespaceURI === NS.w &&
+          (parent as Element).localName === "p"
+        ) {
           this.nameIndex.set(name, { element: parent as Element, origin: "source" })
         }
       }
@@ -121,7 +125,10 @@ export class BookmarkAllocator {
     }
     if (this.usedNames.has(name)) {
       const existingRec = this.nameIndex.get(name)
-      const where = existingRec?.origin === "source" ? "exists in the source document" : "was already adopted in this apply"
+      const where =
+        existingRec?.origin === "source"
+          ? "exists in the source document"
+          : "was already adopted in this apply"
       throw new Error(
         `BookmarkAllocator.adoptName: bookmark name "${name}" ${where}. Pick a different anchor name.`,
       )

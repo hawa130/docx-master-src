@@ -308,12 +308,7 @@ async function validateXsd(parts: Map<string, string>): Promise<ValidationError[
 
 /** Word built-in styleIds that resolve via docDefaults / latentStyles even
  * without an explicit `<w:style>` entry. */
-const WORD_BUILTIN_STYLE_IDS = new Set([
-  "Normal",
-  "NoList",
-  "TableNormal",
-  "DefaultParagraphFont",
-])
+const WORD_BUILTIN_STYLE_IDS = new Set(["Normal", "NoList", "TableNormal", "DefaultParagraphFont"])
 
 /**
  * `<w:multiLevelType>` is optional per CT_AbstractNum schema, but Word

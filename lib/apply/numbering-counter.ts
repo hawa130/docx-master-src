@@ -63,6 +63,7 @@ export function simulateNumberingCounters(
   if (!numberingDoc) return out
 
   const numIdToAbstract = buildNumIdMap(numberingDoc)
+  const numIdStartOverrides = buildNumStartOverrides(numberingDoc)
   const abstractById = buildAbstractMap(numberingDoc)
   const styleNumPr = stylesDoc ? buildStyleNumPrMap(stylesDoc) : new Map()
 
@@ -98,11 +99,17 @@ export function simulateNumberingCounters(
     if (!lvlDef) continue
 
     // Increment this level's counter; reset every lower level to its start.
+    // Per-numId <w:lvlOverride><w:startOverride> wins over the abstract's
+    // <w:start> — that's how the perInstance restart pass communicates
+    // "fresh counter for this list instance" via fork-and-override.
     const cmap = ensureCounters(numId)
-    const cur = cmap.get(level) ?? (lvlDef.start - 1)
+    const overrideForNumId = numIdStartOverrides.get(numId)
+    const startFor = (lvl: number, abstractStart: number): number =>
+      overrideForNumId?.get(lvl) ?? abstractStart
+    const cur = cmap.get(level) ?? startFor(level, lvlDef.start) - 1
     cmap.set(level, cur + 1)
     for (const [lvl, def] of abstract.levels) {
-      if (lvl > level) cmap.set(lvl, def.start - 1)
+      if (lvl > level) cmap.set(lvl, startFor(lvl, def.start) - 1)
     }
 
     out.set(pEl, {
@@ -179,6 +186,31 @@ function buildStyleNumPrMap(stylesDoc: Document): Map<string, NumBinding> {
   for (const id of styles.keys()) {
     const r = resolve(id, new Set())
     if (r) out.set(id, r)
+  }
+  return out
+}
+
+/** Read `<w:lvlOverride><w:startOverride>` on every `<w:num>` to produce
+ * `numId → level → startValue`. Used by the simulator so a forked numId
+ * (perInstance restart) starts counting from its override instead of the
+ * abstractNum's `<w:start>`. */
+function buildNumStartOverrides(numberingDoc: Document): Map<string, Map<number, number>> {
+  const out = new Map<string, Map<number, number>>()
+  const w = NS.w
+  for (const num of getChildrenNS(numberingDoc.documentElement, w, "num")) {
+    const numId = wAttr(num, "numId")
+    if (!numId) continue
+    const perLevel = new Map<number, number>()
+    for (const ovr of getChildrenNS(num, w, "lvlOverride")) {
+      const ilvl = wAttr(ovr, "ilvl")
+      if (ilvl === null) continue
+      const startOvr = firstChildNS(ovr, w, "startOverride")
+      if (!startOvr) continue
+      const val = wAttr(startOvr, "val")
+      if (val === null) continue
+      perLevel.set(parseInt(ilvl, 10), parseInt(val, 10))
+    }
+    if (perLevel.size > 0) out.set(numId, perLevel)
   }
   return out
 }

@@ -59,11 +59,7 @@ import {
 } from "@lib/edit/track-changes.ts"
 import { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
-import {
-  emitRefField,
-  switchesForDisplay,
-  type PendingRefBackfill,
-} from "@lib/edit/field-ref.ts"
+import { emitRefField, switchesForDisplay, type PendingRefBackfill } from "@lib/edit/field-ref.ts"
 
 const w = NS.w
 

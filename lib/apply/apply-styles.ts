@@ -17,7 +17,11 @@ import { applyToBody } from "@lib/apply/para-mutation.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { analyzeVsDirect } from "@lib/shared/vs-direct.ts"
 import type { ParsedParagraph } from "@lib/parse/types.ts"
-import { attachNumberingToStyle, injectNumbering, resolveSuff } from "@lib/apply/numbering-mutation.ts"
+import {
+  attachNumberingToStyle,
+  injectNumbering,
+  resolveSuff,
+} from "@lib/apply/numbering-mutation.ts"
 import { applyListRestartPass } from "@lib/apply/list-restart.ts"
 import { detectManualNumbering } from "@lib/parse/manual-numbering-detect.ts"
 import { validateDocxFile } from "@lib/shared/docx-validate.ts"
@@ -30,10 +34,7 @@ import {
 } from "@lib/apply/style-mutation.ts"
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
-import {
-  simulateNumberingCounters,
-  extractParagraphText,
-} from "@lib/apply/numbering-counter.ts"
+import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
 import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
 import type {
   ApplyConfig,
@@ -52,10 +53,7 @@ import type {
  * on Mode A extraction artifacts, not on Mode B explicit declarations
  * (agent may legitimately want the CJK font's Latin glyphs for English /
  * digit text, which is what `fontLatin` controls). */
-function detectStyleResolutionWarnings(
-  def: StyleConfigEntry,
-  final: StyleConfigEntry,
-): string[] {
+function detectStyleResolutionWarnings(def: StyleConfigEntry, final: StyleConfigEntry): string[] {
   const out: string[] = []
   // fromParagraph extraction + Latin slot holds a CJK-character value +
   // no fontCJK extracted = source paragraph almost certainly had the CJK
@@ -251,9 +249,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     // source's pre-apply definition for each styleId.
     const priorState = extractPriorDisplayFields(resolver, def.id)
     const priorUsage =
-      priorState !== null
-        ? (resolver.getStyleDefinition(def.id)?.usageCount ?? 0)
-        : undefined
+      priorState !== null ? (resolver.getStyleDefinition(def.id)?.usageCount ?? 0) : undefined
     const final = resolveStyleDef(def, parsed.paragraphs)
     const warnings = detectStyleResolutionWarnings(def, final)
     styleResolutions.push({
@@ -293,8 +289,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // Collect all collisions before failing — agents iterating with --dry-run
   // benefit from seeing every conflict at once with the suggested override
   // styleId, instead of fixing one and rerunning to discover the next.
-  const styleNameConflicts: Array<{ def: StyleConfigEntry; collidingId: string; existingName: string }> =
-    []
+  const styleNameConflicts: Array<{
+    def: StyleConfigEntry
+    collidingId: string
+    existingName: string
+  }> = []
   for (const def of resolvedStyles) {
     const key = canonicalNameKey(def.name)
     const collidingId = sourceCanonicalToStyleId.get(key)
@@ -317,42 +316,18 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     }
     lines.push("")
     lines.push("  Resolve each by either:")
-    lines.push(
-      `    (a) override the existing style: set styles[].id to the source styleId`,
-    )
-    lines.push(
-      `        (above) — minimum-change default. Declare only fields the user`,
-    )
-    lines.push(
-      `        spec explicitly requires; Mode A fromParagraph or piled-on`,
-    )
-    lines.push(
-      `        locale defaults (CJK 2-char indent, etc.) rewrite more than`,
-    )
-    lines.push(
-      `        the user asked to change.`,
-    )
-    lines.push(
-      `    (b) use the canonical English built-in name when the conflict is a`,
-    )
-    lines.push(
-      `        locale alias (e.g. name="Body Text" for id="BodyText").`,
-    )
-    lines.push(
-      `    (c) use a fresh styleId + name pair (e.g. id="BodyMain", name="正文主体")`,
-    )
-    lines.push(
-      `        when the source has no styleId for this role, or compresses many`,
-    )
-    lines.push(
-      `        roles onto one styleId so override can't separate them. \`name\` is`,
-    )
-    lines.push(
-      `        what end users see in Word's style panel — pick a human-readable`,
-    )
-    lines.push(
-      `        label, not the styleId.`,
-    )
+    lines.push(`    (a) override the existing style: set styles[].id to the source styleId`)
+    lines.push(`        (above) — minimum-change default. Declare only fields the user`)
+    lines.push(`        spec explicitly requires; Mode A fromParagraph or piled-on`)
+    lines.push(`        locale defaults (CJK 2-char indent, etc.) rewrite more than`)
+    lines.push(`        the user asked to change.`)
+    lines.push(`    (b) use the canonical English built-in name when the conflict is a`)
+    lines.push(`        locale alias (e.g. name="Body Text" for id="BodyText").`)
+    lines.push(`    (c) use a fresh styleId + name pair (e.g. id="BodyMain", name="正文主体")`)
+    lines.push(`        when the source has no styleId for this role, or compresses many`)
+    lines.push(`        roles onto one styleId so override can't separate them. \`name\` is`)
+    lines.push(`        what end users see in Word's style panel — pick a human-readable`)
+    lines.push(`        label, not the styleId.`)
     if (config.dryRun) {
       lines.unshift("=== Style Name Conflicts (dry-run; would FAIL on real apply) ===")
       console.error(lines.join("\n") + "\n")
@@ -387,7 +362,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // is the canonical multi-scheme case). Each scheme allocates a fresh
   // numId and binds its levels independently.
   const installedSchemes: Array<{
-    levels: ReadonlyArray<{ level: number; styleId: string }>
+    levels: ReadonlyArray<{ level: number; styleId: string; restart: "continuous" | "perInstance" }>
     numId: string
     abstractNumId: string
   }> = []
@@ -444,7 +419,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         attachNumberingToStyle(stylesDoc, lvl.styleId, numId, lvl.level)
       }
       installedSchemes.push({
-        levels: scheme.levels.map((l) => ({ level: l.level, styleId: l.styleId })),
+        levels: scheme.levels.map((l) => ({
+          level: l.level,
+          styleId: l.styleId,
+          restart: l.restart ?? "continuous",
+        })),
         numId,
         abstractNumId,
       })
@@ -474,6 +453,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let editsPreview: EditsPreviewEntry[] = []
   let editTouchedIndices: Set<number> | undefined
   let crossRefsTouched = false
+  let listRestartApplied = false
   if (config.edits && config.edits.length > 0) {
     if (config.dryRun) {
       // Dry-run: resolve locators + blocker check, but don't mutate. Lets the
@@ -499,6 +479,18 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       imageRegistry = result.imageRegistry
       editsApplied = result.report.applied
       editsTrackChanges = result.report.trackChanges
+
+      // Run the list-restart pass BEFORE the cross-ref simulator so the
+      // simulator's counter values reflect what Word will actually render.
+      // For continuous schemes (the default) this pass is a no-op; for
+      // perInstance schemes it forks numIds + writes <w:startOverride>, and
+      // the simulator below honors those overrides when initializing
+      // counters. Without this ordering, dry-run placeholder text would
+      // disagree with the live render.
+      if (installedSchemes.length > 0) {
+        applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
+        listRestartApplied = true
+      }
 
       // Cross-reference post-pass. (1) Simulate numbering counters against the
       // current document state — gives us the rendered label / number text per
@@ -705,13 +697,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   }
   applyToBody(documentDoc, ctx)
 
-  // 7b. List-restart pass. Single-level schemes (list-shaped) fork a fresh
+  // 7b. List-restart pass. perInstance single-level schemes fork a fresh
   // numId per contiguous run of paragraphs with the bound styleId, so each
-  // separate list instance restarts at 1 instead of continuing the shared
-  // counter. Multi-level schemes (heading-shaped) skip — they use lvlRestart
-  // for cross-level resets. See lib/list-restart.ts.
-  if (installedSchemes.length > 0) {
+  // list instance restarts at 1. Continuous schemes (the default) and
+  // multi-level schemes (which use lvlRestart) are skipped inside the pass.
+  // Already invoked above when cross-refs ran (must precede the simulator);
+  // this fallback covers configs without edits / cross-refs.
+  if (installedSchemes.length > 0 && !listRestartApplied) {
     applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
+    listRestartApplied = true
   }
 
   // 7c. Target-set + vs-direct analysis (dry-run only). For each declared

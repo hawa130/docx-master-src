@@ -1,4 +1,9 @@
-import { NS, type ComputedParaStyle, type ComputedRunStyle, type StyleDefinition } from "@lib/parse/types.ts"
+import {
+  NS,
+  type ComputedParaStyle,
+  type ComputedRunStyle,
+  type StyleDefinition,
+} from "@lib/parse/types.ts"
 import { attr, firstChildNS, getChildrenNS, parseToggle, wAttr, wVal } from "@lib/xml/xml-utils.ts"
 
 interface ThemeFonts {
@@ -172,8 +177,9 @@ export class StyleResolver {
       const eastAsiaTheme = wAttr(rFonts, "eastAsiaTheme")
       let rAscii = asciiTheme ? this.resolveThemeFont(asciiTheme, false) : ascii || undefined
       let rHAnsi = hAnsiTheme ? this.resolveThemeFont(hAnsiTheme, false) : hAnsi || undefined
-      let rEastAsia =
-        eastAsiaTheme ? this.resolveThemeFont(eastAsiaTheme, true) : eastAsia || undefined
+      let rEastAsia = eastAsiaTheme
+        ? this.resolveThemeFont(eastAsiaTheme, true)
+        : eastAsia || undefined
       // ECMA-376: ascii/hAnsi slots serve U+0000–U+007F; eastAsia serves CJK
       // ranges. WPS / school templates routinely type a CJK font name
       // (宋体, 黑体, …) into the ascii slot — Word uses it for CJK glyphs

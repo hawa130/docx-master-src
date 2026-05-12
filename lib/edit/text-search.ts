@@ -111,8 +111,7 @@ export function searchDocument(documentDoc: Document, opts: SearchOptions): Matc
         }
         if (region === null && seg.region !== null) region = seg.region
       }
-      const crossRun =
-        firstRunIdx !== null && lastRunIdx !== null && firstRunIdx !== lastRunIdx
+      const crossRun = firstRunIdx !== null && lastRunIdx !== null && firstRunIdx !== lastRunIdx
 
       const matched = slice
       const beforeRaw = proj.text.slice(Math.max(0, m.start - ctxN), m.start)
@@ -168,8 +167,7 @@ function buildParagraphProjection(
     }
 
     if (local === "hyperlink" || local === "ins" || local === "del" || local === "sdt") {
-      const recurseRoot =
-        local === "sdt" ? (firstChildNS(node, w, "sdtContent") ?? node) : node
+      const recurseRoot = local === "sdt" ? (firstChildNS(node, w, "sdtContent") ?? node) : node
       for (const child of getChildren(recurseRoot)) {
         appendNode(child, effectiveRegion)
       }

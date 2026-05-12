@@ -97,9 +97,7 @@ function shortVal(v: unknown): string {
  *      target) → skip — sparse declaration that adds without conflict. */
 function renderVsDirect(r: VsDirectReport, lines: string[]): void {
   if (r.targetCount === 0) {
-    lines.push(
-      `    vs target direct: (no chrome targets; edits[]-inserts excluded from analysis)`,
-    )
+    lines.push(`    vs target direct: (no chrome targets; edits[]-inserts excluded from analysis)`)
     return
   }
   const interesting = r.fields.filter((f) => f.override > 0 || f.redundant > 0)
@@ -348,15 +346,9 @@ export function printReport(args: {
         const samples = info.samples.map((s) => `"${s}"`).join(" / ")
         lines.push(`  ${styleId} (no numbering binding): ${info.count} paragraphs  e.g. ${samples}`)
       }
-      lines.push(
-        "    → If these are list items, declare a list-bound style (e.g. ListNumber)",
-      )
-      lines.push(
-        "      and let the numbering scheme emit the marker. Keep the typed form",
-      )
-      lines.push(
-        "      only when the user prompt explicitly asked for typed prefixes.",
-      )
+      lines.push("    → If these are list items, declare a list-bound style (e.g. ListNumber)")
+      lines.push("      and let the numbering scheme emit the marker. Keep the typed form")
+      lines.push("      only when the user prompt explicitly asked for typed prefixes.")
     }
     lines.push("")
   }
@@ -441,7 +433,9 @@ export function printReport(args: {
           ? `; -${e.willReplaceOrDeleteIndices.length} replaced/deleted`
           : ""
       const containerNote = e.container === "cell" ? " [in cell]" : ""
-      lines.push(`  edits[${e.index}] ${e.op} → ${targetSpan}${containerNote}${replaceNote}${insertNote}`)
+      lines.push(
+        `  edits[${e.index}] ${e.op} → ${targetSpan}${containerNote}${replaceNote}${insertNote}`,
+      )
       totalReplaceDelete += e.willReplaceOrDeleteIndices.length
       totalInsert += e.willInsertCount
     }

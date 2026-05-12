@@ -60,6 +60,8 @@ Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."    
 
 For paragraph roles that need a sequence but not a hierarchy — figure captions, table captions, reference list entries, theorem numbering, appendix items — bind a one-level numbering scheme. Never let the agent emit the counter as literal text (`图 1`, `[1]`); it desyncs the moment a figure is inserted or a reference reordered.
 
+Default counter scope: one continuous counter across the document (`restart: "continuous"`, implicit). Every paragraph bound to the scheme shares one running counter — what captions, references, equations, and appendix items want. The only opt-out is procedural `1./2./3.` list shapes (see "Procedural Numbered Lists" below), which need `restart: "perInstance"`.
+
 ### Figure / Table Caption (flat counter)
 ```
 Level 0: 图 1 / 图 2 / 图 3            numFmt=decimal  lvlText="图 %1"   suff="space"
@@ -79,6 +81,12 @@ Captions sit on level 1; level 0 silently tracks the chapter number, restart-on-
 Level 0: [1] / [2] / [3]                numFmt=decimal  lvlText="[%1]"   suff="space"
 ```
 Body-text cites to these (or to any auto-numbered caption / heading) go through `InlineRef` in `edits[]`, not literal text. See [`cross-references.md`](cross-references.md).
+
+### Procedural Numbered Lists (`restart: "perInstance"`)
+```
+Level 0: 1. / 2. / 3.                   numFmt=decimal  lvlText="%1."  suff="space"  restart="perInstance"
+```
+When the same scheme is meant to drive multiple separate list blocks (steps in Chapter 1 numbered 1./2./3., independent steps in Chapter 2 also starting from 1.), opt in to per-instance restart. The engine forks a fresh `numId` per contiguous run of paragraphs bound to the scheme and writes `<w:startOverride val="1"/>` on each fork. An "instance" is broken by any paragraph not bound to the scheme's styleId — e.g. a heading or body paragraph between two list blocks. Use sparingly; only this case actually wants it.
 
 ## lvlText Syntax
 

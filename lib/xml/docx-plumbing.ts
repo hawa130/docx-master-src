@@ -43,4 +43,3 @@ export async function ensureNumberingRelationship(
   const updated = text.replace("</Relationships>", `${insert}</Relationships>`)
   replacements.set(path, updated)
 }
-

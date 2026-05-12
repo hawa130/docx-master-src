@@ -101,6 +101,14 @@ export const NumLevelSchema = z
     // for "X.X" style headings where Heading1 uses chineseCounting (一、) but
     // Heading3's lvlText "%1.%3" should display "1.1" not "一.1".
     isLgl: z.optional(z.boolean()),
+    // Counter scope for single-level schemes. Default "continuous" — one
+    // counter shared by every paragraph bound to this level, matching native
+    // OOXML <w:num> semantics. Use "perInstance" only for procedural list
+    // shapes (ListNumber / ListBullet style 1./2./3. lists) where each
+    // contiguous run of same-styleId paragraphs should restart at 1; the
+    // engine forks a fresh numId per run and writes <w:startOverride>.
+    // Ignored on multi-level schemes (which use lvlRestart for resets).
+    restart: z.optional(z.enum(["continuous", "perInstance"])),
   })
   // Strip patterns are tried in array order, first match wins. If a shorter
   // pattern (fewer %N placeholders) appears before a longer one, the shorter

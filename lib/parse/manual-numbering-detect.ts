@@ -88,7 +88,5 @@ function richTextToPlain(rich: RichText): string {
   // resolved counter only materializes after the numbering simulator
   // runs post-edit) — exclude them from the manual-prefix scan rather
   // than fabricating placeholder text that might trigger false positives.
-  return rich
-    .map((r) => ("text" in r ? r.text : ""))
-    .join("")
+  return rich.map((r) => ("text" in r ? r.text : "")).join("")
 }
