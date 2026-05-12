@@ -30,7 +30,7 @@ TableBlock {
   layout?: "fixed" | "autofit"               // default "autofit"
 }
 
-TableWidth = "auto" | <number, pt> | { pct: <0-100> }
+TableWidth = "auto" | <number, pt>
 
 TableCell = string                                  // plain text, single paragraph
           | InlineNode[]                            // formatted text / cross-refs, single paragraph
@@ -142,14 +142,14 @@ Bind a paragraph style to all header-row cells with `headerStyle`:
 `cols` declares per-column widths; length must equal the effective column count (declared cells + rowspan claims, expanded by colspans). When omitted, engine auto-generates `<w:gridCol w:w="0"/>` × N — Word treats this as autofit.
 
 ```jsonc
-"cols": [{ "width": "auto" }, { "width": 100 }, { "width": { "pct": 30 } }]
+"cols": [{ "width": "auto" }, { "width": 100 }, { "width": 200 }]
 ```
 
 `layout` interpretation:
 - `"autofit"` (default) — Word reflows column widths to fit content and page.
-- `"fixed"` — Declared widths are honored even if total exceeds page width; content may overflow horizontally.
+- `"fixed"` — Declared widths are honored even if total exceeds page width; content may overflow horizontally. Pair with explicit pt widths for predictable column sizing.
 
-`{ pct: N }` widths are interpreted relative to the table or page width depending on Word's layout-mode resolution. For predictable percentage layouts pair with `layout: "fixed"`.
+Percentage widths (e.g. `{ pct: 30 }`) are deferred out of v1 — they require coordinated `tblW` + per-cell `tcW` emission with OOXML's fiftiethPercent units. Use fixed pt widths instead.
 
 ## Alignment axes
 

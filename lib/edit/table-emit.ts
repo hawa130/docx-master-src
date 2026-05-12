@@ -67,7 +67,7 @@ interface BordersCustom {
 type BordersPreset = "all" | "none" | "outer" | "three-line"
 type Borders = BordersPreset | BordersCustom
 
-type ColWidth = "auto" | number | { pct: number }
+type ColWidth = "auto" | number
 
 interface CellObj {
   content: string | ReadonlyArray<unknown> // schema-validated; emit by shape inspection
@@ -97,6 +97,10 @@ interface GridSlot {
   colspan: number
   rowspan: number
   isHeaderRow: boolean
+  /** Row index (0-based) where this slot is emitted. Used by the
+   * three-line preset to inject the header-bottom line on the LAST
+   * header row only (not all of them). */
+  rowIndex: number
 }
 
 /* ------------- public entry ------------- */
@@ -161,6 +165,7 @@ function buildGrid(
           colspan: active.source.colspan,
           rowspan: active.source.rowspan,
           isHeaderRow: r < headerRows,
+          rowIndex: r,
         }
         grid[r]!.push(cont)
         active.rowsRemaining -= 1
@@ -184,6 +189,7 @@ function buildGrid(
         colspan,
         rowspan,
         isHeaderRow: r < headerRows,
+        rowIndex: r,
       }
       grid[r]!.push(slot)
       // Claim subsequent rows in each spanned column.
@@ -203,6 +209,7 @@ function buildGrid(
         colspan: active.source.colspan,
         rowspan: active.source.rowspan,
         isHeaderRow: r < headerRows,
+        rowIndex: r,
       }
       grid[r]!.push(cont)
       active.rowsRemaining -= 1
@@ -388,18 +395,12 @@ function buildTblGrid(
 
 function buildGridCol(width: ColWidth, ownerDoc: Document): Element {
   const col = ownerDoc.createElementNS(w, "w:gridCol")
-  // OOXML <w:gridCol w:w="..."/> expects DXA twentieths of a pt (twips).
-  // For "auto" we omit w:w (Word treats as auto).
+  // <w:gridCol w:w="..."/> expects DXA (twentieths of a pt). "auto"
+  // emits w:w="0" — Word treats zero-width gridCols as autofit hints.
   if (width === "auto") {
-    // Some renderers want w:w even for auto; emit zero to be safe.
     col.setAttributeNS(w, "w:w", "0")
-  } else if (typeof width === "number") {
-    col.setAttributeNS(w, "w:w", String(Math.round(width * 20)))
   } else {
-    // pct: store as DXA equivalent of N% of 5000 (per OOXML pct-fifty units),
-    // but <w:gridCol> only accepts twip widths. Approximate by leaving auto;
-    // table-layout fixed + cell <w:tcW> handles pct properly.
-    col.setAttributeNS(w, "w:w", "0")
+    col.setAttributeNS(w, "w:w", String(Math.round(width * 20)))
   }
   return col
 }
@@ -482,16 +483,10 @@ function computePresetHeaderBottom(slot: GridSlot, block: TableBlock): BorderEdg
   const headerRows = block.headerRows ?? 0
   if (headerRows === 0) return undefined
   if (!slot.isHeaderRow) return undefined
-  // Determine whether this slot is in the LAST header row (header rows
-  // are rows 0..headerRows-1, indexed from grid build order). We don't
-  // have row index on the slot; computePresetHeaderBottom is called per
-  // slot. Walk the grid? Pass headerRows-1 row index via context.
-  // Easier: check if this is the bottommost header row by structure —
-  // slot.isHeaderRow + the slot's row equals headerRows-1. But we don't
-  // carry row index. Workaround: pass it via slot.
-  // For now: apply to all header rows (multi-row header → multi middle
-  // lines, which still looks correct for stacked headers). If we want
-  // only the last header row to get the line, slot needs rowIndex.
+  // Only the bottommost header row gets the middle line — multi-row
+  // headers would otherwise stack multiple middle lines, breaking the
+  // academic three-line convention.
+  if (slot.rowIndex !== headerRows - 1) return undefined
   return { style: "single", size: 0.5, color: "auto" }
 }
 

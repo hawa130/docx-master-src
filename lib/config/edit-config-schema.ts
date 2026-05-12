@@ -234,13 +234,12 @@ const BordersCustomSchema = z.strictObject({
 
 export const BordersSchema = z.union([BordersPresetSchema, BordersCustomSchema])
 
-/** Column width: `"auto"` (Word fits content), a positive number (pt), or
- * `{ pct: N }` (percentage of table / page width, 0–100). */
-const TableWidthSchema = z.union([
-  z.literal("auto"),
-  z.number().check(z.gt(0)),
-  z.strictObject({ pct: z.number().check(z.gte(0), z.lte(100)) }),
-])
+/** Column width: `"auto"` (Word fits content) or a positive number in
+ * pt. Percentage widths were considered but require coordinated tblW +
+ * per-cell tcW emission with OOXML's fiftiethPercent units; deferred
+ * out of v1 — use fixed pt widths with `layout: "fixed"` for predictable
+ * sizing. */
+const TableWidthSchema = z.union([z.literal("auto"), z.number().check(z.gt(0))])
 
 const ColSpecSchema = z.strictObject({
   width: TableWidthSchema,
