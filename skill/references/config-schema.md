@@ -64,10 +64,9 @@ config; SKILL.md only carries a top-level summary.
   id:              "Caption",  // REQUIRED.
   name:            "图表注",    // REQUIRED.
   basedOn:         "Normal",   // optional. Default "Normal".
-  fontLatin:       "Arial",    // optional. Latin / Western text font (writes
-                               //   to OOXML w:ascii AND w:hAnsi).
-  fontCJK:         "黑体",     // optional. CJK font (w:eastAsia). Most common
-                               //   field in Chinese-academic configs.
+  fontLatin:       "Arial",    // optional. Latin / Western text font.
+  fontCJK:         "黑体",     // optional. CJK font. Most common field in
+                               //   Chinese-academic configs.
   size:            10.5,       // optional. pt (not half-pt).
   bold:            false,      // optional. Default false.
   italic:          false,      // optional. Default false.
@@ -100,10 +99,10 @@ config; SKILL.md only carries a top-level summary.
   hangingIndent:   null,       // optional. Same units as firstLineIndent. For
                                //   bibliography/reference entries use "2char" (or
                                //   pt to match the leading "[N] " marker width).
-  outlineLevel:    0,          // optional. 0–9 per OOXML §17.3.1.20: 0–8 are
-                               //   heading levels (0 = H1, 1 = H2, …); 9 = body
-                               //   text (no outline). Set on heading styles to
-                               //   enable TOC / outline view / nav pane.
+  outlineLevel:    0,          // optional. 0–9: 0–8 are heading levels
+                               //   (0 = H1, 1 = H2, …); 9 = body text. Set on
+                               //   heading styles to enable TOC / outline view /
+                               //   nav pane.
 }
 ```
 
@@ -116,10 +115,10 @@ numbering: {
   levels: [
     {
       level:   0,                        // REQUIRED. 0-8.
-      numFmt:  "chineseCounting",        // REQUIRED. OOXML w:numFmt value — decimal /
-                                         //   chineseCounting / bullet / lowerRoman / etc.
+      numFmt:  "chineseCounting",        // REQUIRED. decimal / chineseCounting /
+                                         //   bullet / lowerRoman / etc.
                                          //   See references/numbering-formats.md for table.
-      lvlText: "第%1章",                 // REQUIRED. OOXML w:lvlText pattern.
+      lvlText: "第%1章",                 // REQUIRED. Display pattern (%N = level N counter).
       styleId: "Heading1",               // REQUIRED. Binds this level to a paragraph style.
       start:   1,                        // optional. Starting number. Default 1.
       stripPrefixPatterns: ["%1.%2", "%1."],
@@ -128,22 +127,12 @@ numbering: {
                                          //   order, longest first). Use when the source
                                          //   mixes styles — some H2 written as "1.1 ...",
                                          //   others as "1. ...". Defaults to [lvlText].
-      suff: "nothing",                   // "tab" | "space" | "nothing". Inserted between
-                                         //   the auto-generated marker and the paragraph
-                                         //   text. **Specify per level** — `"space"` when
-                                         //   the marker ends in a digit / character
-                                         //   (`1. Title`, `第一章 …`), `"nothing"` when
-                                         //   trailing punctuation already separates
-                                         //   (`一、…`, `（一）…`). Word's spec default is
-                                         //   "tab", which renders an ugly gap unsuitable
-                                         //   for CJK; we don't fall back to it.
-                                         // If omitted, suff is inferred from trailing
-                                         //   whitespace in `lvlText` (0 → "nothing",
-                                         //   1 → "space", 2+ → "tab") and that whitespace
-                                         //   is stripped from the emitted lvlText. The
-                                         //   inference is a tolerant fallback for
-                                         //   imprecise input — explicit `suff` is the
-                                         //   intended path.
+      suff: "nothing",                   // "tab" | "space" | "nothing". Gap between
+                                         //   marker and text. See numbering-formats.md
+                                         //   for per-level guidance. If omitted, inferred
+                                         //   from trailing whitespace in `lvlText` (0 →
+                                         //   "nothing", 1 → "space", 2+ → "tab"); explicit
+                                         //   is the intended path.
       numRPr: {                          // optional. rPr applied to the auto-generated
         color: "3370FF",                 //   number marker only — independent of the
         bold:  false,                    //   title text. Use to keep designs like

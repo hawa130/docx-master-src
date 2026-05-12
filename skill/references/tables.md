@@ -158,12 +158,12 @@ Three distinct alignment fields apply at different scopes:
 
 | Field | Scope | Affects |
 |---|---|---|
-| `alignment` on TableBlock | whole table on page | Horizontal position of the table (left / center / right). Academic / formal documents typically center. |
-| `vAlign` on TableBlock (table-level) | every cell that doesn't carry its own `vAlign` | Skill default `"center"` — matches the academic / formal typography norm. Set `"top"` for form-style layouts where labels should hug the top of each cell. |
-| `vAlign` on cell object form | within one cell | Overrides the table-level default for that cell only. |
-| `paraFormat.alignment` on a Paragraph block inside a cell | within paragraph | Horizontal text alignment within the cell — separate from `vAlign`. |
+| `alignment` on TableBlock | whole table on page | Horizontal position (left / center / right). |
+| `vAlign` on TableBlock | every cell without its own `vAlign` | Default `"center"`. Set `"top"` for form-style layouts where labels hug the top of each cell. |
+| `vAlign` on cell object form | one cell | Overrides table-level default for that cell only. |
+| `paraFormat.alignment` on a Paragraph inside a cell | one paragraph | Horizontal text alignment within the cell — separate from `vAlign`. |
 
-Resolution for any given cell: `cell.vAlign ?? block.vAlign ?? "center"`. The engine ALWAYS emits `<w:vAlign>` on each `<w:tc>`, overriding Word's native top default. To restore Word's top-default behavior on the whole table, set `vAlign: "top"` at the table level.
+Resolution for any cell: `cell.vAlign ?? block.vAlign ?? "center"`. Engine always emits `vAlign` on every cell — to restore Word's native top default, set `vAlign: "top"` at the table level.
 
 ## Edge cases the engine handles
 
@@ -197,7 +197,7 @@ Then in body text:
 | Bookmark anchors inside cells | Cell paragraph blocks can declare `anchor` — same BookmarkAllocator path as body paragraphs. Cross-refs from any position resolve. |
 | `pattern_rules` / `bulk_rules` coverage | **Data tables: NO.** Cell paragraphs aren't indexed by the parser. **Layout tables: YES.** Bind cell paragraphs to explicit styleId via `Block[]` when you need predictable styling, instead of relying on post-emit rules. |
 | MDF (match destination formatting) | TableBlock is non-paragraph; engine doesn't propagate anchor pPr into it. The cells' own pPr is what you declared. |
-| Table-level styles (Word's `<w:tblStyle>`) | **Not supported.** Reuse visual specs across many tables via JSON-fragment reuse in your config, not via styles.xml. |
+| Table-level styles (Word's `<w:tblStyle>`) | **Not supported** — see "What's not supported" below. |
 
 ## What's not supported (v1)
 

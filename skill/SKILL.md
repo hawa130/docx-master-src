@@ -1,6 +1,6 @@
 ---
 name: docx-master
-description: "Standardize, edit, or audit a Word (.docx) document via direct OOXML mutation. Two CLIs: `apply` (the unified writer — install styles + numbering + theme + template, restyle by pattern / fingerprint, insert content via edits, all in one config), `audit` (read-only conformance check, no file written). Common config shapes inside `apply`: standardize (role-based whole-doc reshape — paragraph classification, named styles, multi-level auto-numbering, template import), edit (location-based surgical changes — replace/insert/delete paragraphs, table cells, image embedding, optional tracked changes). Use whenever the user wants to format / restyle / normalize / edit / audit a Word document. Illustrative phrasings: '排版 / 套模板 / 按学校格式', '统一样式 / 标题字号不对', '把第N段改成… / 插一段 / 改这个单元格', '看看合不合规范'. Do NOT use for: PDFs, spreadsheets, or plain-text / Markdown source files (unless the task is specifically to *output* a docx)."
+description: "Standardize, edit, or audit a Word (.docx) document via direct OOXML mutation. Two CLIs: `apply` (the unified writer — install styles + numbering + theme + template, restyle by pattern / fingerprint, insert content via edits, all in one config), `audit` (read-only conformance check, no file written). Common config shapes inside `apply`: standardize (role-based whole-doc reshape — paragraph classification, named styles, multi-level auto-numbering, template import), edit (location-based surgical changes — replace/insert/delete paragraphs, table cells, image embedding, optional tracked changes). Use whenever the user wants to format / restyle / normalize / edit / audit a Word document. Do NOT use for: PDFs, spreadsheets, or plain-text / Markdown source files (unless the task is specifically to *output* a docx)."
 ---
 
 # docx-master
@@ -101,8 +101,6 @@ Default first. Don't ask unless one of the cases below applies:
 - missing source content for template slots
 - unsupported structures (footnotes, page-number cites)
 - font / spacing prompt without explicit scope (theme layer vs `Normal` cascade vs per-role `styles[]` — see standardize.md "Three layers for setting fonts")
-
-When you do ask: one focused message naming the choice + your default, then yield.
 
 ## Out of scope
 

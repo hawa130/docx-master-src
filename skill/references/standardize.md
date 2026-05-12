@@ -74,20 +74,11 @@ For most whole-doc reshape tasks, design **one** `apply` config that does the en
 
 Targeting precedence and assignment-action semantics: see [config-schema.md](config-schema.md). Patterns describe categories; `assignments` is for outlier corrections only.
 
-### Typical recipe shapes
-
-The pattern_rules above are tuned to one common Chinese academic-form pattern. Other recipes:
-
-- **Decimal-only hierarchy** (`1`, `1.1`, `1.1.1`): `pattern_rules` with `^\\d+\\.\\s` / `^\\d+\\.\\d+\\s` / `^\\d+\\.\\d+\\.\\d+\\s` for Heading1/2/3.
-- **Chapter-sentinel + decimal**: `^第[一二三四...]+章` for Heading1, `^\\d+\\.\\d+\\s` for Heading2, etc.
-- **English standard**: `^Chapter \\d+` / `^\\d+\\.\\s` / `^\\d+\\.\\d+\\s` etc.
-- **Pre-styled chrome**: when chrome doesn't share a text pattern but does share a styleId/font, use `bulk_rules: [{ fingerprint, style }]` instead of `pattern_rules`. The fingerprint comes from the overview's visual summary.
-
-`numbering-formats.md` has full templates for academic / technical / governmental / legal multi-level shapes.
-
 ### When the recipe doesn't fit
 
-Some real cases the recipe needs adapting for:
+When chrome doesn't share a text pattern but does share a styleId / font / size profile, use `bulk_rules: [{ fingerprint, style }]` instead of `pattern_rules` — fingerprint comes from the overview's visual summary. Multi-level numbering templates (academic / technical / governmental / legal): see [`numbering-formats.md`](numbering-formats.md).
+
+Real cases the recipe needs adapting for:
 
 - **Inconsistent chrome**: section 1 uses bare colon-labels (`Name:`), sections 2+ use enumerator chrome (`1.`, `2.`). Convert what's structural via `pattern_rules`; leave inline labels alone.
 - **Unstable manual prefixes**: source has `1.1` in some chapters, `1.` in others. Use `stripPrefixPatterns: ["%1.%2", "%1."]` on the relevant level — longer pattern first.
@@ -135,7 +126,7 @@ When the document has typed heading prefixes (chrome or content prefixes), migra
 
 If the manual scheme itself is inconsistent across the document — e.g. H1 has numbers in chapter 1 but not chapter 2, or H2 uses chapter-prefixed `"1.1"` in some chapters and per-chapter-restart `"1."` in others — auto-migration is a normalization decision that may change author-intended semantics. Ask the user before applying rather than picking one scheme silently.
 
-Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. Field names mirror OOXML: `numFmt` (e.g. `decimal` / `chineseCounting` / `bullet`), `lvlText` (the rendered prefix pattern, e.g. `"%1."` / `"%1.%2"` / `"第%1章"`), and `suff` controls the gap between the marker and the paragraph text — `"space"` when the marker ends in a digit or character (`1. Title`, `第一章 研究方法`, `1.1 概述`), `"nothing"` when the trailing punctuation already separates them (`一、研究方法`, `（一）背景`), `"tab"` only for wide-list layouts.
+Each level binds to a heading style via `styleId`; higher levels reset lower-level counters automatically. `numFmt` / `lvlText` / `suff` semantics: see [`numbering-formats.md`](numbering-formats.md).
 
 See `references/numbering-formats.md` for full value tables and ready-made templates.
 
@@ -197,11 +188,7 @@ For requests that can't be expressed via the config — custom watermarks, embed
 
 **This bypasses every safety net** the skill provides: validation, run-level formatting preservation, numId migration, original-file protection. Use only when no other path fits, and tell the user explicitly.
 
-Outline:
-1. Unzip the docx (`unzip docx -d /tmp/docx-unpacked/`).
-2. Edit the relevant XML file(s) — typically `word/document.xml`, `word/styles.xml`, `word/numbering.xml`, `word/header*.xml`. Preserve namespaces, element ordering, and `xml:space="preserve"` on whitespace.
-3. Re-zip preserving the directory structure (`cd /tmp/docx-unpacked && zip -r ../output.docx .`).
-4. Open in Word; if it errors or silently drops content, your XML edit broke something — do not deliver.
+Unzip → edit `word/*.xml` (preserve namespaces, element ordering, `xml:space="preserve"`) → rezip → open in Word to confirm. If Word errors or silently drops content, the edit broke something — do not deliver.
 
 If a request *can* be expressed via `apply` config, do that instead.
 
@@ -209,7 +196,7 @@ If a request *can* be expressed via `apply` config, do that instead.
 
 ## Reading the Overview Output
 
-`overview` prints visual style summary + document skeleton inline. Four conventions worth knowing in advance:
+`overview` prints visual style summary + document skeleton inline. Reading conventions:
 
 - **Letter vs hash labels.** `[A]`, `[B]` are sorted by frequency in this run (volatile across edits); the summary also shows a 6-char content hash next to each letter (`A [c4f9]: ...`). `bulk_rules.fingerprint` accepts either — use letters for in-session iteration, hashes in configs you intend to keep across doc revisions.
 - **Numbered ≠ unnumbered fingerprints.** The fingerprint hash includes whether a paragraph carries a numbering reference, so visually identical paragraphs split into separate fingerprints (suffix "List") when one is auto-numbered and the other isn't.
@@ -219,7 +206,6 @@ If a request *can* be expressed via `apply` config, do that instead.
 ## Edge cases
 
 - **Empty paragraphs as spacing**: preserve them. Removing is structural, not stylistic, and risks breaking cover-page layout.
-- **Table caption vs figure caption**: table captions go ABOVE the table, figure captions BELOW. Use `inspect_neighbors` to confirm.
 - **Table footnotes**: text right after a table starting with "注：" / "Note:" is a footnote, not body text.
 - **Unnumbered special headings** (摘要 / Abstract / 目录 / 参考文献 / 致谢 / 附录): share the visual style of Heading1 but have no chapter number. Use `HeadingNoNum` or suppress numbering on the same style via `exclude`.
 - **Appendix numbering** often restarts with a different scheme (附录A / A.1 / A.2) — may need a second `numbering` entry.

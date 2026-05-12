@@ -52,7 +52,7 @@ For right-aligned equation numbering on the same line as the equation (IEEE conv
 
 | What | How |
 |---|---|
-| Centered display | Word's default OMML rendering centers `<m:oMathPara>`. Override via `styleId` + `paraFormat.alignment` if you want left/right. |
+| Centered display | Display equations center by default. Override via `styleId` + `paraFormat.alignment` for left/right. |
 | Caption numbering | EquationCaption gets a single-level continuous numbering scheme — same shape as FigureCaption / TableCaption. See `numbering-formats.md`. |
 | pattern_rules / bulk_rules | Apply to the caption paragraph normally. The equation paragraph contains no `<w:r>` runs (the OMML is its sole child), so text-pattern matching skips it. |
 

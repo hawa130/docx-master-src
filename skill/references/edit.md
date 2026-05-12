@@ -77,11 +77,9 @@ For display math, `equation` block carries LaTeX (rendered to native OMML via Te
 
 Same applies to images in styled documents: bind `styleId` (typically `FigureImage`) so centering / spacing come from the cascade rather than per-call `paraFormat`. The bare-image emit (no pPr) is only correct for inline / unstyled context.
 
-If the styleId or numId you reference doesn't exist in the doc, add `styles[]` / `numbering` to the same `apply` config so they get installed before `edits[]` runs (see SKILL.md Target state).
-
 ### Quote handling
 
-`text` is emitted verbatim. Default to smart quotes in prose; ASCII `"` `'` only inside literal tokens (code, URLs, shell) — smart quotes also bypass the JSON `\"` escape footgun.
+`text` is emitted verbatim. Default to smart quotes in prose; ASCII `"` `'` only inside literal tokens (code, URLs, shell).
 
 ### Format fields
 
@@ -90,8 +88,6 @@ If the styleId or numId you reference doesn't exist in the doc, add `styles[]` /
 Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` runs, you can place `{ "refTo": ..., "display": ..., "format": ... }` cross-reference nodes. **Any cite to an auto-numbered target (figure / table / heading / equation / reference entry) must use these — never write the counter as literal text.** See [`cross-references.md`](cross-references.md) for the contract.
 
 `paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (pt), `lineSpacing` + `lineRule` (same convention as a style definition), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (`"Nchar"` / `"Npt"` / number), `outlineLevel` (0–9).
-
-Mirrors the style schema — what you'd put inside a `styles[]` entry, you put as direct paragraph formatting here.
 
 ## Track-changes mode
 

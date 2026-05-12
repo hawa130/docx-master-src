@@ -58,7 +58,7 @@ Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."    
 
 ## Single-Counter Patterns (Captions, References, …)
 
-For paragraph roles that need a sequence but not a hierarchy — figure captions, table captions, reference list entries, theorem numbering, appendix items — bind a one-level numbering scheme. Never let the agent emit the counter as literal text (`图 1`, `[1]`); it desyncs the moment a figure is inserted or a reference reordered.
+For paragraph roles that need a sequence but not a hierarchy — figure captions, table captions, reference list entries, theorem numbering, appendix items — bind a one-level numbering scheme.
 
 Default counter scope: one continuous counter across the document (`restart: "continuous"`, implicit). Every paragraph bound to the scheme shares one running counter — what captions, references, equations, and appendix items want. The only opt-out is procedural `1./2./3.` list shapes (see "Procedural Numbered Lists" below), which need `restart: "perInstance"`.
 
