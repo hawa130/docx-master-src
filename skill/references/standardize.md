@@ -13,23 +13,28 @@ For most whole-doc reshape tasks, design **one** `apply` config that does the en
   "source": "input.docx",
   "output": "output.docx",
 
-  // 1. styles[]: one entry per semantic role. Mode A (fromParagraph) extracts
-  //    from a representative paragraph; Mode B uses explicit fields.
+  // 1. styles[]: one entry per semantic role.
+  //
+  //    For every role with a representative paragraph in the source —
+  //    use `fromParagraph: N`. The engine extracts font / size / weight /
+  //    indent / spacing from the actual paragraph; you add only fields
+  //    the source can't carry (`outlineLevel`, `basedOn`) or user-spec
+  //    overrides (`overrides: { ... }`). Never type `size: 12, bold: true,
+  //    alignment: ...` at the top level when the source has typography
+  //    for this role — that silently overrides the template.
+  //
+  //    Top-level explicit fields are only for empty-slot roles (no
+  //    source paragraph plays this role yet) OR user-prompt-named
+  //    typography on a fresh style — see "Empty-slot styles" below.
   "styles": [
-    // Mode A (preferred): replace 33/47/... with paragraph indices from
-    // your overview that already look like this role. The engine pulls
-    // font / size / weight / indent / spacing from the actual paragraph —
-    // nothing gets hallucinated. outlineLevel is structural (binds the
-    // style to Word's outline view), so it stays at top-level.
     { "id": "Heading1", "name": "heading 1", "fromParagraph": 33, "outlineLevel": 0 },
     { "id": "Heading2", "name": "heading 2", "fromParagraph": 47, "outlineLevel": 1 },
     { "id": "Heading3", "name": "heading 3", "fromParagraph": 58, "outlineLevel": 2 },
     { "id": "Heading4", "name": "heading 4", "fromParagraph": 71, "outlineLevel": 3 },
 
-    // Mode B (fallback): explicit fields. Use when source has no
-    // representative paragraph (empty template), OR the user prompt
-    // explicitly names typography. Declare ONLY what the user spec asks
-    // or what the empty slot needs (locale defaults).
+    // Empty-slot role: source has no paragraph already playing this role,
+    // so explicit fields are required. Declare ONLY what the user spec
+    // asks or what the empty slot needs (locale defaults).
     { "id": "ListNumber", "name": "List Number", "fontCJK": "宋体", "size": 12, "firstLineIndent": "2char" }
     // Add Caption / Quote / Code / etc. as the doc + content require.
   ],
@@ -88,19 +93,25 @@ Real cases the recipe needs adapting for:
 
 ## Designing the style system
 
-Don't invent values when a representative paragraph exists. Value priority: user spec > template > `fromParagraph` extraction > sensible defaults.
+### Default: `fromParagraph` extraction
 
-`fromParagraph` extracts from the paragraph's *dominant text run* (longest non-numbering-prefix run, so `"1.1 研究方法"` extracts the title formatting, not the prefix's). Use `overrides` to add fields the source lacks or apply user-specifics. Manual fields work too; modes mix within one `styles` array.
+If the role has any paragraph already playing it in the source, the entry MUST be `fromParagraph: N` — engine extracts the template's typography; you add only `outlineLevel` (and `basedOn` if non-default) and user-spec overrides via `overrides: { ... }`. The template's values are the contract to preserve, not a starting point to redesign.
 
-**`fontLatin` vs `fontCJK`:** When the user names only a CJK font ("正文宋体" / "标题黑体"), set `fontCJK` and leave `fontLatin` unset so the source's Latin font is preserved. Set both only when the user explicitly says the same font applies to Latin.
+`fromParagraph` reads the *dominant text run* (longest non-numbering-prefix run; `"1.1 研究方法"` gives the title's typography, not the prefix's).
 
-**Indent unit preservation:** when the source used Word's character-based indent (`w:firstLineChars` / `w:hangingChars`, what Word writes for "首行缩进 N 字符"), extraction gives `"Nchar"` so font-size auto-scaling round-trips. Fixed twips give `"Npt"`. Don't manually convert "char" values to pt — that locks the indent to one font size.
+Top-level `size` / `bold` / `alignment` / `spaceBefore` / `lineSpacing` etc. on a represented-role entry silently overrides the template — the dominant over-declaration failure.
 
-**Override existing styles before creating new ones.** Run `inspect_style_def` to discover what the source already has — POI / WPS / school templates often play the role of Normal / Heading 1 / etc. under short auto-generated styleIds (`a`, `a1`, `2`, `10`, ...). Override by their exact styleId: upsertStyle mutates in place, preserving everything you didn't specify (basedOn, default="1", numPr, link, etc.). Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body text would corrupt those paragraphs; reassign the paragraphs first.
+**`fontLatin` vs `fontCJK`:** When user names only a CJK font ("正文宋体" / "标题黑体"), put it in `overrides.fontCJK` and leave `fontLatin` unset so the source's Latin font is preserved. Set both only when the user explicitly says the same font applies to Latin.
 
-**Override sparsely.** Declare only the fields the user's spec explicitly requires. Mode A `fromParagraph` and locale-default backfills (CJK 2-char indent, etc.) belong on *fresh* styles — piled onto an existing source definition they silently rewrite fields the user didn't ask to change. The template author's existing values stay where the user spec doesn't override them.
+**Indent unit preservation:** Source's `w:firstLineChars` / `w:hangingChars` (Word's "首行缩进 N 字符") extracts as `"Nchar"` and auto-scales with font size; fixed twips give `"Npt"`. Don't manually convert "char" values to pt — locks indent to one font size.
 
-**Exception: chaotic source.** When source styleIds don't separate roles — headings, body, captions all bound to the same `a` — override can't help; changing `a` would shift all of them at once. Install fresh semantic styles (`Heading1` / `BodyText` / ...) and route paragraphs to them via `pattern_rules` / `assignments`.
+**Override existing styles before creating new ones.** Run `inspect_style_def` first — POI / WPS / school templates often play Normal / Heading 1 / etc. under auto-generated styleIds (`a`, `a1`, `2`, `10`, ...). Override by exact styleId; upsertStyle mutates in place, preserving everything unspecified. Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body would corrupt those paragraphs; reassign first.
+
+### Empty-slot styles (fallback)
+
+Explicit top-level fields are for roles with **no source paragraph** playing them yet — e.g., `ListNumber` in a doc that's never had a numbered list. Declare only user-named attributes + locale defaults the empty slot needs (CJK 2-char indent, etc.). Undeclared fields cascade from `basedOn` / `Normal` / theme — leave them blank.
+
+**Chaotic source exception.** When source styleIds don't separate roles (headings / body / captions all bound to `a`), override can't help — changing `a` shifts them all. Install fresh semantic styles + route via `pattern_rules` / `assignments`. Fresh styles are empty-slot in this design sense even if target paragraphs exist.
 
 **`name` must not alias any existing style's identity.** Word treats `<w:name>` as the built-in style identity marker, including locale aliases ("Normal" ≡ "正文" ≡ "標準"; "Heading 1" ≡ "标题 1"; "Body Text" ≡ "正文文本"). When two different styleIds claim the same identity, Word silently drops the second style's `rPr` at render time. Three safe approaches:
 

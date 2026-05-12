@@ -34,9 +34,9 @@ config; SKILL.md only carries a top-level summary.
 
 ## Style entries
 
-`styles[]` is required and holds at least one entry. Each entry follows one of two shapes (you can mix freely across the array):
+`styles[]` is required and holds at least one entry. Each entry follows one of two shapes (mix freely across the array — pick per role).
 
-### Mode A — extract from a representative paragraph (preferred)
+### Mode A — extract from a representative paragraph (required when source has one)
 
 ```jsonc
 {
@@ -57,7 +57,7 @@ config; SKILL.md only carries a top-level summary.
 }
 ```
 
-### Mode B — define manually
+### Mode B — define manually (empty-slot / user-spec-only fallback)
 
 ```jsonc
 {
