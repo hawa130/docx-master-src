@@ -71,7 +71,7 @@ Use a separate `numId` per caption family so figures and tables count independen
 
 Pair the caption style with a `FigureImage` body style (`alignment: "center"`, small `spaceBefore` / `spaceAfter` to butt the image against its caption) and set the image block's `styleId: "FigureImage"` — without it the image paragraph emits no pPr and renders left-aligned with default spacing regardless of what the caption style declares.
 
-**Position convention.** Place `FigureCaption` paragraphs **below** the image; `TableCaption` paragraphs **above** the `{ "type": "table", ... }` block; `EquationCaption` paragraphs **below** the `{ "type": "equation", ... }` block (or an `EquationNumber` paragraph to the right when the layout uses the IEEE 3-column borderless table). All bind to single-level continuous counters (default `restart`); body text refs target the caption's `anchor`, never the figure / table / equation paragraph itself.
+**Position convention.** `FigureCaption` paragraphs sit **below** the image. `TableCaption` paragraphs sit **above** the `{ "type": "table", ... }` block. `EquationNumber` paragraphs sit to the **right** of the equation on the same line (compose via 3-column borderless `TableBlock`; see [`equations.md`](equations.md)). All bind to single-level continuous counters (default `restart`); body text refs target the caption / number paragraph's `anchor`, never the figure / table / equation paragraph itself.
 
 ### Chapter-Prefixed Caption (`图 1-1`, `表 1-1`, `图 2-1`, ...)
 ```

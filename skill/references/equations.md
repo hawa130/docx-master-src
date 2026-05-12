@@ -34,19 +34,25 @@ InlineEquation { math: string }   // appears inside Paragraph.text[] alongside {
 
 The renderer is [Temml](https://temml.org/) — supports most of LaTeX math mode. Inline math doesn't number itself; use the caption pattern below for any numbered equation, regardless of display vs inline shape.
 
-## Cross-references — caption + anchor pattern
+## Numbering and cross-references
 
-Same as figures and tables: a separate caption paragraph carries the numbering binding + `anchor`; body text uses `InlineRef` against the anchor (see `cross-references.md`).
+Standard 学术 / IEEE / GB/T 7713 convention: equation centered on its line, number flush right on the same line — `equation ........... (1)`. Compose via a 3-column borderless `TableBlock` (empty / equation / numbered paragraph):
 
 ```jsonc
-{ "type": "equation", "latex": "\\sum_{i=1}^{n} a_i" },
-{ "type": "paragraph", "styleId": "EquationCaption",
-  "anchor": "eq-sum", "text": "求和定义" }
+{ "type": "table", "borders": "none",
+  "cols": [{ "width": "auto" }, { "width": 300 }, { "width": "auto" }],
+  "rows": [[
+    "",
+    [{ "type": "equation", "latex": "\\sum_{i=1}^{n} a_i" }],
+    [{ "type": "paragraph", "styleId": "EquationNumber",
+       "paraFormat": { "alignment": "right" },
+       "anchor": "eq-sum", "text": "" }]
+  ]]}
 ```
 
-Caption sits below the equation. The caption paragraph (not the equation) is the InlineRef target — equation paragraphs hold no readable text, so `display: "full"` against them resolves to empty.
+`EquationNumber` is bound to a single-level counter scheme (e.g. `lvlText: "(%1)"`) so the right cell renders as `(1)`, `(2)`, … automatically. Body-text refs target the numbered paragraph via `InlineRef` against its `anchor` (see `cross-references.md`).
 
-For right-aligned equation numbering on the same line as the equation (IEEE convention), wrap both in a 3-column borderless `TableBlock`. Construction follows `tables.md`.
+The equation paragraph itself holds no readable text, so cross-refs must anchor on the numbered paragraph, not on the equation.
 
 ## Integration with the style system
 
