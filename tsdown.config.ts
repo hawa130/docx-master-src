@@ -23,6 +23,7 @@ const tools: Record<string, string> = {
   inspect_section: "inspect-section.ts",
   inspect_table: "inspect-table.ts",
   inspect_blockers: "inspect-blockers.ts",
+  inspect_caption: "inspect-caption.ts",
   find_paragraphs: "find-paragraphs.ts",
   find_text: "find-text.ts",
   validate: "validate.ts",
@@ -30,6 +31,7 @@ const tools: Record<string, string> = {
   apply: "apply.ts",
   restyle: "restyle.ts",
   migrate_numbering: "migrate-numbering.ts",
+  migrate_captions: "migrate-captions.ts",
   import_template: "import-template.ts",
 }
 

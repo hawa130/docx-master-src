@@ -1,0 +1,169 @@
+/**
+ * migrate-captions: detect manually-numbered caption-shaped paragraphs.
+ *
+ * Usage:
+ *   migrate_captions <docx-path> [--style <styleId> ...]
+ *
+ * Scans body for paragraphs whose pStyle matches one of the provided
+ * styleIds (or any style if --style not given) AND whose visible text
+ * starts with a caption-shaped prefix:
+ *   - "图 N", "图 N.M"
+ *   - "表 N", "表 N.M"
+ *   - "Figure N", "Figure N.M"
+ *   - "Table N", "Table N.M"
+ *   - "(N)", "(N.M)"
+ *   - "[N]", "[N.M]"
+ *
+ * Reports each candidate for the agent to review. Output is read-only —
+ * the agent then builds an apply config with the appropriate `captions`
+ * table + edit ops to delete / re-emit each candidate via CaptionBlock.
+ *
+ * This tool is intentionally read-only in v1. Automatic migration
+ * requires the agent to declare the captions table first (identifier
+ * names, chapter prefix style, etc.) — without that context, the tool
+ * can't know which identifier each pattern maps to. The agent uses this
+ * detection output to write the apply config.
+ */
+
+import { loadDocx } from "@lib/xml/load.ts"
+import { NS } from "@lib/parse/types.ts"
+import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
+
+const w = NS.w
+
+interface Candidate {
+  paragraphIndex: number
+  styleId: string | undefined
+  matchedPrefix: string
+  text: string
+  suggestedIdentifier: string
+}
+
+const PATTERNS: Array<{ regex: RegExp; identifier: string }> = [
+  { regex: /^图\s*\d+(?:[.-]\d+)?/, identifier: "Figure" },
+  { regex: /^表\s*\d+(?:[.-]\d+)?/, identifier: "Table" },
+  { regex: /^Figure\s+\d+(?:[.-]\d+)?/i, identifier: "Figure" },
+  { regex: /^Table\s+\d+(?:[.-]\d+)?/i, identifier: "Table" },
+  { regex: /^Equation\s+\d+(?:[.-]\d+)?/i, identifier: "Equation" },
+  { regex: /^\(\s*\d+(?:[.-]\d+)?\s*\)/, identifier: "Equation" },
+  { regex: /^\[\s*\d+(?:[.-]\d+)?\s*\]/, identifier: "Equation" },
+]
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2)
+  const file = args[0]
+  if (!file) {
+    console.error("Usage: migrate_captions <docx-path> [--style <styleId> ...]")
+    process.exit(1)
+  }
+  const filterStyles = new Set<string>()
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--style" && args[i + 1]) {
+      filterStyles.add(args[i + 1]!)
+      i++
+    }
+  }
+
+  const doc = await loadDocx(file)
+  const documentDoc = doc.documentDoc
+  if (!documentDoc) {
+    console.error("migrate_captions: failed to read word/document.xml")
+    process.exit(1)
+  }
+  const body = firstChildNS(documentDoc.documentElement, w, "body")
+  if (!body) {
+    console.error("migrate_captions: document has no body")
+    process.exit(1)
+  }
+
+  const candidates: Candidate[] = []
+  let paragraphIndex = 0
+  for (const para of walkParagraphs(body)) {
+    paragraphIndex++
+    const styleId = paragraphStyleId(para)
+    if (filterStyles.size > 0 && (styleId === undefined || !filterStyles.has(styleId))) continue
+    if (paragraphContainsSeq(para)) continue // already SEQ-based, skip
+    const text = paragraphVisibleText(para)
+    for (const { regex, identifier } of PATTERNS) {
+      const m = text.match(regex)
+      if (m) {
+        candidates.push({
+          paragraphIndex,
+          styleId,
+          matchedPrefix: m[0],
+          text,
+          suggestedIdentifier: identifier,
+        })
+        break
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    console.log("No manually-numbered caption-shaped paragraphs detected.")
+    return
+  }
+  console.log(
+    `Manual caption candidates detected (${candidates.length}). Each is a paragraph whose text leads with a caption-shape and no SEQ field — the agent can convert via apply config (CaptionBlock + replace op).`,
+  )
+  console.log("")
+  for (const c of candidates) {
+    const styleId = c.styleId ?? "(unstyled)"
+    const preview = c.text.length > 60 ? c.text.slice(0, 57) + "..." : c.text
+    console.log(
+      `  para ${String(c.paragraphIndex).padStart(4)}  style: ${styleId.padEnd(20)}  prefix: ${c.matchedPrefix.padEnd(12)}  suggestedIdentifier: ${c.suggestedIdentifier}`,
+    )
+    console.log(`        text: ${preview}`)
+  }
+  console.log("")
+  console.log("Next steps for the agent:")
+  console.log("  1. Declare a captions[] table in your apply config matching the suggested")
+  console.log("     identifiers (Figure / Table / Equation / ...).")
+  console.log("  2. Add edit ops that `delete` each manual paragraph and `insert-after`")
+  console.log("     a CaptionBlock { captionId, text, anchor? }. Strip the matched prefix")
+  console.log("     from the text — the captions table re-renders prefix + counter.")
+}
+
+function paragraphStyleId(paragraph: Element): string | undefined {
+  const pPr = firstChildNS(paragraph, w, "pPr")
+  if (!pPr) return undefined
+  const pStyle = firstChildNS(pPr, w, "pStyle")
+  if (!pStyle) return undefined
+  return wAttr(pStyle, "val") ?? undefined
+}
+
+function paragraphContainsSeq(paragraph: Element): boolean {
+  const runs: Element[] = []
+  for (const c of getChildren(paragraph)) {
+    if (c.namespaceURI === w && c.localName === "r") runs.push(c)
+  }
+  const parsed = parseFieldRuns(runs)
+  return parsed.some((e) => e.kind === "field" && e.fieldType === "SEQ")
+}
+
+function paragraphVisibleText(paragraph: Element): string {
+  let out = ""
+  for (const r of getChildren(paragraph)) {
+    if (r.namespaceURI !== w || r.localName !== "r") continue
+    for (const t of getChildren(r)) {
+      if (t.namespaceURI === w && t.localName === "t") {
+        out += t.textContent ?? ""
+      }
+    }
+  }
+  return out
+}
+
+function* walkParagraphs(root: Element): Generator<Element> {
+  for (const child of getChildren(root)) {
+    if (child.namespaceURI !== w) continue
+    if (child.localName === "p") {
+      yield child
+    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
+      yield* walkParagraphs(child)
+    }
+  }
+}
+
+await main()
