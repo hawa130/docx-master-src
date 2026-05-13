@@ -495,8 +495,17 @@ function renderCaptions(doc: LoadedDoc): string[] {
     }
     if (runs.length === 0) continue
     const parsed = parseFieldRuns(runs)
+    // Count every advancing SEQ in the paragraph. Skip `\c` (repeat=true)
+    // SEQs — those are prefix-readers that reuse the current counter value
+    // (engine-injected chapter prefixes use them), so they neither advance
+    // their own identifier nor shadow the real caption identifier that
+    // follows in the same paragraph. Each non-`\c` identifier gets a
+    // separate occurrence; sub-counters (e.g. Equation + EquationSub in a
+    // sub-numbered equation paragraph) both register.
+    const styleId = captionParagraphStyleId(para)
     for (const entry of parsed) {
       if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
+      if (entry.details.repeat) continue
       const id = entry.details.identifier
       if (!id) continue
       let summary = byId.get(id)
@@ -511,9 +520,7 @@ function renderCaptions(doc: LoadedDoc): string[] {
         byId.set(id, summary)
       }
       summary.occurrences++
-      const styleId = captionParagraphStyleId(para)
       if (styleId) summary.paragraphStyleIds.add(styleId)
-      break
     }
   }
 

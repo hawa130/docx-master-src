@@ -70,37 +70,54 @@ async function main(): Promise<void> {
       }
     }
 
-    // Find SEQ fields in this paragraph (one or two: parent + optional sub)
+    // Collect advancing SEQ fields in this paragraph. SEQs carrying the
+    // `\c` switch are prefix-readers (they reuse the current counter
+    // value without advancing) — engine-injected chapter prefixes use
+    // this to render `chapter.figure` style numbering. They shouldn't
+    // be counted as occurrences under their own identifier, and they
+    // shouldn't shadow the real caption identifier (`Figure`, `Table`,
+    // ...) that follows them in the same paragraph.
     const seqFields: FieldDetails[] = []
     for (const entry of parsed) {
-      if (entry.kind === "field" && entry.fieldType === "SEQ") seqFields.push(entry.details)
+      if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
+      if (entry.details.repeat) continue
+      seqFields.push(entry.details)
     }
     if (seqFields.length === 0) continue
-    const parent = seqFields[0]!
-    if (!parent.identifier) continue
-
-    let summary = byId.get(parent.identifier)
-    if (!summary) {
-      summary = {
-        identifier: parent.identifier,
-        format: parent.format,
-        restartAtOutlineLevel: parent.restartAtOutlineLevel,
-        occurrences: [],
-        referencingRefs: 0,
+    // Record one occurrence per advancing SEQ identifier in the paragraph.
+    // A sub-numbered caption like Equation 2(b) emits both `SEQ Equation`
+    // and `SEQ EquationSub` in the same `<w:p>`; both advance, so both
+    // count. The first SEQ is the paragraph's primary identifier; any
+    // others past index 0 are sub-counters shown as combined `parent.sub`
+    // counter values on the primary entry.
+    const styleId = paragraphStyleId(para)
+    const anchorName = firstBookmarkName(para)
+    for (const [i, seq] of seqFields.entries()) {
+      if (!seq.identifier) continue
+      let summary = byId.get(seq.identifier)
+      if (!summary) {
+        summary = {
+          identifier: seq.identifier,
+          format: seq.format,
+          restartAtOutlineLevel: seq.restartAtOutlineLevel,
+          occurrences: [],
+          referencingRefs: 0,
+        }
+        byId.set(seq.identifier, summary)
       }
-      byId.set(parent.identifier, summary)
-    }
-
-    summary.occurrences.push({
-      paragraphIndex,
-      parentSeqValue: rawResultText(parsed, "SEQ", parent.identifier) ?? "",
-      subSeqValue:
-        seqFields.length > 1
+      const parentSeqValue = i === 0 ? (rawResultText(parsed, "SEQ", seq.identifier) ?? "") : ""
+      const subSeqValue =
+        i === 0 && seqFields.length > 1
           ? (rawResultText(parsed, "SEQ", seqFields[1]!.identifier ?? "") ?? "")
-          : undefined,
-      styleId: paragraphStyleId(para),
-      anchorName: firstBookmarkName(para),
-    })
+          : undefined
+      summary.occurrences.push({
+        paragraphIndex,
+        parentSeqValue,
+        subSeqValue,
+        styleId,
+        anchorName,
+      })
+    }
   }
 
   // Compute referencing-REF counts per identifier (by anchor lookup).

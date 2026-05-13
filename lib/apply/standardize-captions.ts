@@ -272,9 +272,12 @@ function findSeqIdentifier(paragraph: Element): string | undefined {
   }
   const parsed = parseFieldRuns(runs)
   for (const entry of parsed) {
-    if (entry.kind === "field" && entry.fieldType === "SEQ") {
-      return entry.details.identifier
-    }
+    if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
+    // Skip `\c` (repeat) SEQs — engine-injected chapter prefixes read the
+    // current counter value without advancing and aren't this paragraph's
+    // own identifier. Same fix shape as inspect-caption / overview.
+    if (entry.details.repeat) continue
+    return entry.details.identifier
   }
   return undefined
 }

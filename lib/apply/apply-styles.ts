@@ -33,6 +33,7 @@ import {
   upsertStyle,
 } from "@lib/apply/style-mutation.ts"
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
+import { lintPanguInEdits, type PanguWarning } from "@lib/edit/pangu-lint.ts"
 import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
 import { resolveCaptions } from "@lib/parse/caption-resolver.ts"
@@ -500,49 +501,63 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let pendingBackfills: PendingRefBackfill[] = []
   let pendingCaptionFills: PendingCaptionFill[] = []
   let pendingCaptionResets: PendingCaptionReset[] = []
+  let panguWarnings: PanguWarning[] = []
   if (config.edits && config.edits.length > 0) {
-    if (config.dryRun) {
-      // Dry-run: resolve locators + blocker check, but don't mutate. Lets the
-      // change report show predicted edit effect alongside style + rule effect,
-      // and lets implicit-keep accounting subtract paragraphs the edits will
-      // replace/delete (otherwise those read as false-positive coverage gaps).
-      const preview = previewEditOps({
-        documentDoc,
-        parsedParagraphs: parsed.paragraphs,
-        edits: config.edits,
-      })
-      editsPreview = preview.entries
-      editTouchedIndices = preview.replacedOrDeletedIndices
-    } else {
-      const result = await runEditOps({
-        documentDoc,
-        parsedParagraphs: parsed.paragraphs,
-        reader,
-        edits: config.edits,
-        trackChanges: config.trackChanges ?? false,
-        stylesDoc,
-        sections: parsed.sections,
-        captions: resolvedCaptions.byIdentifier,
-      })
-      imageRegistry = result.imageRegistry
-      editsApplied = result.report.applied
-      editsTrackChanges = result.report.trackChanges
-      ;({ bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
-        result.crossRefs)
+    // Pangu-spacing lint: flag literal ASCII spaces between CJK and Latin/digit
+    // glyphs in author-supplied text. Word's autoSpace inserts the gap at
+    // render time; stacking a typed space on top renders too wide. Non-fatal:
+    // the agent gets the warnings in the report and decides whether to scrub.
+    panguWarnings = lintPanguInEdits(config.edits)
+    // Preview pass: resolve locators against the pre-edit document so the
+    // report's "Edits Preview" + implicit-keep accounting use ORIGINAL paragraph
+    // indices (the locators were authored against those). Cheap, non-mutating —
+    // safe to run unconditionally even though `runEditOps` below also resolves
+    // locators internally; the preview entries carry pre-edit-index metadata
+    // that runEditOps doesn't expose.
+    const preview = previewEditOps({
+      documentDoc,
+      parsedParagraphs: parsed.paragraphs,
+      edits: config.edits,
+    })
+    editsPreview = preview.entries
+    editTouchedIndices = preview.replacedOrDeletedIndices
 
-      // Re-parse documentDoc — paragraph indices have shifted since edits inserted
-      // new paragraphs. The rules pass below uses parsed.paragraphs directly, so it
-      // needs the post-edit state. This must happen *before* applyToBody so the
-      // action map (assignments / pattern_rules / bulk_rules) sees correct indices,
-      // and *before* the cross-ref pipeline (step 7c) so chapter-SEQ injection
-      // operates on the post-edit + post-restyle document.
-      const reParser = new DocumentParser(documentDoc, resolver, numberingDoc)
-      parsed = reParser.parse()
-      fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
-      hashToLetter.clear()
-      for (const s of fpResult.summary) {
-        hashToLetter.set(s.hash, s.label)
-      }
+    // Apply edits. Dry-run also walks this path so the cross-ref pipeline below
+    // sees pendingCaptionFills / pendingBackfills / pendingCaptionResets for
+    // freshly inserted captions, refs, and equations — otherwise the dry-run
+    // caption-preview report only reflects standardize-reemit (existing source
+    // captions) and predicts no text for the edits[] inserts. Disk-side effects
+    // are gated separately by `if (!config.dryRun)` further down: documentDoc is
+    // mutated in memory, image-registry binaries / rels are only staged into the
+    // `replacements` map. Both are discarded on dry-run exit.
+    const result = await runEditOps({
+      documentDoc,
+      parsedParagraphs: parsed.paragraphs,
+      reader,
+      edits: config.edits,
+      trackChanges: config.trackChanges ?? false,
+      stylesDoc,
+      sections: parsed.sections,
+      captions: resolvedCaptions.byIdentifier,
+    })
+    imageRegistry = result.imageRegistry
+    editsApplied = result.report.applied
+    editsTrackChanges = result.report.trackChanges
+    ;({ bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
+      result.crossRefs)
+
+    // Re-parse documentDoc — paragraph indices have shifted since edits inserted
+    // new paragraphs. The rules pass below uses parsed.paragraphs directly, so it
+    // needs the post-edit state. This must happen *before* applyToBody so the
+    // action map (assignments / pattern_rules / bulk_rules) sees correct indices,
+    // and *before* the cross-ref pipeline (step 7c) so chapter-SEQ injection
+    // operates on the post-edit + post-restyle document.
+    const reParser = new DocumentParser(documentDoc, resolver, numberingDoc)
+    parsed = reParser.parse()
+    fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
+    hashToLetter.clear()
+    for (const s of fpResult.summary) {
+      hashToLetter.set(s.hash, s.label)
     }
   }
 
@@ -738,6 +753,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let captionsPreview: {
     chapterSeqsInjected: number
     standardizeReemitted: number
+    freshlyEmitted: number
     samples: Array<{ identifier: string; text: string }>
   } | null = null
   {
@@ -813,6 +829,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         captionsPreview = {
           chapterSeqsInjected,
           standardizeReemitted: standardizeResult.fills.length,
+          freshlyEmitted: pendingCaptionFills.length,
           samples: previewSamples,
         }
       }
@@ -1015,9 +1032,14 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     templateImport,
     editsPreview,
     captionsPreview,
+    panguWarnings: panguWarnings.length > 0 ? panguWarnings : undefined,
   })
 
-  if (editsApplied > 0) {
+  // Dry-run also invokes runEditOps now (so the cross-ref pipeline can see
+  // pending caption fills from edits[]) — the message would mislead the agent
+  // into thinking changes hit disk. The Edits Preview block in the report
+  // already covers the dry-run case.
+  if (editsApplied > 0 && !config.dryRun) {
     console.error(
       `\nEdit pass: ${editsApplied} op(s) applied${editsTrackChanges ? " (track-changes)" : ""}. New paragraphs participated in pattern_rules / bulk_rules cleanup uniformly with the original chrome.`,
     )

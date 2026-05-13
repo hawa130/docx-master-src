@@ -183,8 +183,14 @@ export function printReport(args: {
   captionsPreview: {
     chapterSeqsInjected: number
     standardizeReemitted: number
+    freshlyEmitted: number
     samples: Array<{ identifier: string; text: string }>
   } | null
+  /** dry-run only: heuristic flags for likely Pangu (CJK ↔ Latin/digit
+   * literal-space) gaps in edits[] inserted text. Word's `autoSpace`
+   * already inserts the visual gap between CJK and Latin glyphs;
+   * stacking a manual ASCII space on top renders too wide. */
+  panguWarnings?: Array<{ editIndex: number; snippet: string; hit: string }>
 }) {
   const lines: string[] = []
   lines.push(
@@ -464,11 +470,29 @@ export function printReport(args: {
     lines.push(
       `  Caption paragraphs re-emitted: ${cp.standardizeReemitted}  (existing captions rebuilt against current config)`,
     )
+    lines.push(
+      `  Caption paragraphs freshly emitted: ${cp.freshlyEmitted}  (new captions inserted by edits[])`,
+    )
     if (cp.samples.length > 0) {
       lines.push(`  Predicted text (first ${cp.samples.length}):`)
       for (const s of cp.samples) lines.push(`    [${s.identifier}] "${s.text}"`)
     } else {
       lines.push(`  Predicted text: (no caption samples — config has captions but body emits none)`)
+    }
+    lines.push("")
+  }
+  if (args.panguWarnings && args.panguWarnings.length > 0) {
+    const w = args.panguWarnings
+    lines.push("=== Possible Pangu spacing in inserted text ===")
+    lines.push(
+      "  Word's autoSpace handles CJK ↔ Latin/digit gaps; typed ASCII spaces stack on top and render too wide.",
+    )
+    const shown = w.slice(0, 5)
+    for (const entry of shown) {
+      lines.push(`  edits[${entry.editIndex}]  ...${entry.snippet}...   (matched "${entry.hit}")`)
+    }
+    if (w.length > shown.length) {
+      lines.push(`  (... ${w.length - shown.length} more not shown)`)
     }
     lines.push("")
   }
