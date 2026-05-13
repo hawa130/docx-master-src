@@ -58,13 +58,7 @@ Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."    
 
 ## Single-Counter Patterns (Reference List, Procedural Lists, …)
 
-For paragraph roles that need a sequence but not a hierarchy — reference
-list entries, procedural numbered steps, appendix items — bind a
-one-level numbering scheme. **Caption-class numbering (figures /
-tables / equations / theorems) uses a different mechanism — SEQ +
-STYLEREF fields via the top-level `captions` table; see
-[`captions.md`](captions.md). Caption-class styleIds must NOT appear in
-`numbering[]` — apply rejects that combination.**
+For paragraph roles that need a sequence but not a hierarchy — reference list entries, procedural numbered steps, appendix items — bind a one-level numbering scheme. **Caption-class numbering (figures / tables / equations / theorems) lives in the top-level `captions` table, not here — see [`captions.md`](captions.md).**
 
 Default counter scope: one continuous counter across the document
 (`restart: "continuous"`, implicit). The only opt-out is procedural

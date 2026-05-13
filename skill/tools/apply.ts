@@ -16,13 +16,7 @@ import { runCli } from "@lib/shared/cli-helpers.ts"
  *     format ops
  *   - `trackChanges` — emit edits as Word revision markup
  *
- * The orchestrator runs them in the correct order in one pipeline:
- *   install styles + numbering + theme + template
- *     → apply edits (insert content, referencing the now-installed styles)
- *     → re-fingerprint
- *     → apply rules (pattern_rules / bulk_rules / assignments match BOTH
- *       pre-existing chrome AND newly-inserted content uniformly)
- *     → validate, write
+ * Pipeline order: see SKILL.md §Commands.
  *
  * Sparse by design: only declared blocks are applied. Untouched styles,
  * numbering schemes, paragraphs, and theme stay as they are.

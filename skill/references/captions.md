@@ -246,4 +246,4 @@ Existing SEQ captions in the source doc get re-rendered with the current `captio
 - `overview` shows a Captions section listing SEQ identifiers found in body (skip-if-empty).
 - `inspect_caption <doc>` lists all identifiers with occurrence counts + referencing-REF counts.
 - `inspect_caption <doc> <identifier>` dumps per-paragraph details.
-- `migrate_captions <doc> [--style <styleId>]` detects manually-numbered caption-shaped paragraphs (e.g. "图 2.1: ..." typed by hand, no SEQ field) and suggests identifiers — agent builds the apply config to convert. `--style` filters candidates to that paragraph styleId; omit to scan the whole body.
+- `migrate_captions <doc> [--style <styleId>]...` detects manually-numbered caption-shaped paragraphs (e.g. "图 2.1: ..." typed by hand, no SEQ field) and suggests identifiers — agent builds the apply config to convert. `--style` filters candidates to that paragraph styleId (repeatable for multiple styles); omit to scan the whole body.
