@@ -22,7 +22,7 @@ import { loadDocx, parseNumbering } from "@lib/xml/load.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { NS, type DocumentElement, type ParsedParagraph } from "@lib/parse/types.ts"
 import type { LoadedDoc } from "@lib/xml/load.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import { pad, paperName, truncate, tw2mm } from "@lib/parse/format.ts"
 import { sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
@@ -35,17 +35,6 @@ function captionParagraphStyleId(paragraph: Element): string | undefined {
   const pStyle = firstChildNS(pPr, NS_W, "pStyle")
   if (!pStyle) return undefined
   return wAttr(pStyle, "val") ?? undefined
-}
-
-function* walkCaptionParas(root: Element): Generator<Element> {
-  for (const child of getChildren(root)) {
-    if (child.namespaceURI !== NS_W) continue
-    if (child.localName === "p") {
-      yield child
-    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
-      yield* walkCaptionParas(child)
-    }
-  }
 }
 
 type ParasMode = "full" | "none" | { from: number; to: number }
@@ -499,7 +488,7 @@ function renderCaptions(doc: LoadedDoc): string[] {
   }
   const byId = new Map<string, Summary>()
 
-  for (const para of walkCaptionParas(body)) {
+  for (const para of walkBodyParagraphs(body)) {
     const runs: Element[] = []
     for (const c of getChildren(para)) {
       if (c.namespaceURI === NS_W && c.localName === "r") runs.push(c)

@@ -47,6 +47,12 @@ export interface BookmarkAssignment {
   name: string
 }
 
+/** Same shape as BookmarkAssignment — exists as a named alias for the
+ * caption pipeline's contract clarity. Caption emit allocates these
+ * via `allocateRangeBookmark` and emits bookmarkStart/End inline,
+ * distinct from the commit-phase whole-paragraph wrap. */
+export type BookmarkRange = BookmarkAssignment
+
 /** A name bound to a paragraph element. `origin` is informational only —
  * affects nothing at the API surface; `commit` decides what to wrap based
  * on the `byElement` map. */
@@ -74,6 +80,12 @@ export class BookmarkAllocator {
   private byElement = new Map<Element, BookmarkAssignment>()
   private nameIndex = new Map<string, BoundRecord>()
   private reservations = new Map<string, Reservation>()
+  /** Names allocated via `allocateRangeBookmark`. Caption emit uses
+   * these (the bookmark wraps prefix..suffix runs inline rather than
+   * the commit-phase whole-paragraph wrap). InlineRef's numbering
+   * check fast-paths via `isRangeBookmark` so caption-class targets
+   * don't need a numPr binding. */
+  private rangeBookmarks = new Set<string>()
 
   constructor(documentDoc: Document) {
     this.nextId = 0
@@ -232,6 +244,7 @@ export class BookmarkAllocator {
     this.reservations.delete(name)
     const id = this.nextId++
     this.usedNames.add(name)
+    this.rangeBookmarks.add(name)
     return { id, name }
   }
 
@@ -242,6 +255,13 @@ export class BookmarkAllocator {
    * paragraph again. */
   bindRangeBookmark(name: string, pEl: Element): void {
     this.nameIndex.set(name, { element: pEl, origin: "adopted" })
+  }
+
+  /** True iff `name` was allocated as a caption range bookmark. Used by
+   * InlineRef's emit-time numbering check to fast-path caption-class
+   * targets (they're SEQ-numbered, not numPr-bound). */
+  isRangeBookmark(name: string): boolean {
+    return this.rangeBookmarks.has(name)
   }
 
   /** True iff at least one bookmark will be wrapped at commit. Source

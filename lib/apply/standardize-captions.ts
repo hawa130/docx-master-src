@@ -25,7 +25,7 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
 import { emitCaptionBlock } from "@lib/edit/caption-emit.ts"
 import type { BookmarkAllocator } from "@lib/edit/bookmark.ts"
@@ -57,7 +57,7 @@ export function standardizeCaptions(
     styleToIdentifier.set(config.paragraphStyleId, id)
   }
 
-  for (const para of walkParagraphs(body)) {
+  for (const para of walkBodyParagraphs(body)) {
     if (freshlyEmitted.has(para)) continue
     const styleId = paragraphStyleId(para)
     if (!styleId) continue
@@ -290,15 +290,4 @@ function findSeqIdentifier(paragraph: Element): string | undefined {
     }
   }
   return undefined
-}
-
-function* walkParagraphs(root: Element): Generator<Element> {
-  for (const child of getChildren(root)) {
-    if (child.namespaceURI !== w) continue
-    if (child.localName === "p") {
-      yield child
-    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
-      yield* walkParagraphs(child)
-    }
-  }
 }

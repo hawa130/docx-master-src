@@ -12,7 +12,7 @@
 
 import { loadDocx } from "@lib/xml/load.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns, type FieldDetails } from "@lib/edit/fields/field-parse.ts"
 
 const w = NS.w
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   const refTargets = new Map<string, number>()
   let paragraphIndex = 0
 
-  for (const para of walkParagraphs(body)) {
+  for (const para of walkBodyParagraphs(body)) {
     paragraphIndex++
     const runs = paragraphRuns(para)
     if (runs.length === 0) continue
@@ -206,17 +206,6 @@ function rawResultText(
     }
   }
   return undefined
-}
-
-function* walkParagraphs(root: Element): Generator<Element> {
-  for (const child of getChildren(root)) {
-    if (child.namespaceURI !== w) continue
-    if (child.localName === "p") {
-      yield child
-    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
-      yield* walkParagraphs(child)
-    }
-  }
 }
 
 await main()

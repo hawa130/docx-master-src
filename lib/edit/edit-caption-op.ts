@@ -20,7 +20,7 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
 import type { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import type { ResolvedCaptionConfig } from "@lib/edit/caption-counter.ts"
@@ -60,7 +60,7 @@ export function resolveEditCaptionTarget(input: EditCaptionInput): Element {
   if (!body) {
     throw new Error("edit-caption: document has no body")
   }
-  for (const para of walkParagraphs(body)) {
+  for (const para of walkBodyParagraphs(body)) {
     if (paragraphStyleId(para) !== config.paragraphStyleId) continue
     if (!paragraphContainsSeq(para, captionId)) continue
     matches.push(para)
@@ -156,15 +156,4 @@ function paragraphContainsSeq(paragraph: Element, identifier: string): boolean {
     }
   }
   return false
-}
-
-function* walkParagraphs(root: Element): Generator<Element> {
-  for (const child of getChildren(root)) {
-    if (child.namespaceURI !== w) continue
-    if (child.localName === "p") {
-      yield child
-    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
-      yield* walkParagraphs(child)
-    }
-  }
 }

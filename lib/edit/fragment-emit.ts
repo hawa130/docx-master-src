@@ -31,7 +31,8 @@ import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
 import { emitEquationBlock, emitInlineEquation } from "@lib/edit/math/equation-emit.ts"
-import { emitCaptionBlock, emitCaptionReset, type BookmarkRange } from "@lib/edit/caption-emit.ts"
+import { emitCaptionBlock, emitCaptionReset } from "@lib/edit/caption-emit.ts"
+import type { BookmarkRange } from "@lib/edit/bookmark.ts"
 import type {
   PendingCaptionFill,
   PendingCaptionReset,

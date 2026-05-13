@@ -29,6 +29,7 @@ import { parseXml } from "@lib/xml/reader.ts"
 import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
 import { emitSeqField } from "@lib/edit/fields/seq-field.ts"
 import { emitStyleRefField } from "@lib/edit/fields/styleref-field.ts"
+import type { BookmarkRange } from "@lib/edit/bookmark.ts"
 import type {
   ResolvedCaptionConfig,
   PendingCaptionFill,
@@ -39,12 +40,8 @@ const w = NS.w
 const m = NS.m
 const XML_NS = "http://www.w3.org/XML/1998/namespace"
 
+export type { BookmarkRange }
 export type MathSource = { latex: string } | { omml: string }
-
-export interface BookmarkRange {
-  id: number
-  name: string
-}
 
 /* ============================ EquationBlock ============================ */
 

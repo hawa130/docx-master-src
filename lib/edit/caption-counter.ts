@@ -34,7 +34,7 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import type { SeqFormat } from "@lib/edit/fields/seq-field.ts"
 
 const w = NS.w
@@ -146,7 +146,7 @@ export function simulateCaptions(
   const body = firstChildNS(root, w, "body")
   if (!body) return { fieldValues, fullCaptionText }
 
-  for (const para of walkParagraphs(body)) {
+  for (const para of walkBodyParagraphs(body)) {
     const outlineInfo = input.outlineParagraphs.get(para)
     if (outlineInfo) {
       latestHeading.set(outlineInfo.styleName, outlineInfo.rendered)
@@ -253,17 +253,6 @@ function applyFillToState(state: CounterState, fill: PendingCaptionFill): void {
     state.parent++
     state.sub = 0
     state.openSubGroup = false
-  }
-}
-
-function* walkParagraphs(root: Element): Generator<Element> {
-  for (const child of getChildren(root)) {
-    if (child.namespaceURI !== w) continue
-    if (child.localName === "p") {
-      yield child
-    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
-      yield* walkParagraphs(child)
-    }
   }
 }
 

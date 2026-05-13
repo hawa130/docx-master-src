@@ -27,7 +27,7 @@
 
 import { loadDocx } from "@lib/xml/load.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
 
 const w = NS.w
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
 
   const candidates: Candidate[] = []
   let paragraphIndex = 0
-  for (const para of walkParagraphs(body)) {
+  for (const para of walkBodyParagraphs(body)) {
     paragraphIndex++
     const styleId = paragraphStyleId(para)
     if (filterStyles.size > 0 && (styleId === undefined || !filterStyles.has(styleId))) continue
@@ -153,17 +153,6 @@ function paragraphVisibleText(paragraph: Element): string {
     }
   }
   return out
-}
-
-function* walkParagraphs(root: Element): Generator<Element> {
-  for (const child of getChildren(root)) {
-    if (child.namespaceURI !== w) continue
-    if (child.localName === "p") {
-      yield child
-    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
-      yield* walkParagraphs(child)
-    }
-  }
 }
 
 await main()

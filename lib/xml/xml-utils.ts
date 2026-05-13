@@ -98,3 +98,21 @@ export function parseToggle(el: Element | null): boolean | undefined {
   if (v === "0" || v === "false") return false
   return true
 }
+
+/** Depth-first walk yielding every `<w:p>` reachable from `root`,
+ * descending through `<w:tbl>` / `<w:tr>` / `<w:tc>` containers. Used
+ * by the caption pipeline (counter sim, standardize re-emit,
+ * edit-caption resolver) and the inspection / migration tools — they
+ * all need the same shape of traversal. Distinct from the
+ * `walkIndexedParagraphs` in `lib/edit/locator.ts` which is layout-
+ * table aware and returns indexed pairs. */
+export function* walkBodyParagraphs(root: Element): Generator<Element> {
+  for (const child of getChildren(root)) {
+    if (child.namespaceURI !== NS.w) continue
+    if (child.localName === "p") {
+      yield child
+    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
+      yield* walkBodyParagraphs(child)
+    }
+  }
+}

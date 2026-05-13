@@ -309,7 +309,6 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   const pendingBackfills: PendingRefBackfill[] = []
   const pendingCaptionFills: PendingCaptionFill[] = []
   const pendingCaptionResets: PendingCaptionReset[] = []
-  const captionAnchorNames = new Set<string>()
   const captionsMap = input.captions
   const emitCtx: EmitContext = {
     emitImage: (src, widthPt, heightPt, alt, ownerDoc) => {
@@ -317,13 +316,8 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
     },
     resolveCaption: captionsMap ? (identifier: string) => captionsMap.get(identifier) : undefined,
-    allocateCaptionBookmark: (name) => {
-      captionAnchorNames.add(name)
-      return bookmarkAllocator.allocateRangeBookmark(name)
-    },
-    bindCaptionBookmark: (name, pEl) => {
-      bookmarkAllocator.bindRangeBookmark(name, pEl)
-    },
+    allocateCaptionBookmark: (name) => bookmarkAllocator.allocateRangeBookmark(name),
+    bindCaptionBookmark: (name, pEl) => bookmarkAllocator.bindRangeBookmark(name, pEl),
     registerCaptionFill: (fill) => {
       pendingCaptionFills.push(fill)
     },
@@ -376,7 +370,8 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // unconditionally: forward refs match via reserveName's
       // `directlyNumbered: !!b.captionId` hint; backward refs match via
       // the `captionAnchorNames` set populated at caption emit time.
-      const isCaptionAnchor = ref.refTo.type === "anchor" && captionAnchorNames.has(ref.refTo.name)
+      const isCaptionAnchor =
+        ref.refTo.type === "anchor" && bookmarkAllocator.isRangeBookmark(ref.refTo.name)
       // Caption-class targets: display:"full" would need a paragraph-wide
       // secondary bookmark for REF \h to return body text. The pipeline
       // only emits the primary bookmark (number + decoration), so
