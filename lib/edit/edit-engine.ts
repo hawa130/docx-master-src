@@ -302,6 +302,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       bookmarkAllocator.reserveName(hint.anchor, {
         styleId: hint.styleId,
         directlyNumbered: hint.directlyNumbered,
+        isCaption: hint.isCaption,
       })
     })
   }
@@ -370,8 +371,14 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // unconditionally: forward refs match via reserveName's
       // `directlyNumbered: !!b.captionId` hint; backward refs match via
       // the `captionAnchorNames` set populated at caption emit time.
+      // Backward refs: caption emit already called allocateRangeBookmark
+      // → bookmarkAllocator.isRangeBookmark catches it.
+      // Forward refs: bookmark not yet allocated; pre-scan reservation
+      // carries `isCaption` from the block's captionId presence.
       const isCaptionAnchor =
-        ref.refTo.type === "anchor" && bookmarkAllocator.isRangeBookmark(ref.refTo.name)
+        ref.refTo.type === "anchor" &&
+        (bookmarkAllocator.isRangeBookmark(ref.refTo.name) ||
+          bookmarkAllocator.predictedNumberingFor(ref.refTo.name)?.isCaption === true)
       // Caption-class targets: display:"full" would need a paragraph-wide
       // secondary bookmark for REF \h to return body text. The pipeline
       // only emits the primary bookmark (number + decoration), so
@@ -416,9 +423,14 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // updateFields=true also ensures Word resolves on open, so users who
       // skip the backfill (e.g. parser called outside the apply pipeline)
       // still see correct text after their first F9.
+      // Caption-class anchors are SEQ-numbered, not numPr-bound — `\n`
+      // would fail to resolve (no numbering binding). Use `\h` only so
+      // REF reads the bookmark contents directly (which is the number
+      // + decoration range that caption emit wrapped).
+      const switches = isCaptionAnchor ? ["\\h"] : switchesForDisplay(display)
       const { runs, resultTextEl } = emitRefField(ownerDoc, {
         bookmarkName,
-        switches: switchesForDisplay(display),
+        switches,
         placeholder: "",
         format: ref.format ?? defaultFormat,
       })
@@ -701,6 +713,7 @@ interface AnchorHint {
   anchor: string
   styleId: string | undefined
   directlyNumbered: boolean
+  isCaption: boolean
 }
 
 function walkBlocksForAnchors(fragment: Fragment, visit: (hint: AnchorHint) => void): void {
@@ -715,13 +728,15 @@ function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) 
     numbering: { numId: string; level: number }
   }>
   if (typeof b.anchor === "string" && b.anchor) {
+    const isCaption = !!b.captionId
     visit({
       anchor: b.anchor,
       styleId: b.styleId,
       // Caption blocks (CaptionBlock + EquationBlock with captionId) are
       // SEQ-numbered, not numPr-numbered. They satisfy InlineRef's
       // numbering check without participating in the numPr cascade.
-      directlyNumbered: !!b.numbering || !!b.captionId,
+      directlyNumbered: !!b.numbering || isCaption,
+      isCaption,
     })
   }
   if (block.type === "table") {

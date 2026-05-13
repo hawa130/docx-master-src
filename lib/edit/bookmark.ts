@@ -68,6 +68,15 @@ export interface BoundRecord {
 export interface Reservation {
   styleId?: string
   directlyNumbered?: boolean
+  /** True when the reservation is for a caption-class anchor
+   * (CaptionBlock or EquationBlock with captionId). InlineRef's emit-
+   * time switch selection uses this to route caption-class targets
+   * through REF `\h` only — `\n` would fail since captions are SEQ-
+   * numbered, not numPr-bound. Backward refs (allocation happens
+   * before the REF) consult `isRangeBookmark`; forward refs (REF
+   * emitted before the caption) consult this flag via
+   * `predictedNumberingFor`. */
+  isCaption?: boolean
 }
 
 export class BookmarkAllocator {
@@ -153,6 +162,7 @@ export class BookmarkAllocator {
     this.reservations.set(name, {
       styleId: ctx?.styleId,
       directlyNumbered: ctx?.directlyNumbered,
+      isCaption: ctx?.isCaption,
     })
   }
 
