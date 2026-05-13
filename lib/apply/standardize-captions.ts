@@ -27,7 +27,7 @@
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
-import { emitCaptionBlock } from "@lib/edit/caption-emit.ts"
+import { buildCaptionRunSequence } from "@lib/edit/caption-emit.ts"
 import type { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import type { PendingCaptionFill, ResolvedCaptionConfig } from "@lib/edit/caption-counter.ts"
 
@@ -100,9 +100,9 @@ export function standardizeCaptions(
   return { fills, warnings }
 }
 
-/** Replace runs after pPr in the paragraph with a freshly-emitted
- * caption sequence (using current config). Returns a PendingCaptionFill
- * for the new SEQ/STYLEREF result elements. */
+/** Replace runs after pPr in the paragraph with a freshly-built caption
+ * sequence (using current config). Returns a PendingCaptionFill for the
+ * new SEQ/STYLEREF result elements. */
 function rebuildCaptionParagraphInPlace(
   paragraph: Element,
   config: ResolvedCaptionConfig,
@@ -116,45 +116,28 @@ function rebuildCaptionParagraphInPlace(
     bookmarkId !== undefined && bookmarkName !== undefined
       ? { id: bookmarkId, name: bookmarkName }
       : undefined
-  // EquationBlock numbered emits go through emitNumberedEquation (table
-  // layout); CaptionBlock emits use the plain paragraph form. Re-emit
-  // here always uses the paragraph form — source-doc captions inside
-  // the 3-col table for numbered equations would need a different
-  // detection + reconstruction path (out of scope for v1, since this
-  // re-emit targets simple caption paragraphs).
-  const built = emitCaptionBlock(ownerDoc, {
+  const seq = buildCaptionRunSequence(ownerDoc, {
     captionConfig: config,
-    text: bodyText,
-    bookmark,
     subGroup,
+    bookmark,
+    body: bodyText === "" ? undefined : bodyText,
   })
-  // built.paragraph is a fresh <w:p>; transplant everything after its
-  // pPr into the existing paragraph (preserving the existing pPr).
-  const newChildren = getChildren(built.paragraph)
-  const newPPr = newChildren.find((c) => c.namespaceURI === w && c.localName === "pPr")
 
-  // Remove existing children except pPr.
+  // Remove existing children except pPr, then append fresh runs.
   const existingChildren = getChildren(paragraph)
   const existingPPr = existingChildren.find((c) => c.namespaceURI === w && c.localName === "pPr")
   for (const c of existingChildren) {
     if (c !== existingPPr) paragraph.removeChild(c)
   }
-  // Append fresh children (after pPr) from the emitted paragraph.
-  for (const c of newChildren) {
-    if (c === newPPr) continue
-    paragraph.appendChild(c)
-  }
+  for (const r of seq.runs) paragraph.appendChild(r)
 
-  // Rewrite the fill to point at the actual paragraph (built.fill.paragraph
-  // is the throwaway temp <w:p>, but its child Elements moved into our
-  // real paragraph, so the result text elements inside fill remain valid).
   return {
     paragraph,
-    identifier: built.fill.identifier,
-    subGroup: built.fill.subGroup,
-    chapterPrefixResults: built.fill.chapterPrefixResults,
-    parentSeqResult: built.fill.parentSeqResult,
-    subSeqResult: built.fill.subSeqResult,
+    identifier: config.identifier,
+    subGroup,
+    chapterPrefixResults: seq.chapterPrefixResults,
+    parentSeqResult: seq.parentSeqResult,
+    subSeqResult: seq.subSeqResult,
   }
 }
 

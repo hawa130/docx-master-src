@@ -328,26 +328,30 @@ export interface EmitContext {
    * container or when the document's sectPr lacks pgSz/pgMar — emitters
    * fall back to a conservative constant in that case. */
   usableWidthTwips?: number
-  /* ----- caption pipeline (spec §4.5-§4.7) ----- */
+  /** Caption pipeline callbacks (spec §4.5-§4.7). Grouped as one
+   * sub-object so all five callbacks travel together — caption blocks
+   * dispatch behind a single presence check rather than five. Absent
+   * `captions` → caption blocks throw at emit. */
+  captions?: CaptionEmitCallbacks
+}
+
+export interface CaptionEmitCallbacks {
   /** Resolve an identifier (CaptionBlock.captionId / EquationBlock.captionId)
-   * to its resolved config. Engine populates from apply config's `captions`
-   * table at apply start. Returns undefined when the identifier isn't
-   * declared — emitters throw with agent-readable context. */
-  resolveCaption?: (identifier: string) => ResolvedCaptionConfig | undefined
-  /** Reserve a bookmark id+name for a caption block. The allocator
-   * validates uniqueness and returns id+name; caption-emit uses these
-   * to write bookmarkStart/End inline around the number runs. After
-   * emit, the caller binds the paragraph element via
-   * `bindCaptionBookmark` so REF \h cross-references can resolve. */
-  allocateCaptionBookmark?: (name: string) => BookmarkRange
-  /** Post-emit binding for `allocateCaptionBookmark`. Records the
-   * paragraph element in the allocator's name index. */
-  bindCaptionBookmark?: (name: string, pEl: Element) => void
-  /** Register a caption fill record so the counter sim can compute its
+   * to its resolved config. Engine populates from apply config's
+   * `captions` table at apply start. Returns undefined when the
+   * identifier isn't declared. */
+  resolve: (identifier: string) => ResolvedCaptionConfig | undefined
+  /** Reserve a bookmark id+name. Caption emit writes bookmarkStart/End
+   * inline around number runs; `bindBookmark` records the paragraph
+   * binding so REF \h can resolve cross-references. */
+  allocateBookmark: (name: string) => BookmarkRange
+  /** Post-emit binding for `allocateBookmark`. */
+  bindBookmark: (name: string, pEl: Element) => void
+  /** Register a caption fill record so the counter sim can compute
    * rendered values post-emit. */
-  registerCaptionFill?: (fill: PendingCaptionFill) => void
+  registerFill: (fill: PendingCaptionFill) => void
   /** Register a caption counter reset marker. */
-  registerCaptionReset?: (reset: PendingCaptionReset) => void
+  registerReset: (reset: PendingCaptionReset) => void
 }
 
 function ensurePPr(p: Element, ownerDoc: Document): Element {
@@ -487,34 +491,29 @@ function dispatchCaption(
   ownerDoc: Document,
   ctx: EmitContext,
 ): Element {
-  if (!ctx.resolveCaption) {
+  if (!ctx.captions) {
     throw new Error(
-      "CaptionBlock: ctx.resolveCaption not provided by the engine. " +
+      "CaptionBlock: ctx.captions callbacks not provided by the engine. " +
         "Caption blocks require the captions table to be declared in the apply config.",
     )
   }
-  const config = ctx.resolveCaption(block.captionId)
+  const config = ctx.captions.resolve(block.captionId)
   if (!config) {
     throw new Error(
       `CaptionBlock: captionId "${block.captionId}" is not declared in captions table.`,
     )
   }
-  let bookmark: BookmarkRange | undefined
-  if (block.anchor !== undefined) {
-    if (!ctx.allocateCaptionBookmark || !ctx.bindCaptionBookmark) {
-      throw new Error("CaptionBlock.anchor: caption bookmark allocator not provided by the engine.")
-    }
-    bookmark = ctx.allocateCaptionBookmark(block.anchor)
-  }
+  const bookmark =
+    block.anchor !== undefined ? ctx.captions.allocateBookmark(block.anchor) : undefined
   const { paragraph, fill } = emitCaptionBlock(ownerDoc, {
     captionConfig: config,
     text: block.text,
     bookmark,
   })
-  if (block.anchor !== undefined && ctx.bindCaptionBookmark) {
-    ctx.bindCaptionBookmark(block.anchor, paragraph)
+  if (block.anchor !== undefined) {
+    ctx.captions.bindBookmark(block.anchor, paragraph)
   }
-  if (ctx.registerCaptionFill) ctx.registerCaptionFill(fill)
+  ctx.captions.registerFill(fill)
   return paragraph
 }
 
@@ -523,10 +522,10 @@ function dispatchCaptionReset(
   ownerDoc: Document,
   ctx: EmitContext,
 ): Element {
-  if (!ctx.resolveCaption) {
-    throw new Error("CaptionCounterReset: ctx.resolveCaption not provided by the engine.")
+  if (!ctx.captions) {
+    throw new Error("CaptionCounterReset: ctx.captions callbacks not provided by the engine.")
   }
-  const config = ctx.resolveCaption(block.captionId)
+  const config = ctx.captions.resolve(block.captionId)
   if (!config) {
     throw new Error(
       `CaptionCounterReset: captionId "${block.captionId}" is not declared in captions table.`,
@@ -536,7 +535,7 @@ function dispatchCaptionReset(
     identifier: block.captionId,
     newValue: block.newValue ?? 1,
   })
-  if (ctx.registerCaptionReset) ctx.registerCaptionReset(reset)
+  ctx.captions.registerReset(reset)
   return paragraph
 }
 

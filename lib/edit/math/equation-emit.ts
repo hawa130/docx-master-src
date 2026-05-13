@@ -70,13 +70,13 @@ function emitNumberedEquationDispatch(
   ownerDoc: Document,
   ctx: EmitContext,
 ): Element {
-  if (!ctx.resolveCaption) {
+  if (!ctx.captions) {
     throw new Error(
-      "EquationBlock.captionId: ctx.resolveCaption not provided by the engine. " +
+      "EquationBlock.captionId: ctx.captions callbacks not provided by the engine. " +
         "Numbered equations require the captions table to be declared in the apply config.",
     )
   }
-  const config = ctx.resolveCaption(captionId)
+  const config = ctx.captions.resolve(captionId)
   if (!config) {
     throw new Error(`EquationBlock: captionId "${captionId}" is not declared in captions table.`)
   }
@@ -88,15 +88,8 @@ function emitNumberedEquationDispatch(
   const mathSource: { latex: string } | { omml: string } =
     block.latex !== undefined ? { latex: block.latex } : { omml: block.omml! }
 
-  let bookmark: { id: number; name: string } | undefined
-  if (block.anchor !== undefined) {
-    if (!ctx.allocateCaptionBookmark || !ctx.bindCaptionBookmark) {
-      throw new Error(
-        "EquationBlock.anchor: caption bookmark allocator not provided by the engine.",
-      )
-    }
-    bookmark = ctx.allocateCaptionBookmark(block.anchor)
-  }
+  const bookmark =
+    block.anchor !== undefined ? ctx.captions.allocateBookmark(block.anchor) : undefined
   const { table, fill } = emitNumberedEquation(ownerDoc, {
     mathSource,
     equationStyleId: block.styleId ?? "Equation",
@@ -105,10 +98,10 @@ function emitNumberedEquationDispatch(
     bookmark,
     usableWidthTwips: ctx.usableWidthTwips,
   })
-  if (block.anchor !== undefined && ctx.bindCaptionBookmark) {
-    ctx.bindCaptionBookmark(block.anchor, fill.paragraph)
+  if (block.anchor !== undefined) {
+    ctx.captions.bindBookmark(block.anchor, fill.paragraph)
   }
-  if (ctx.registerCaptionFill) ctx.registerCaptionFill(fill)
+  ctx.captions.registerFill(fill)
   return table
 }
 

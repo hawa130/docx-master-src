@@ -116,3 +116,17 @@ export function* walkBodyParagraphs(root: Element): Generator<Element> {
     }
   }
 }
+
+/** Build a `<w:r>` containing a single `<w:t xml:space="preserve">text</w:t>`.
+ * Idiom shared by caption emit, edit-caption op, and standardize re-emit
+ * for literal decoration runs (prefix / suffix / separators / body
+ * text). Preserve-space ensures leading / trailing whitespace survives
+ * XML serialization. */
+export function buildPlainTextRun(ownerDoc: Document, text: string): Element {
+  const r = ownerDoc.createElementNS(NS.w, "w:r")
+  const t = ownerDoc.createElementNS(NS.w, "w:t")
+  t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve")
+  t.textContent = text
+  r.appendChild(t)
+  return r
+}

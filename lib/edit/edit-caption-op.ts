@@ -20,13 +20,18 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
+import {
+  buildPlainTextRun,
+  firstChildNS,
+  getChildren,
+  wAttr,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
 import type { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import type { ResolvedCaptionConfig } from "@lib/edit/caption-counter.ts"
 
 const w = NS.w
-const XML_NS = "http://www.w3.org/XML/1998/namespace"
 
 export type EditCaptionTarget = { anchor: string } | { captionId: string; index: number }
 
@@ -122,18 +127,9 @@ export function applyEditCaption(
   }
   // Append bodySeparator + text runs.
   if (text !== "") {
-    paragraph.appendChild(textRun(ownerDoc, config.bodySeparator))
-    paragraph.appendChild(textRun(ownerDoc, text))
+    paragraph.appendChild(buildPlainTextRun(ownerDoc, config.bodySeparator))
+    paragraph.appendChild(buildPlainTextRun(ownerDoc, text))
   }
-}
-
-function textRun(ownerDoc: Document, text: string): Element {
-  const r = ownerDoc.createElementNS(w, "w:r")
-  const t = ownerDoc.createElementNS(w, "w:t")
-  t.setAttributeNS(XML_NS, "xml:space", "preserve")
-  t.textContent = text
-  r.appendChild(t)
-  return r
 }
 
 function paragraphStyleId(paragraph: Element): string | undefined {

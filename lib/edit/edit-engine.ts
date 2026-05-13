@@ -315,15 +315,15 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       const { rId } = imageRegistry.registerImage(src)
       return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
     },
-    resolveCaption: captionsMap ? (identifier: string) => captionsMap.get(identifier) : undefined,
-    allocateCaptionBookmark: (name) => bookmarkAllocator.allocateRangeBookmark(name),
-    bindCaptionBookmark: (name, pEl) => bookmarkAllocator.bindRangeBookmark(name, pEl),
-    registerCaptionFill: (fill) => {
-      pendingCaptionFills.push(fill)
-    },
-    registerCaptionReset: (reset) => {
-      pendingCaptionResets.push(reset)
-    },
+    captions: captionsMap
+      ? {
+          resolve: (identifier: string) => captionsMap.get(identifier),
+          allocateBookmark: (name) => bookmarkAllocator.allocateRangeBookmark(name),
+          bindBookmark: (name, pEl) => bookmarkAllocator.bindRangeBookmark(name, pEl),
+          registerFill: (fill) => pendingCaptionFills.push(fill),
+          registerReset: (reset) => pendingCaptionResets.push(reset),
+        }
+      : undefined,
     emitRef: (ref, ownerDoc, defaultFormat) => {
       // Resolve target → (paragraph element OR forward-ref name, bookmark
       // name). Two locator forms:

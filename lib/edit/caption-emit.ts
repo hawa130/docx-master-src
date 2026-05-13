@@ -26,6 +26,7 @@
 
 import { NS } from "@lib/parse/types.ts"
 import { parseXml } from "@lib/xml/reader.ts"
+import { buildPlainTextRun } from "@lib/xml/xml-utils.ts"
 import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
 import { emitSeqField } from "@lib/edit/fields/seq-field.ts"
 import { emitStyleRefField } from "@lib/edit/fields/styleref-field.ts"
@@ -38,7 +39,6 @@ import type {
 
 const w = NS.w
 const m = NS.m
-const XML_NS = "http://www.w3.org/XML/1998/namespace"
 
 export type { BookmarkRange }
 export type MathSource = { latex: string } | { omml: string }
@@ -203,50 +203,55 @@ export function emitCaptionReset(
  *
  * Returns the paragraph + references to the field result <w:t> elements
  * for the counter simulator to populate. */
-function buildCaptionParagraph(
-  ownerDoc: Document,
-  opts: {
-    captionConfig: ResolvedCaptionConfig
-    subGroup: "start" | "continue" | undefined
-    bookmark: BookmarkRange | undefined
-    body: string | undefined
-  },
-): {
-  paragraph: Element
+export interface CaptionRunSequenceOptions {
+  captionConfig: ResolvedCaptionConfig
+  subGroup: "start" | "continue" | undefined
+  bookmark: BookmarkRange | undefined
+  body: string | undefined
+}
+
+export interface CaptionRunSequence {
+  /** Ordered runs to append after `<w:pPr>` in the caption paragraph:
+   * bookmarkStart? + prefix + STYLEREF (×N) + separator + SEQ + sub-SEQ?
+   * + suffix + bookmarkEnd? + bodySeparator? + body? */
+  runs: Element[]
   chapterPrefixResults: Element[]
   parentSeqResult: Element
   subSeqResult: Element | undefined
-} {
+}
+
+/** Build the run sequence that goes inside a caption paragraph (no
+ * wrapping `<w:p>`, no `<w:pPr>`). Shared by `buildCaptionParagraph`
+ * (which wraps in a fresh paragraph) and `standardize-captions` (which
+ * appends into an existing paragraph after preserving its pPr). */
+export function buildCaptionRunSequence(
+  ownerDoc: Document,
+  opts: CaptionRunSequenceOptions,
+): CaptionRunSequence {
   const config = opts.captionConfig
-  const p = ownerDoc.createElementNS(w, "w:p")
-  const pPr = ownerDoc.createElementNS(w, "w:pPr")
-  const pStyle = ownerDoc.createElementNS(w, "w:pStyle")
-  pStyle.setAttributeNS(w, "w:val", config.paragraphStyleId)
-  pPr.appendChild(pStyle)
-  p.appendChild(pPr)
+  const runs: Element[] = []
 
   if (opts.bookmark) {
     const bmStart = ownerDoc.createElementNS(w, "w:bookmarkStart")
     bmStart.setAttributeNS(w, "w:id", String(opts.bookmark.id))
     bmStart.setAttributeNS(w, "w:name", opts.bookmark.name)
-    p.appendChild(bmStart)
+    runs.push(bmStart)
   }
 
   if (config.prefix !== "") {
-    p.appendChild(textRun(ownerDoc, config.prefix))
+    runs.push(buildPlainTextRun(ownerDoc, config.prefix))
   }
 
   const chapterPrefixResults: Element[] = []
-  for (let i = 0; i < config.chapterPrefix.length; i++) {
-    const entry = config.chapterPrefix[i]!
-    const { runs, resultTextEl } = emitStyleRefField(ownerDoc, {
+  for (const entry of config.chapterPrefix) {
+    const { runs: styleRefRuns, resultTextEl } = emitStyleRefField(ownerDoc, {
       styleName: entry.styleName,
       switches: ["\\n"],
     })
-    for (const r of runs) p.appendChild(r)
+    for (const r of styleRefRuns) runs.push(r)
     chapterPrefixResults.push(resultTextEl)
     // separator after every chapter ref (including the last, joining to SEQ)
-    p.appendChild(textRun(ownerDoc, config.chapterSeparator))
+    runs.push(buildPlainTextRun(ownerDoc, config.chapterSeparator))
   }
 
   const parent = emitSeqField(ownerDoc, {
@@ -255,45 +260,70 @@ function buildCaptionParagraph(
     restartAtOutlineLevel: config.restartAtOutlineLevel,
     repeat: opts.subGroup === "continue",
   })
-  for (const r of parent.runs) p.appendChild(r)
+  for (const r of parent.runs) runs.push(r)
 
   let subSeqResult: Element | undefined
   if (opts.subGroup !== undefined && config.subCounter) {
     if (config.subCounter.prefix !== "") {
-      p.appendChild(textRun(ownerDoc, config.subCounter.prefix))
+      runs.push(buildPlainTextRun(ownerDoc, config.subCounter.prefix))
     }
     const sub = emitSeqField(ownerDoc, {
       identifier: `${config.identifier}Sub`,
       format: config.subCounter.format,
       resetTo: opts.subGroup === "start" ? 1 : undefined,
     })
-    for (const r of sub.runs) p.appendChild(r)
+    for (const r of sub.runs) runs.push(r)
     subSeqResult = sub.resultTextEl
     if (config.subCounter.suffix !== "") {
-      p.appendChild(textRun(ownerDoc, config.subCounter.suffix))
+      runs.push(buildPlainTextRun(ownerDoc, config.subCounter.suffix))
     }
   }
 
   if (config.suffix !== "") {
-    p.appendChild(textRun(ownerDoc, config.suffix))
+    runs.push(buildPlainTextRun(ownerDoc, config.suffix))
   }
 
   if (opts.bookmark) {
     const bmEnd = ownerDoc.createElementNS(w, "w:bookmarkEnd")
     bmEnd.setAttributeNS(w, "w:id", String(opts.bookmark.id))
-    p.appendChild(bmEnd)
+    runs.push(bmEnd)
   }
 
   if (opts.body !== undefined) {
-    p.appendChild(textRun(ownerDoc, config.bodySeparator))
-    p.appendChild(textRun(ownerDoc, opts.body))
+    runs.push(buildPlainTextRun(ownerDoc, config.bodySeparator))
+    runs.push(buildPlainTextRun(ownerDoc, opts.body))
   }
 
   return {
-    paragraph: p,
+    runs,
     chapterPrefixResults,
     parentSeqResult: parent.resultTextEl,
     subSeqResult,
+  }
+}
+
+function buildCaptionParagraph(
+  ownerDoc: Document,
+  opts: CaptionRunSequenceOptions,
+): {
+  paragraph: Element
+  chapterPrefixResults: Element[]
+  parentSeqResult: Element
+  subSeqResult: Element | undefined
+} {
+  const p = ownerDoc.createElementNS(w, "w:p")
+  const pPr = ownerDoc.createElementNS(w, "w:pPr")
+  const pStyle = ownerDoc.createElementNS(w, "w:pStyle")
+  pStyle.setAttributeNS(w, "w:val", opts.captionConfig.paragraphStyleId)
+  pPr.appendChild(pStyle)
+  p.appendChild(pPr)
+  const seq = buildCaptionRunSequence(ownerDoc, opts)
+  for (const r of seq.runs) p.appendChild(r)
+  return {
+    paragraph: p,
+    chapterPrefixResults: seq.chapterPrefixResults,
+    parentSeqResult: seq.parentSeqResult,
+    subSeqResult: seq.subSeqResult,
   }
 }
 
@@ -324,15 +354,6 @@ function buildOMath(source: MathSource, ownerDoc: Document, displayMode: boolean
     throw new Error(`Math source produced no root element: ${JSON.stringify(source)}`)
   }
   return ownerDoc.importNode(root, true) as Element
-}
-
-function textRun(ownerDoc: Document, text: string): Element {
-  const r = ownerDoc.createElementNS(w, "w:r")
-  const t = ownerDoc.createElementNS(w, "w:t")
-  t.setAttributeNS(XML_NS, "xml:space", "preserve")
-  t.textContent = text
-  r.appendChild(t)
-  return r
 }
 
 function emptyParagraph(ownerDoc: Document): Element {
