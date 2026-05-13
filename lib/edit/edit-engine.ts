@@ -484,6 +484,14 @@ function resolveOneEdit(op: EditOp, resolverCtx: ResolverContext, _opIndex: numb
       runRef: r.run,
     }
   }
+  if (op.op === "edit-caption") {
+    // Resolver wiring lands in a subsequent commit. Until then,
+    // edit-caption ops surface a clear error at apply time.
+    throw new Error(
+      "edit-caption op: target resolution not yet wired into the engine. " +
+        "Schema accepts the op but applying it is pending phase 3 integration.",
+    )
+  }
   return { op, target: resolveLocator(op.at, resolverCtx) }
 }
 
@@ -571,7 +579,10 @@ interface LatexItem {
 function collectLatexFromBlock(b: Fragment[number]): LatexItem[] {
   const out: LatexItem[] = []
   if (b.type === "equation") {
-    out.push({ latex: b.latex, displayMode: true })
+    if (b.latex !== undefined) {
+      out.push({ latex: b.latex, displayMode: true })
+    }
+    // omml escape hatch: no LaTeX to prewarm
   } else if (b.type === "paragraph") {
     if (Array.isArray(b.text)) {
       for (const piece of b.text) {
@@ -716,6 +727,10 @@ function applyOne(
         throw new Error("set-run: missing resolved run reference (internal)")
       }
       return applySetRun(edit.runRef, edit.op, documentDoc, trackContext)
+    case "edit-caption":
+      // Implementation lands in a subsequent commit; resolver throws
+      // earlier in resolveOneEdit so this branch is unreachable today.
+      throw new Error("edit-caption: not yet implemented")
     default:
       return assertNever(edit.op)
   }

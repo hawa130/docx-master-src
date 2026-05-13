@@ -188,12 +188,75 @@ const HorizontalRuleBlockSchema = z.strictObject({
  * (centered by Word's default OMML rendering, or override via styleId /
  * paraFormat). Caption + numbering follow the same caption-paragraph
  * pattern as figures and tables — see references/equations.md. */
-const EquationBlockSchema = z.strictObject({
-  type: z.literal("equation"),
-  latex: NonEmptyString,
-  styleId: z.optional(NonEmptyString),
-  paraFormat: z.optional(ParagraphFormatSchema),
+const EquationBlockSchema = z
+  .strictObject({
+    type: z.literal("equation"),
+    latex: z.optional(NonEmptyString),
+    omml: z.optional(NonEmptyString),
+    styleId: z.optional(NonEmptyString),
+    paraFormat: z.optional(ParagraphFormatSchema),
+    captionId: z.optional(NonEmptyString),
+    subGroup: z.optional(z.enum(["start", "continue"])),
+    anchor: z.optional(AnchorNameSchema),
+  })
+  .check(
+    z.refine(
+      (eq) => {
+        const hasLatex = eq.latex !== undefined
+        const hasOmml = eq.omml !== undefined
+        if (hasLatex === hasOmml) return false // both or neither
+        if (eq.subGroup !== undefined && eq.captionId === undefined) return false
+        if (eq.anchor !== undefined && eq.captionId === undefined) return false
+        return true
+      },
+      {
+        error: (issue) => {
+          const eq = issue.input as {
+            latex?: string
+            omml?: string
+            subGroup?: string
+            captionId?: string
+            anchor?: string
+          }
+          const hasLatex = eq.latex !== undefined
+          const hasOmml = eq.omml !== undefined
+          if (hasLatex && hasOmml) {
+            return "EquationBlock: latex and omml are mutually exclusive — set exactly one."
+          }
+          if (!hasLatex && !hasOmml) {
+            return "EquationBlock: must set one of latex or omml. Use latex for standard LaTeX input; omml is the escape hatch when temml fails on the expression."
+          }
+          if (eq.subGroup !== undefined && eq.captionId === undefined) {
+            return `EquationBlock: subGroup="${eq.subGroup}" requires captionId. Set captionId to opt into caption numbering, or remove subGroup for a standalone equation.`
+          }
+          if (eq.anchor !== undefined && eq.captionId === undefined) {
+            return `EquationBlock: anchor="${eq.anchor}" requires captionId — without numbering the bookmark has no resolved target for REF cross-references. Set captionId, or remove anchor.`
+          }
+          return "EquationBlock: invalid field combination"
+        },
+      },
+    ),
+  )
+
+/** A caption paragraph (figure title, table title, theorem statement,
+ * etc.). Replaces the older pattern of `{ type: "paragraph", styleId:
+ * "FigureCaption", ... }` paired with `numbering[]` binding — captions
+ * config carries the numbering shape; this block carries the text. */
+const CaptionBlockSchema = z.strictObject({
+  type: z.literal("caption"),
+  captionId: NonEmptyString,
+  text: z.string(),
   anchor: z.optional(AnchorNameSchema),
+})
+
+/** Counter reset marker for a caption identifier. Emits a hidden SEQ
+ * field at this position; counter sim resets accordingly. Use for
+ * appendix sequences or multi-section docs where the default
+ * outline-level restart isn't enough. */
+const CaptionCounterResetSchema = z.strictObject({
+  type: z.literal("caption-counter-reset"),
+  captionId: NonEmptyString,
+  newValue: z.optional(z.number().check(z.gte(0))),
 })
 
 /** Subset of blocks that may appear INSIDE a table cell. Excludes
@@ -207,6 +270,8 @@ const CellBlockSchema = z.union([
   PageBreakBlockSchema,
   HorizontalRuleBlockSchema,
   EquationBlockSchema,
+  CaptionBlockSchema,
+  CaptionCounterResetSchema,
 ])
 
 /* ------------- table block ------------- */
@@ -352,6 +417,8 @@ export const BlockSchema = z.union([
   HorizontalRuleBlockSchema,
   TableBlockSchema,
   EquationBlockSchema,
+  CaptionBlockSchema,
+  CaptionCounterResetSchema,
 ])
 
 export const FragmentSchema = z.array(BlockSchema)
@@ -465,6 +532,27 @@ const SetRunOpSchema = z.strictObject({
   format: z.optional(RunFormatSchema),
 })
 
+/** Caption body-text edit. Targets an existing caption paragraph by
+ * anchor name or by (captionId, 1-based index in body order). Replaces
+ * the runs after the primary bookmarkEnd; the SEQ / STYLEREF fields and
+ * bookmark itself stay intact so cross-references continue to resolve.
+ *
+ * Throws when target is EquationBlock (no body to edit) — agents
+ * needing to change an equation use delete + re-emit instead. */
+const EditCaptionTargetSchema = z.union([
+  z.strictObject({ anchor: AnchorNameSchema }),
+  z.strictObject({
+    captionId: NonEmptyString,
+    index: z.number().check(z.gte(1)),
+  }),
+])
+
+const EditCaptionOpSchema = z.strictObject({
+  op: z.literal("edit-caption"),
+  target: EditCaptionTargetSchema,
+  text: z.string(),
+})
+
 export const EditOpSchema = z.union([
   ReplaceOpSchema,
   InsertBeforeOpSchema,
@@ -472,6 +560,7 @@ export const EditOpSchema = z.union([
   DeleteOpSchema,
   FormatOpSchema,
   SetRunOpSchema,
+  EditCaptionOpSchema,
 ])
 
 /* ------------- top-level edit config ------------- */

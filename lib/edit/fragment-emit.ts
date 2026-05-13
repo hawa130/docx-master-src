@@ -446,6 +446,16 @@ export function emitBlock(block: Block, ownerDoc: Document, ctx: EmitContext): E
       return emitTableBlock(block, ownerDoc, ctx)
     case "equation":
       return emitEquationBlock(block, ownerDoc, ctx)
+    case "caption":
+    case "caption-counter-reset":
+      // Caption emit + counter sim land in subsequent commits; routing
+      // these block types through the engine pipeline + apply-styles is
+      // pending. Schema accepts them so config validation succeeds, but
+      // applying produces a clear error rather than silent drop.
+      throw new Error(
+        `${block.type}: caption pipeline not yet wired into edit-engine. ` +
+          `Schema accepts this block but applying is pending the caption-emit integration commit.`,
+      )
     default:
       return assertNever(block)
   }

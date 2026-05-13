@@ -21,15 +21,31 @@ import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
 const w = NS.w
 const m = NS.m
 
-/** Import the cached `<m:oMath>` element into `ownerDoc`. The latex was
- * resolved up-front by the engine's prepareLatex pre-walk; this just parses
- * and adopts the string. */
-function buildOMath(latex: string, displayMode: boolean, ownerDoc: Document): Element {
-  const ommlString = getOmmlSync(latex, displayMode)
+/** Resolve a math source (LaTeX via temml, or raw OMML) into an
+ * `<m:oMath>` element imported into ownerDoc. LaTeX path uses the cache
+ * warmed by `prepareLatex` pre-walk; OMML path parses the agent-supplied
+ * string directly (escape hatch when temml fails). */
+function buildOMath(
+  source: { latex?: string; omml?: string },
+  displayMode: boolean,
+  ownerDoc: Document,
+): Element {
+  const ommlString =
+    source.latex !== undefined
+      ? getOmmlSync(source.latex, displayMode)
+      : source.omml !== undefined
+        ? source.omml
+        : (() => {
+            throw new Error(
+              "EquationBlock: no math source — schema validation should have caught this. " +
+                "This is an engine invariant violation.",
+            )
+          })()
   const parsed = parseXml(ommlString)
   const root = parsed.documentElement
-  if (!root)
-    throw new Error(`LaTeX-to-OMML produced no root element. latex=${JSON.stringify(latex)}`)
+  if (!root) {
+    throw new Error(`Math source produced no root element. source=${JSON.stringify(source)}`)
+  }
   return ownerDoc.importNode(root, true) as Element
 }
 
@@ -51,7 +67,7 @@ export function emitEquationBlock(
     }
     p.appendChild(pPr)
   }
-  const oMath = buildOMath(block.latex, true, ownerDoc)
+  const oMath = buildOMath({ latex: block.latex, omml: block.omml }, true, ownerDoc)
   const oMathPara = ownerDoc.createElementNS(m, "m:oMathPara")
   oMathPara.appendChild(oMath)
   p.appendChild(oMathPara)
@@ -69,5 +85,5 @@ export function emitEquationBlock(
 /** Build the `<m:oMath>` element for an inline equation. Caller splices it
  * between `<w:r>` siblings inside the paragraph. */
 export function emitInlineEquation(latex: string, ownerDoc: Document): Element {
-  return buildOMath(latex, false, ownerDoc)
+  return buildOMath({ latex }, false, ownerDoc)
 }

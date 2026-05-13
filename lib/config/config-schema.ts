@@ -147,6 +147,45 @@ export const NumberingSchema = z.strictObject({
   levels: z.array(NumLevelSchema).check(z.minLength(1)),
 })
 
+/* ------------- captions ------------- */
+
+/** Numeric format for SEQ counters. Maps to Word's `\*` switches —
+ * see lib/edit/fields/seq-field.ts. */
+export const CaptionFormatSchema = z.enum([
+  "arabic",
+  "alphabetic",
+  "ALPHABETIC",
+  "roman",
+  "ROMAN",
+  "chinese",
+  "chinese-formal",
+])
+
+export const CaptionSubCounterSchema = z.strictObject({
+  format: z.optional(CaptionFormatSchema),
+  prefix: z.optional(z.string()),
+  suffix: z.optional(z.string()),
+})
+
+/** Per-identifier caption configuration. Block-level `captionId`
+ * references the key. `styleId` is required — every caption identifier
+ * must declare what paragraph style to use; no implicit fallback. */
+export const CaptionEntrySchema = z.strictObject({
+  prefix: z.optional(z.string()),
+  suffix: z.optional(z.string()),
+  format: z.optional(CaptionFormatSchema),
+  chapterPrefix: z.optional(z.array(NonEmptyString)),
+  chapterSeparator: z.optional(z.string()),
+  bodySeparator: z.optional(z.string()),
+  styleId: NonEmptyString,
+  subCounter: z.optional(CaptionSubCounterSchema),
+})
+
+/** Map of identifier → caption entry. Identifier is a free string;
+ * conventional values "Equation" / "Figure" / "Table" / "Theorem" live
+ * in ref docs, not the schema. */
+export const CaptionsSchema = z.record(NonEmptyString, CaptionEntrySchema)
+
 /* ------------- template ------------- */
 
 export const TemplateSchema = z.strictObject({
@@ -211,6 +250,7 @@ export const ApplyConfigSchema = z.strictObject({
   // a multi-level heading scheme + a single-level list-bound scheme). The
   // engine processes them in array order, allocating fresh numIds for each.
   numbering: z.optional(z.union([NumberingSchema, z.array(NumberingSchema)])),
+  captions: z.optional(CaptionsSchema),
   assignments: z.optional(z.array(AssignmentSchema)),
   bulk_rules: z.optional(z.array(BulkRuleSchema)),
   pattern_rules: z.optional(z.array(PatternRuleSchema)),
