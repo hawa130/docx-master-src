@@ -35,6 +35,10 @@ export interface ResolvedCaptions {
    * caption styleIds; outline simulator output annotation needs the
    * styleName for STYLEREF resolution). */
   styleIdToName: Map<string, string>
+  /** Warnings surfaced during resolution (e.g. chapterPrefix references
+   * a style not bound to outline numbering — STYLEREF will render 0 at
+   * runtime). Caller prints these so misconfiguration is visible. */
+  warnings: string[]
 }
 
 export function resolveCaptions(
@@ -43,7 +47,8 @@ export function resolveCaptions(
 ): ResolvedCaptions {
   const byIdentifier = new Map<string, ResolvedCaptionConfig>()
   const styleIdToName = new Map<string, string>()
-  if (!raw) return { byIdentifier, styleIdToName }
+  const warnings: string[] = []
+  if (!raw) return { byIdentifier, styleIdToName, warnings }
 
   // Build styleId → { name, outlineLevel } from styles.xml once.
   const styleIndex = indexStyles(stylesDoc)
@@ -56,6 +61,11 @@ export function resolveCaptions(
         throw new Error(
           `captions["${identifier}"].chapterPrefix references unknown styleId "${styleId}". ` +
             `Declare the style in styles[] or fix the reference.`,
+        )
+      }
+      if (info.outlineLevel === undefined) {
+        warnings.push(
+          `captions["${identifier}"].chapterPrefix references styleId "${styleId}" but that style has no <w:outlineLvl> binding. STYLEREF will render 0 at runtime — bind the style to an outline-numbering scheme or remove it from chapterPrefix.`,
         )
       }
       chapterPrefix.push({
@@ -95,7 +105,7 @@ export function resolveCaptions(
     })
   }
 
-  return { byIdentifier, styleIdToName }
+  return { byIdentifier, styleIdToName, warnings }
 }
 
 interface StyleInfo {

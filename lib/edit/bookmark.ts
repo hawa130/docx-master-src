@@ -213,7 +213,18 @@ export class BookmarkAllocator {
    * the caption paragraph is constructed to record the binding so
    * `resolveByName` works for REF cross-references. */
   allocateRangeBookmark(name: string): BookmarkAssignment {
+    // Reservations are the expected upgrade path (forward-ref pre-scan
+    // reserves the name before caption emit allocates it). All other
+    // usedNames hits are collisions: bound paragraphs in `nameIndex`,
+    // or body-level source bookmarks in `usedNames` but not
+    // `nameIndex` (spans multiple paragraphs, no surface for REF
+    // resolution but still occupies the name).
     if (this.nameIndex.has(name)) {
+      throw new Error(
+        `anchor "${name}" ${this.describeCollision(name)}. Pick a unique anchor name.`,
+      )
+    }
+    if (this.usedNames.has(name) && !this.reservations.has(name)) {
       throw new Error(
         `anchor "${name}" ${this.describeCollision(name)}. Pick a unique anchor name.`,
       )

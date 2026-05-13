@@ -122,6 +122,11 @@ export interface CaptionBlockOptions {
   captionConfig: ResolvedCaptionConfig
   text: string
   bookmark?: BookmarkRange
+  /** Subequation membership for caption paragraphs that are themselves
+   * subequation children. Almost always undefined on CaptionBlock —
+   * only standardize re-emit uses this to preserve subGroup state when
+   * rebuilding existing caption paragraphs. */
+  subGroup?: "start" | "continue"
 }
 
 /** Emit a caption paragraph (FigureCaption / TableCaption / Theorem /
@@ -133,7 +138,7 @@ export function emitCaptionBlock(
 ): { paragraph: Element; fill: PendingCaptionFill } {
   const built = buildCaptionParagraph(ownerDoc, {
     captionConfig: opts.captionConfig,
-    subGroup: undefined,
+    subGroup: opts.subGroup,
     bookmark: opts.bookmark,
     body: opts.text === "" ? undefined : opts.text,
   })
@@ -141,7 +146,7 @@ export function emitCaptionBlock(
   const fill: PendingCaptionFill = {
     paragraph: built.paragraph,
     identifier: opts.captionConfig.identifier,
-    subGroup: undefined,
+    subGroup: opts.subGroup,
     chapterPrefixResults: built.chapterPrefixResults,
     parentSeqResult: built.parentSeqResult,
     subSeqResult: built.subSeqResult,

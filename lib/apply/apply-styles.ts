@@ -494,6 +494,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       editTouchedIndices = preview.replacedOrDeletedIndices
     } else {
       const resolvedCaptions = resolveCaptions(config.captions, stylesDoc)
+      for (const wmsg of resolvedCaptions.warnings) console.warn(`Warning: ${wmsg}`)
       const result = await runEditOps({
         documentDoc,
         parsedParagraphs: parsed.paragraphs,
@@ -611,13 +612,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         const counters = simulateNumberingCounters(documentDoc, numberingDoc, stylesDoc)
         for (const pending of resolvedBackfills) {
           // Caption-class targets: REF \h returns the SEQ-rendered text
-          // (prefix + chapter + counter + suffix). label / number collapse.
+          // (prefix + chapter + counter + suffix). label / number / full
+          // all use the same primary bookmark (display:"full" is rejected
+          // at pre-scan — see InlineRef emit-time check in edit-engine).
           const captionText = captionSimOutput.fullCaptionText.get(pending.targetParagraph)
           if (captionText !== undefined) {
-            pending.placeholderTextEl.textContent =
-              pending.display === "full"
-                ? extractParagraphText(pending.targetParagraph)
-                : captionText
+            pending.placeholderTextEl.textContent = captionText
             continue
           }
           // Outline-numbered targets: fall through to lvlText backfill.

@@ -377,6 +377,20 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // `directlyNumbered: !!b.captionId` hint; backward refs match via
       // the `captionAnchorNames` set populated at caption emit time.
       const isCaptionAnchor = ref.refTo.type === "anchor" && captionAnchorNames.has(ref.refTo.name)
+      // Caption-class targets: display:"full" would need a paragraph-wide
+      // secondary bookmark for REF \h to return body text. The pipeline
+      // only emits the primary bookmark (number + decoration), so
+      // display:"full" diverges between pre-F9 placeholder and Word's
+      // post-F9 render. Throw rather than ship divergent output. Agents
+      // citing a caption use display:"label" (the rendered "(2.1)" or
+      // "图 2.1" is the canonical citation form anyway).
+      if (display === "full" && isCaptionAnchor) {
+        throw new Error(
+          `InlineRef: display="full" is not supported on caption-class anchors ` +
+            `(anchor "${(ref.refTo as { name: string }).name}"). Caption refs use the SEQ-rendered ` +
+            `text (prefix + chapter + counter + suffix); switch to display: "label".`,
+        )
+      }
       if (display !== "full" && !isCaptionAnchor) {
         const predicted =
           ref.refTo.type === "anchor"

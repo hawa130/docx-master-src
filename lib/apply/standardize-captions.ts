@@ -74,13 +74,17 @@ export function standardizeCaptions(
     }
 
     const config = captions.get(expectedIdentifier)!
-    const { bookmarkId, bookmarkName, bodyText } = extractCaptionParts(para)
+    const { bookmarkId, bookmarkName, bodyText, subGroup } = extractCaptionParts(
+      para,
+      expectedIdentifier,
+    )
     const fill = rebuildCaptionParagraphInPlace(
       para,
       config,
       bookmarkId,
       bookmarkName,
       bodyText,
+      subGroup,
       documentDoc,
     )
     if (fill) fills.push(fill)
@@ -105,16 +109,24 @@ function rebuildCaptionParagraphInPlace(
   bookmarkId: number | undefined,
   bookmarkName: string | undefined,
   bodyText: string,
+  subGroup: "start" | "continue" | undefined,
   ownerDoc: Document,
 ): PendingCaptionFill | undefined {
   const bookmark =
     bookmarkId !== undefined && bookmarkName !== undefined
       ? { id: bookmarkId, name: bookmarkName }
       : undefined
+  // EquationBlock numbered emits go through emitNumberedEquation (table
+  // layout); CaptionBlock emits use the plain paragraph form. Re-emit
+  // here always uses the paragraph form — source-doc captions inside
+  // the 3-col table for numbered equations would need a different
+  // detection + reconstruction path (out of scope for v1, since this
+  // re-emit targets simple caption paragraphs).
   const built = emitCaptionBlock(ownerDoc, {
     captionConfig: config,
     text: bodyText,
     bookmark,
+    subGroup,
   })
   // built.paragraph is a fresh <w:p>; transplant everything after its
   // pPr into the existing paragraph (preserving the existing pPr).
@@ -150,9 +162,10 @@ interface CaptionParts {
   bookmarkId: number | undefined
   bookmarkName: string | undefined
   bodyText: string
+  subGroup: "start" | "continue" | undefined
 }
 
-function extractCaptionParts(paragraph: Element): CaptionParts {
+function extractCaptionParts(paragraph: Element, identifier: string): CaptionParts {
   let bookmarkId: number | undefined
   let bookmarkName: string | undefined
   const children = getChildren(paragraph)
@@ -218,7 +231,34 @@ function extractCaptionParts(paragraph: Element): CaptionParts {
     // body text (re-emit will insert its own bodySeparator).
     bodyText = stripLeadingSeparator(collected)
   }
-  return { bookmarkId, bookmarkName, bodyText }
+
+  // subGroup detection from the existing fields:
+  //   - parent SEQ carries \c (repeat)         → "continue"
+  //   - sub-counter SEQ "identifierSub" present
+  //     without parent \c                      → "start"
+  //   - otherwise                              → undefined (standalone)
+  const subGroup = detectSubGroup(paragraph, identifier)
+
+  return { bookmarkId, bookmarkName, bodyText, subGroup }
+}
+
+function detectSubGroup(paragraph: Element, identifier: string): "start" | "continue" | undefined {
+  const runs: Element[] = []
+  for (const c of getChildren(paragraph)) {
+    if (c.namespaceURI === w && c.localName === "r") runs.push(c)
+  }
+  const parsed = parseFieldRuns(runs)
+  let parentRepeat = false
+  let subSeqPresent = false
+  const subId = `${identifier}Sub`
+  for (const entry of parsed) {
+    if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
+    if (entry.details.identifier === identifier && entry.details.repeat) parentRepeat = true
+    if (entry.details.identifier === subId) subSeqPresent = true
+  }
+  if (parentRepeat) return "continue"
+  if (subSeqPresent) return "start"
+  return undefined
 }
 
 /** Strip leading whitespace / common separator characters so re-emit's
