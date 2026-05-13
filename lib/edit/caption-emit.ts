@@ -184,13 +184,23 @@ export function emitCaptionReset(
   pPr.appendChild(pStyle)
   p.appendChild(pPr)
 
+  // Drop SEQ `\h` switch — Word's documented quirk is that `\h` does
+  // NOT hide the result when a `\*` format switch is also present (and
+  // we always emit `\* ARABIC`). Wrap each run's rPr in `<w:vanish/>`
+  // for character-level hiding instead — the SEQ counter still
+  // advances (Word evaluates the field), but no rendered artifact
+  // appears in the paragraph.
   const { runs } = emitSeqField(ownerDoc, {
     identifier: opts.identifier,
     format: "arabic",
     resetTo: opts.newValue - 1,
-    hidden: true,
   })
-  for (const r of runs) p.appendChild(r)
+  for (const r of runs) {
+    const rPr = ownerDoc.createElementNS(w, "w:rPr")
+    rPr.appendChild(ownerDoc.createElementNS(w, "w:vanish"))
+    r.insertBefore(rPr, r.firstChild)
+    p.appendChild(r)
+  }
 
   const reset: PendingCaptionReset = {
     paragraph: p,

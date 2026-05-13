@@ -67,21 +67,50 @@ function injectHiddenSeq(
   format: SeqFormat,
   ownerDoc: Document,
 ): void {
+  // Emit the SEQ field WITHOUT \h. Word's documented \h-on-SEQ
+  // semantics: "the `\h` switch does NOT hide the result when a `\*`
+  // format switch is also present" (verified in Microsoft Q&A — both
+  // `\*` and `\#` unhide a `\h` SEQ). Since we always emit `\* ARABIC`
+  // (or whatever the format is), `\h` would silently fail and the
+  // chapter number would render inside the H1.
+  //
+  // Use character-level `<w:vanish/>` rPr instead — robust against the
+  // format-switch interaction, and Word's counter still advances since
+  // the SEQ field itself runs (only its rendered text is hidden).
   const { runs } = emitSeqField(ownerDoc, {
     identifier: chapterCounterIdentifier(styleId),
     format,
-    hidden: true,
   })
-  // Insert after pPr if present, otherwise at paragraph start. Order
-  // among runs within the paragraph matters for SEQ — the hidden field
-  // must appear BEFORE any caption that reads it via \c (\c shows the
-  // most recently advanced value), but within the same paragraph the
-  // injection order doesn't matter for that ordering — captions are in
-  // later paragraphs anyway.
+  for (const r of runs) addVanishRPr(r, ownerDoc)
+
+  // Insert after pPr if present, otherwise at paragraph start. Each
+  // insertBefore call adds the new node immediately before `anchorNode`;
+  // walking forward keeps the field's begin / instr / separate /
+  // result / end order intact in the DOM. (Reverse iteration here
+  // would silently swap the order — fldChar end would land at the
+  // front, Word reads it before begin, the whole field breaks.)
   const pPr = firstChildNS(paragraph, w, "pPr")
-  const insertBefore = pPr ? pPr.nextSibling : paragraph.firstChild
-  for (let i = runs.length - 1; i >= 0; i--) {
-    paragraph.insertBefore(runs[i]!, insertBefore)
+  const anchorNode = pPr ? pPr.nextSibling : paragraph.firstChild
+  if (anchorNode) {
+    for (const r of runs) paragraph.insertBefore(r, anchorNode)
+  } else {
+    for (const r of runs) paragraph.appendChild(r)
+  }
+}
+
+/** Prepend `<w:vanish/>` to a run's rPr (creating rPr if absent) so
+ * Word renders the run as hidden text — counter still advances, no
+ * visible artifact in the paragraph. rPr must be the first child of
+ * the run per CT_R schema order. */
+function addVanishRPr(run: Element, ownerDoc: Document): void {
+  let rPr = firstChildNS(run, w, "rPr")
+  if (!rPr) {
+    rPr = ownerDoc.createElementNS(w, "w:rPr")
+    run.insertBefore(rPr, run.firstChild)
+  }
+  const existing = firstChildNS(rPr, w, "vanish")
+  if (!existing) {
+    rPr.insertBefore(ownerDoc.createElementNS(w, "w:vanish"), rPr.firstChild)
   }
 }
 
