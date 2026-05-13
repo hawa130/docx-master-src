@@ -152,6 +152,28 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // require non-empty styles enforce that themselves before calling.
   config.styles ??= []
 
+  // Cross-config invariant: a styleId can't be bound to both numbering[]
+  // (numPr-based outline / list counter) and captions[] (SEQ-based caption
+  // counter). The two mechanisms would fight at render time.
+  if (config.captions && config.numbering) {
+    const captionStyleIds = new Set<string>()
+    for (const entry of Object.values(config.captions)) {
+      captionStyleIds.add(entry.styleId)
+    }
+    const numSchemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
+    for (const scheme of numSchemes) {
+      for (const lvl of scheme.levels) {
+        if (captionStyleIds.has(lvl.styleId)) {
+          throw new Error(
+            `Config invariant: styleId "${lvl.styleId}" is bound to both numbering[] (numPr) and captions[] (SEQ). ` +
+              `Caption-class styleIds must not appear in numbering[]; they get their counter from the captions table instead. ` +
+              `Drop the numbering[] level referencing "${lvl.styleId}".`,
+          )
+        }
+      }
+    }
+  }
+
   // 1. Dry-run reads the source directly; otherwise copy first and modify
   // the copy so the original stays untouched on validation failure.
   if (!config.dryRun) {
