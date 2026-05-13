@@ -77,6 +77,7 @@ export function standardizeCaptions(
     const { bookmarkId, bookmarkName, bodyText, subGroup } = extractCaptionParts(
       para,
       expectedIdentifier,
+      config.bodySeparator,
     )
     const fill = rebuildCaptionParagraphInPlace(
       para,
@@ -148,7 +149,11 @@ interface CaptionParts {
   subGroup: "start" | "continue" | undefined
 }
 
-function extractCaptionParts(paragraph: Element, identifier: string): CaptionParts {
+function extractCaptionParts(
+  paragraph: Element,
+  identifier: string,
+  bodySeparator: string,
+): CaptionParts {
   let bookmarkId: number | undefined
   let bookmarkName: string | undefined
   const children = getChildren(paragraph)
@@ -209,10 +214,13 @@ function extractCaptionParts(paragraph: Element, identifier: string): CaptionPar
         }
       }
     }
-    // First-run separator stripping: if the first run after the boundary
-    // is purely whitespace / known separators, drop the leading run from
-    // body text (re-emit will insert its own bodySeparator).
-    bodyText = stripLeadingSeparator(collected)
+    // Strip the exact bodySeparator prefix so re-emit's bodySeparator
+    // doesn't double up. Matches the literal configured separator
+    // rather than a character class — body text legitimately starting
+    // with "1:23 时刻..." stays intact.
+    bodyText = collected.startsWith(bodySeparator)
+      ? collected.slice(bodySeparator.length)
+      : collected
   }
 
   // subGroup detection from the existing fields:
@@ -242,15 +250,6 @@ function detectSubGroup(paragraph: Element, identifier: string): "start" | "cont
   if (parentRepeat) return "continue"
   if (subSeqPresent) return "start"
   return undefined
-}
-
-/** Strip leading whitespace / common separator characters so re-emit's
- * bodySeparator doesn't get doubled. Conservative: only strips at most
- * one separator-shape sequence (≤ 4 chars). */
-function stripLeadingSeparator(s: string): string {
-  const m = s.match(/^[\s　:：.。·]{1,4}/)
-  if (!m) return s
-  return s.slice(m[0].length)
 }
 
 function paragraphStyleId(paragraph: Element): string | undefined {
