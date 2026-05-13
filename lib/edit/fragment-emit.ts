@@ -27,7 +27,7 @@ import {
   type RichText,
   type RunFormat,
 } from "@lib/config/edit-types.ts"
-import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
+import { parseIndent, parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
 import { emitEquationBlock, emitInlineEquation } from "@lib/edit/math/equation-emit.ts"
@@ -149,22 +149,6 @@ export const RPR_MANAGED_LOCAL_NAMES: ReadonlySet<string> = new Set([
 ])
 
 /* ------------- paragraph-level format ------------- */
-
-interface IndentParts {
-  kind: "twip" | "char"
-  value: number
-}
-
-function parseIndent(v: string | number | null): IndentParts | null {
-  if (v === null) return null
-  if (typeof v === "number") return { kind: "twip", value: Math.round(v * 20) }
-  const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*(char|chars|pt)?$/i)
-  if (!m) return null
-  const n = parseFloat(m[1]!)
-  const unit = (m[2] || "").toLowerCase()
-  if (unit.startsWith("char")) return { kind: "char", value: Math.round(n * 100) }
-  return { kind: "twip", value: Math.round(n * 20) }
-}
 
 export function buildPPrChildren(fmt: ParagraphFormat, ownerDoc: Document): Element[] {
   const out: Element[] = []

@@ -25,9 +25,8 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { parseXml } from "@lib/xml/reader.ts"
 import { addVanishRPr, buildPlainTextRun } from "@lib/xml/xml-utils.ts"
-import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
+import { buildOMath, type MathSource } from "@lib/edit/math/omml-build.ts"
 import { emitSeqField } from "@lib/edit/fields/seq-field.ts"
 import { emitStyleRefField } from "@lib/edit/fields/styleref-field.ts"
 import type { BookmarkRange } from "@lib/edit/bookmark.ts"
@@ -41,7 +40,6 @@ const w = NS.w
 const m = NS.m
 
 export type { BookmarkRange }
-export type MathSource = { latex: string } | { omml: string }
 
 /** SEQ identifier for the hidden chapter counter paired with a heading
  * style under chapterPrefix `format` override. Engine reserves the
@@ -105,20 +103,6 @@ export function emitNumberedEquation(
   }
 
   return { table, fill }
-}
-
-export interface UnnumberedEquationOptions {
-  mathSource: MathSource
-  equationStyleId: string
-}
-
-/** Emit an unnumbered equation as a single centered paragraph (no
- * surrounding table, no caption). */
-export function emitUnnumberedEquation(
-  ownerDoc: Document,
-  opts: UnnumberedEquationOptions,
-): Element {
-  return centeredEquationParagraph(ownerDoc, opts.mathSource, opts.equationStyleId)
 }
 
 /* ============================= CaptionBlock ============================ */
@@ -389,16 +373,6 @@ function centeredEquationParagraph(
   oMathPara.appendChild(oMath)
   p.appendChild(oMathPara)
   return p
-}
-
-function buildOMath(source: MathSource, ownerDoc: Document, displayMode: boolean): Element {
-  const xml = "latex" in source ? getOmmlSync(source.latex, displayMode) : source.omml
-  const parsed = parseXml(xml)
-  const root = parsed.documentElement
-  if (!root) {
-    throw new Error(`Math source produced no root element: ${JSON.stringify(source)}`)
-  }
-  return ownerDoc.importNode(root, true) as Element
 }
 
 function emptyParagraph(ownerDoc: Document): Element {

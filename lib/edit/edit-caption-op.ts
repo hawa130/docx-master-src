@@ -24,6 +24,8 @@ import {
   buildPlainTextRun,
   firstChildNS,
   getChildren,
+  paragraphRuns,
+  paragraphStyleId,
   wAttr,
   walkBodyParagraphs,
 } from "@lib/xml/xml-utils.ts"
@@ -132,20 +134,8 @@ export function applyEditCaption(
   }
 }
 
-function paragraphStyleId(paragraph: Element): string | undefined {
-  const pPr = firstChildNS(paragraph, w, "pPr")
-  if (!pPr) return undefined
-  const pStyle = firstChildNS(pPr, w, "pStyle")
-  if (!pStyle) return undefined
-  return wAttr(pStyle, "val") ?? undefined
-}
-
 function paragraphContainsSeq(paragraph: Element, identifier: string): boolean {
-  const runs: Element[] = []
-  for (const c of getChildren(paragraph)) {
-    if (c.namespaceURI === w && c.localName === "r") runs.push(c)
-  }
-  const parsed = parseFieldRuns(runs)
+  const parsed = parseFieldRuns(paragraphRuns(paragraph))
   for (const entry of parsed) {
     if (entry.kind === "field" && entry.fieldType === "SEQ") {
       if (entry.details.identifier === identifier) return true

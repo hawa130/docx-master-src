@@ -34,8 +34,8 @@ import { NS } from "@lib/parse/types.ts"
 import {
   addVanishRPr,
   firstChildNS,
-  getChildren,
-  wAttr,
+  paragraphRuns,
+  paragraphStyleId,
   walkBodyParagraphs,
 } from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
@@ -106,21 +106,9 @@ function injectHiddenSeq(
   }
 }
 
-function paragraphStyleId(paragraph: Element): string | undefined {
-  const pPr = firstChildNS(paragraph, w, "pPr")
-  if (!pPr) return undefined
-  const pStyle = firstChildNS(pPr, w, "pStyle")
-  if (!pStyle) return undefined
-  return wAttr(pStyle, "val") ?? undefined
-}
-
 function paragraphHasChapterSeq(paragraph: Element, styleId: string): boolean {
   const expectedId = chapterCounterIdentifier(styleId)
-  const runs: Element[] = []
-  for (const c of getChildren(paragraph)) {
-    if (c.namespaceURI === w && c.localName === "r") runs.push(c)
-  }
-  const parsed = parseFieldRuns(runs)
+  const parsed = parseFieldRuns(paragraphRuns(paragraph))
   for (const entry of parsed) {
     if (
       entry.kind === "field" &&

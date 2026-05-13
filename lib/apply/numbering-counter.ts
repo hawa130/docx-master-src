@@ -37,6 +37,7 @@ import {
   wVal,
   walkBodyParagraphs,
 } from "@lib/xml/xml-utils.ts"
+import { toAlphaCounter, toRoman } from "@lib/parse/counter-format.ts"
 
 export interface RenderedNumbering {
   /** Rendered lvlText with %N placeholders substituted. */
@@ -306,46 +307,6 @@ function renderCounter(numFmt: string, value: number): string {
       // Unknown numFmts: fall back to decimal. Word will re-render on F9.
       return String(value)
   }
-}
-
-function toAlphaCounter(n: number, upper: boolean): string {
-  // Spreadsheet-column style: A..Z, AA..ZZ, AAA...
-  let s = ""
-  let m = n
-  while (m > 0) {
-    const r = (m - 1) % 26
-    s = String.fromCharCode((upper ? 65 : 97) + r) + s
-    m = Math.floor((m - 1) / 26)
-  }
-  return s || (upper ? "A" : "a")
-}
-
-function toRoman(n: number): string {
-  if (n <= 0) return ""
-  const pairs: Array<[number, string]> = [
-    [1000, "M"],
-    [900, "CM"],
-    [500, "D"],
-    [400, "CD"],
-    [100, "C"],
-    [90, "XC"],
-    [50, "L"],
-    [40, "XL"],
-    [10, "X"],
-    [9, "IX"],
-    [5, "V"],
-    [4, "IV"],
-    [1, "I"],
-  ]
-  let out = ""
-  let m = n
-  for (const [v, r] of pairs) {
-    while (m >= v) {
-      out += r
-      m -= v
-    }
-  }
-  return out
 }
 
 const CHINESE_DIGITS = ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九"]

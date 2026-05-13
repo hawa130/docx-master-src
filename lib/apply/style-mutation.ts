@@ -355,18 +355,22 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     const ind = stylesDoc.createElementNS(w, "w:ind")
     if (def.firstLineIndent != null && def.firstLineIndent !== 0) {
       const r = parseIndent(def.firstLineIndent)
-      if (r.kind === "char") {
-        ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
-      } else {
-        ind.setAttributeNS(w, "w:firstLine", String(r.value))
+      if (r) {
+        if (r.kind === "char") {
+          ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
+        } else {
+          ind.setAttributeNS(w, "w:firstLine", String(r.value))
+        }
       }
     }
     if (def.hangingIndent != null && def.hangingIndent !== 0) {
       const r = parseIndent(def.hangingIndent)
-      if (r.kind === "char") {
-        ind.setAttributeNS(w, "w:hangingChars", String(r.value))
-      } else {
-        ind.setAttributeNS(w, "w:hanging", String(r.value))
+      if (r) {
+        if (r.kind === "char") {
+          ind.setAttributeNS(w, "w:hangingChars", String(r.value))
+        } else {
+          ind.setAttributeNS(w, "w:hanging", String(r.value))
+        }
       }
     }
     pPrAdditions.push(ind)
@@ -454,10 +458,16 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
  * 240 twips/char (12pt assumption), which silently broke "首行缩进 2 字符"
  * for any non-12pt body and disabled font-size tracking on round-trip.
  */
-function parseIndent(v: string | number): { kind: "twip" | "char"; value: number } {
+/** Returns `null` on unparseable strings — callers fall back to "don't
+ * emit the attribute" (semantically equivalent to a 0-twip indent for
+ * Word, but more conservative than blindly writing `w:firstLine="0"`). */
+export function parseIndent(
+  v: string | number | null,
+): { kind: "twip" | "char"; value: number } | null {
+  if (v === null) return null
   if (typeof v === "number") return { kind: "twip", value: Math.round(v * 20) }
   const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*(char|chars|pt)?$/i)
-  if (!m) return { kind: "twip", value: 0 }
+  if (!m) return null
   const n = parseFloat(m[1]!)
   const unit = (m[2] || "").toLowerCase()
   if (unit.startsWith("char")) return { kind: "char", value: Math.round(n * 100) }

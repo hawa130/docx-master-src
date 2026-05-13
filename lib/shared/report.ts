@@ -1,7 +1,7 @@
 import type { EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import type { ImportResult } from "@lib/apply/template-import.ts"
-import type { VsDirectReport } from "@lib/shared/vs-direct.ts"
+import { sameValue, type VsDirectReport } from "@lib/shared/vs-direct.ts"
 import type {
   FlagRecord,
   RestyleSample,
@@ -125,13 +125,6 @@ function renderVsDirect(r: VsDirectReport, lines: string[]): void {
       )
     }
   }
-}
-
-function sameValue(a: unknown, b: unknown): boolean {
-  if (typeof a === "number" && typeof b === "number") {
-    return Math.abs(a - b) < 1e-6
-  }
-  return String(a) === String(b)
 }
 
 /* ------------- change report ------------- */

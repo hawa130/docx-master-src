@@ -12,8 +12,15 @@
 
 import { loadDocx } from "@lib/xml/load.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
-import { parseFieldRuns, type FieldDetails } from "@lib/edit/fields/field-parse.ts"
+import {
+  firstChildNS,
+  getChildren,
+  paragraphRuns,
+  paragraphStyleId,
+  wAttr,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
+import { parseFieldRuns, seqFields } from "@lib/edit/fields/field-parse.ts"
 
 const w = NS.w
 
@@ -70,20 +77,14 @@ async function main(): Promise<void> {
       }
     }
 
-    // Collect advancing SEQ fields in this paragraph. SEQs carrying the
-    // `\c` switch are prefix-readers (they reuse the current counter
-    // value without advancing) — engine-injected chapter prefixes use
-    // this to render `chapter.figure` style numbering. They shouldn't
-    // be counted as occurrences under their own identifier, and they
-    // shouldn't shadow the real caption identifier (`Figure`, `Table`,
-    // ...) that follows them in the same paragraph.
-    const seqFields: FieldDetails[] = []
-    for (const entry of parsed) {
-      if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
-      if (entry.details.repeat) continue
-      seqFields.push(entry.details)
-    }
-    if (seqFields.length === 0) continue
+    // Collect advancing SEQ fields in this paragraph. `seqFields(...,
+    // skipRepeat: true)` drops `\c` (repeat) SEQs — engine-injected
+    // chapter prefixes use those to read the current counter value
+    // without advancing. They shouldn't be counted as occurrences under
+    // their own identifier, and they shouldn't shadow the real caption
+    // identifier (`Figure`, `Table`, ...) that follows them.
+    const advancingSeqs = seqFields(para, { skipRepeat: true })
+    if (advancingSeqs.length === 0) continue
     // Record one occurrence per advancing SEQ identifier in the paragraph.
     // A sub-numbered caption like Equation 2(b) emits both `SEQ Equation`
     // and `SEQ EquationSub` in the same `<w:p>`; both advance, so both
@@ -92,7 +93,7 @@ async function main(): Promise<void> {
     // counter values on the primary entry.
     const styleId = paragraphStyleId(para)
     const anchorName = firstBookmarkName(para)
-    for (const [i, seq] of seqFields.entries()) {
+    for (const [i, seq] of advancingSeqs.entries()) {
       if (!seq.identifier) continue
       let summary = byId.get(seq.identifier)
       if (!summary) {
@@ -107,8 +108,8 @@ async function main(): Promise<void> {
       }
       const parentSeqValue = i === 0 ? (rawResultText(parsed, "SEQ", seq.identifier) ?? "") : ""
       const subSeqValue =
-        i === 0 && seqFields.length > 1
-          ? (rawResultText(parsed, "SEQ", seqFields[1]!.identifier ?? "") ?? "")
+        i === 0 && advancingSeqs.length > 1
+          ? (rawResultText(parsed, "SEQ", advancingSeqs[1]!.identifier ?? "") ?? "")
           : undefined
       summary.occurrences.push({
         paragraphIndex,
@@ -180,22 +181,6 @@ function printDetail(s: IdentifierSummary): void {
       `    para ${String(occ.paragraphIndex).padStart(4)}  counter ${sub.padEnd(8)}  anchor: ${anchor.padEnd(20)}  style: ${styleId}`,
     )
   }
-}
-
-function paragraphRuns(paragraph: Element): Element[] {
-  const out: Element[] = []
-  for (const c of getChildren(paragraph)) {
-    if (c.namespaceURI === w && c.localName === "r") out.push(c)
-  }
-  return out
-}
-
-function paragraphStyleId(paragraph: Element): string | undefined {
-  const pPr = firstChildNS(paragraph, w, "pPr")
-  if (!pPr) return undefined
-  const pStyle = firstChildNS(pPr, w, "pStyle")
-  if (!pStyle) return undefined
-  return wAttr(pStyle, "val") ?? undefined
 }
 
 function firstBookmarkName(paragraph: Element): string | undefined {

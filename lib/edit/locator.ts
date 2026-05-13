@@ -15,7 +15,13 @@
 
 import type { ParsedParagraph } from "@lib/parse/types.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, textContent, wVal } from "@lib/xml/xml-utils.ts"
+import {
+  firstChildNS,
+  getChildren,
+  getChildrenNS,
+  paragraphStyleId as paragraphStyleIdOrUndefined,
+  textContent,
+} from "@lib/xml/xml-utils.ts"
 import { summarizeTable } from "@lib/parse/table-classifier.ts"
 import { assertNever, type Locator, type ResolvedTarget } from "@lib/config/edit-types.ts"
 
@@ -315,12 +321,14 @@ function isBlankRun(r: Element): boolean {
 
 /* ------------- helpers usable downstream ------------- */
 
-/** Read the styleId of a paragraph element (for blocker logging / heading
- * disambiguation). Returns "Normal" when no explicit pStyle is set. */
+/** Read the styleId of a paragraph element for blocker logging /
+ * heading disambiguation. Returns "Normal" when no explicit `<w:pStyle>`
+ * is set — Word's effective style at that absence, applied here because
+ * downstream blockers compare against concrete styleIds and want the
+ * effective value, not "unset". Tools that need to distinguish "absent"
+ * from "= Normal" call `paragraphStyleIdOrUndefined` directly. */
 export function paragraphStyleId(pEl: Element): string {
-  const pPr = firstChildNS(pEl, NS.w, "pPr")
-  const pStyle = pPr ? firstChildNS(pPr, NS.w, "pStyle") : null
-  return (pStyle && wVal(pStyle)) || "Normal"
+  return paragraphStyleIdOrUndefined(pEl) ?? "Normal"
 }
 
 /** Plain-text content of a paragraph (concatenates <w:t> textContent across

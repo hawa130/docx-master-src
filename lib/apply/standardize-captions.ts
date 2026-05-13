@@ -25,8 +25,15 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
-import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
+import {
+  firstChildNS,
+  getChildren,
+  paragraphRuns,
+  paragraphStyleId,
+  wAttr,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
+import { parseFieldRuns, seqFields } from "@lib/edit/fields/field-parse.ts"
 import { buildCaptionRunSequence } from "@lib/edit/caption-emit.ts"
 import type { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import type { PendingCaptionFill, ResolvedCaptionConfig } from "@lib/edit/caption-counter.ts"
@@ -239,11 +246,11 @@ function extractCaptionParts(
 }
 
 function detectSubGroup(paragraph: Element, identifier: string): "start" | "continue" | undefined {
-  const runs: Element[] = []
-  for (const c of getChildren(paragraph)) {
-    if (c.namespaceURI === w && c.localName === "r") runs.push(c)
-  }
-  const parsed = parseFieldRuns(runs)
+  // Sub-group detection wants the raw field stream including `\c` so we
+  // can spot the parent's repeat flag — call parseFieldRuns directly
+  // here instead of going through `seqFields` (which is for the
+  // skip-repeat-only callers).
+  const parsed = parseFieldRuns(paragraphRuns(paragraph))
   let parentRepeat = false
   let subSeqPresent = false
   const subId = `${identifier}Sub`
@@ -257,27 +264,6 @@ function detectSubGroup(paragraph: Element, identifier: string): "start" | "cont
   return undefined
 }
 
-function paragraphStyleId(paragraph: Element): string | undefined {
-  const pPr = firstChildNS(paragraph, w, "pPr")
-  if (!pPr) return undefined
-  const pStyle = firstChildNS(pPr, w, "pStyle")
-  if (!pStyle) return undefined
-  return wAttr(pStyle, "val") ?? undefined
-}
-
 function findSeqIdentifier(paragraph: Element): string | undefined {
-  const runs: Element[] = []
-  for (const c of getChildren(paragraph)) {
-    if (c.namespaceURI === w && c.localName === "r") runs.push(c)
-  }
-  const parsed = parseFieldRuns(runs)
-  for (const entry of parsed) {
-    if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
-    // Skip `\c` (repeat) SEQs — engine-injected chapter prefixes read the
-    // current counter value without advancing and aren't this paragraph's
-    // own identifier. Same fix shape as inspect-caption / overview.
-    if (entry.details.repeat) continue
-    return entry.details.identifier
-  }
-  return undefined
+  return seqFields(paragraph, { skipRepeat: true })[0]?.identifier
 }

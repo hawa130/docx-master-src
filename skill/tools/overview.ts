@@ -22,20 +22,17 @@ import { loadDocx, parseNumbering } from "@lib/xml/load.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { NS, type DocumentElement, type ParsedParagraph } from "@lib/parse/types.ts"
 import type { LoadedDoc } from "@lib/xml/load.ts"
-import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
+import {
+  firstChildNS,
+  getChildren,
+  paragraphStyleId,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
 import { pad, paperName, truncate, tw2mm } from "@lib/parse/format.ts"
 import { sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
-import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
+import { seqFields } from "@lib/edit/fields/field-parse.ts"
 
 const NS_W = NS.w
-
-function captionParagraphStyleId(paragraph: Element): string | undefined {
-  const pPr = firstChildNS(paragraph, NS_W, "pPr")
-  if (!pPr) return undefined
-  const pStyle = firstChildNS(pPr, NS_W, "pStyle")
-  if (!pStyle) return undefined
-  return wAttr(pStyle, "val") ?? undefined
-}
 
 type ParasMode = "full" | "none" | { from: number; to: number }
 
@@ -489,31 +486,26 @@ function renderCaptions(doc: LoadedDoc): string[] {
   const byId = new Map<string, Summary>()
 
   for (const para of walkBodyParagraphs(body)) {
-    const runs: Element[] = []
-    for (const c of getChildren(para)) {
-      if (c.namespaceURI === NS_W && c.localName === "r") runs.push(c)
-    }
-    if (runs.length === 0) continue
-    const parsed = parseFieldRuns(runs)
-    // Count every advancing SEQ in the paragraph. Skip `\c` (repeat=true)
-    // SEQs — those are prefix-readers that reuse the current counter value
-    // (engine-injected chapter prefixes use them), so they neither advance
+    // Count every advancing SEQ in the paragraph. `seqFields(...,
+    // skipRepeat: true)` drops `\c` (repeat) SEQs — those are
+    // prefix-readers that reuse the current counter value (engine-
+    // injected chapter prefixes use them), so they neither advance
     // their own identifier nor shadow the real caption identifier that
     // follows in the same paragraph. Each non-`\c` identifier gets a
-    // separate occurrence; sub-counters (e.g. Equation + EquationSub in a
-    // sub-numbered equation paragraph) both register.
-    const styleId = captionParagraphStyleId(para)
-    for (const entry of parsed) {
-      if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
-      if (entry.details.repeat) continue
-      const id = entry.details.identifier
+    // separate occurrence; sub-counters (e.g. Equation + EquationSub in
+    // a sub-numbered equation paragraph) both register.
+    const advancingSeqs = seqFields(para, { skipRepeat: true })
+    if (advancingSeqs.length === 0) continue
+    const styleId = paragraphStyleId(para)
+    for (const details of advancingSeqs) {
+      const id = details.identifier
       if (!id) continue
       let summary = byId.get(id)
       if (!summary) {
         summary = {
           identifier: id,
-          format: entry.details.format,
-          restartAtOutlineLevel: entry.details.restartAtOutlineLevel,
+          format: details.format,
+          restartAtOutlineLevel: details.restartAtOutlineLevel,
           paragraphStyleIds: new Set(),
           occurrences: 0,
         }

@@ -27,7 +27,13 @@
 
 import { loadDocx } from "@lib/xml/load.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
+import {
+  firstChildNS,
+  getChildren,
+  paragraphRuns,
+  paragraphStyleId,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
 
 const w = NS.w
@@ -125,20 +131,8 @@ async function main(): Promise<void> {
   console.log("     from the text — the captions table re-renders prefix + counter.")
 }
 
-function paragraphStyleId(paragraph: Element): string | undefined {
-  const pPr = firstChildNS(paragraph, w, "pPr")
-  if (!pPr) return undefined
-  const pStyle = firstChildNS(pPr, w, "pStyle")
-  if (!pStyle) return undefined
-  return wAttr(pStyle, "val") ?? undefined
-}
-
 function paragraphContainsSeq(paragraph: Element): boolean {
-  const runs: Element[] = []
-  for (const c of getChildren(paragraph)) {
-    if (c.namespaceURI === w && c.localName === "r") runs.push(c)
-  }
-  const parsed = parseFieldRuns(runs)
+  const parsed = parseFieldRuns(paragraphRuns(paragraph))
   return parsed.some((e) => e.kind === "field" && e.fieldType === "SEQ")
 }
 

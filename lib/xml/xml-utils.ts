@@ -117,6 +117,32 @@ export function* walkBodyParagraphs(root: Element): Generator<Element> {
   }
 }
 
+/** Read the styleId of a paragraph element. Returns `undefined` when no
+ * explicit `<w:pStyle>` is set — callers decide whether to apply a
+ * fallback (Word's effective style is "Normal" when omitted, but tools
+ * surfacing what the XML literally declares should treat absence as
+ * `undefined`). */
+export function paragraphStyleId(paragraph: Element): string | undefined {
+  const pPr = firstChildNS(paragraph, NS.w, "pPr")
+  if (!pPr) return undefined
+  const pStyle = firstChildNS(pPr, NS.w, "pStyle")
+  if (!pStyle) return undefined
+  return wAttr(pStyle, "val") ?? undefined
+}
+
+/** Direct `<w:r>` children of a paragraph (not descendants). The caption
+ * / SEQ / migration pipelines all parse paragraphs as a run sequence —
+ * `parseFieldRuns` expects exactly this shape. Recursive collection
+ * would pull runs out of nested SDTs / drawing fallbacks and confuse
+ * the field-state machine. */
+export function paragraphRuns(paragraph: Element): Element[] {
+  const out: Element[] = []
+  for (const c of getChildren(paragraph)) {
+    if (c.namespaceURI === NS.w && c.localName === "r") out.push(c)
+  }
+  return out
+}
+
 /** Build a `<w:r>` containing a single `<w:t xml:space="preserve">text</w:t>`.
  * Idiom shared by caption emit, edit-caption op, and standardize re-emit
  * for literal decoration runs (prefix / suffix / separators / body

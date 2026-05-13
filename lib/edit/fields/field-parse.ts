@@ -24,7 +24,7 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { getChildren } from "@lib/xml/xml-utils.ts"
+import { getChildren, paragraphRuns } from "@lib/xml/xml-utils.ts"
 import type { SeqFormat } from "@lib/edit/fields/seq-field.ts"
 
 const w = NS.w
@@ -89,6 +89,24 @@ export function parseFieldRuns(runs: readonly Element[]): ParsedRun[] {
       out.push({ kind: "text", text: textOf(run), rPrEl: rPrOf(run) })
       i++
     }
+  }
+  return out
+}
+
+/** SEQ field details in a paragraph, in document order. When
+ * `skipRepeat` is true, drops `\c` (repeat) entries — engine-injected
+ * chapter prefixes carry `\c` to read the current counter value without
+ * advancing it, so they neither own their identifier nor shadow the
+ * caption identifier that follows them in the same paragraph. Callers
+ * needing the "primary" identifier take `[0].identifier`; callers
+ * needing all advancing counters iterate the array. */
+export function seqFields(paragraph: Element, opts: { skipRepeat: boolean }): FieldDetails[] {
+  const parsed = parseFieldRuns(paragraphRuns(paragraph))
+  const out: FieldDetails[] = []
+  for (const entry of parsed) {
+    if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
+    if (opts.skipRepeat && entry.details.repeat) continue
+    out.push(entry.details)
   }
   return out
 }

@@ -12,43 +12,14 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { parseXml } from "@lib/xml/reader.ts"
 import type { Block } from "@lib/config/edit-types.ts"
 import type { EmitContext } from "@lib/edit/fragment-emit.ts"
 import { buildPPrChildren } from "@lib/edit/fragment-emit.ts"
-import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
+import { buildOMath } from "@lib/edit/math/omml-build.ts"
 import { emitNumberedEquation } from "@lib/edit/caption-emit.ts"
 
 const w = NS.w
 const m = NS.m
-
-/** Resolve a math source (LaTeX via temml, or raw OMML) into an
- * `<m:oMath>` element imported into ownerDoc. LaTeX path uses the cache
- * warmed by `prepareLatex` pre-walk; OMML path parses the agent-supplied
- * string directly (escape hatch when temml fails). */
-function buildOMath(
-  source: { latex?: string; omml?: string },
-  displayMode: boolean,
-  ownerDoc: Document,
-): Element {
-  const ommlString =
-    source.latex !== undefined
-      ? getOmmlSync(source.latex, displayMode)
-      : source.omml !== undefined
-        ? source.omml
-        : (() => {
-            throw new Error(
-              "EquationBlock: no math source — schema validation should have caught this. " +
-                "This is an engine invariant violation.",
-            )
-          })()
-  const parsed = parseXml(ommlString)
-  const root = parsed.documentElement
-  if (!root) {
-    throw new Error(`Math source produced no root element. source=${JSON.stringify(source)}`)
-  }
-  return ownerDoc.importNode(root, true) as Element
-}
 
 export function emitEquationBlock(
   block: Extract<Block, { type: "equation" }>,
@@ -123,7 +94,21 @@ function emitUnnumberedEquationLegacy(
     }
     p.appendChild(pPr)
   }
-  const oMath = buildOMath({ latex: block.latex, omml: block.omml }, true, ownerDoc)
+  // Schema requires exactly one of `latex` / `omml` on every equation block;
+  // the throw is an engine invariant guard (validation should have rejected
+  // a malformed block before reaching emit).
+  const mathSource =
+    block.latex !== undefined
+      ? { latex: block.latex }
+      : block.omml !== undefined
+        ? { omml: block.omml }
+        : (() => {
+            throw new Error(
+              "EquationBlock: no math source — schema validation should have caught this. " +
+                "This is an engine invariant violation.",
+            )
+          })()
+  const oMath = buildOMath(mathSource, ownerDoc, true)
   const oMathPara = ownerDoc.createElementNS(m, "m:oMathPara")
   oMathPara.appendChild(oMath)
   p.appendChild(oMathPara)
@@ -141,5 +126,5 @@ function emitUnnumberedEquationLegacy(
 /** Build the `<m:oMath>` element for an inline equation. Caller splices it
  * between `<w:r>` siblings inside the paragraph. */
 export function emitInlineEquation(latex: string, ownerDoc: Document): Element {
-  return buildOMath({ latex }, false, ownerDoc)
+  return buildOMath({ latex }, ownerDoc, false)
 }

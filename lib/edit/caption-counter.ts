@@ -35,6 +35,7 @@
 
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
+import { toAlphaCounter, toRoman } from "@lib/parse/counter-format.ts"
 import type { SeqFormat } from "@lib/edit/fields/seq-field.ts"
 
 const w = NS.w
@@ -302,9 +303,9 @@ export function formatCounter(n: number, format: SeqFormat): string {
     case "arabic":
       return String(n)
     case "alphabetic":
-      return toAlpha(n, false)
+      return toAlphaCounter(n, false)
     case "ALPHABETIC":
-      return toAlpha(n, true)
+      return toAlphaCounter(n, true)
     case "roman":
       return toRoman(n).toLowerCase()
     case "ROMAN":
@@ -314,47 +315,6 @@ export function formatCounter(n: number, format: SeqFormat): string {
     case "chinese-formal":
       return toChineseNum(n, true)
   }
-}
-
-function toAlpha(n: number, upper: boolean): string {
-  if (n <= 0) return ""
-  const base = upper ? 65 : 97
-  let result = ""
-  let m = n
-  while (m > 0) {
-    m--
-    result = String.fromCharCode(base + (m % 26)) + result
-    m = Math.floor(m / 26)
-  }
-  return result
-}
-
-function toRoman(n: number): string {
-  if (n <= 0) return ""
-  const values: [number, string][] = [
-    [1000, "M"],
-    [900, "CM"],
-    [500, "D"],
-    [400, "CD"],
-    [100, "C"],
-    [90, "XC"],
-    [50, "L"],
-    [40, "XL"],
-    [10, "X"],
-    [9, "IX"],
-    [5, "V"],
-    [4, "IV"],
-    [1, "I"],
-  ]
-  let result = ""
-  let m = n
-  for (const [v, s] of values) {
-    while (m >= v) {
-      result += s
-      m -= v
-    }
-  }
-  return result
 }
 
 function toChineseNum(n: number, formal: boolean): string {

@@ -17,13 +17,8 @@
  *     silently fails to render in Word even though XSD permits its absence.
  *
  * Public API:
- *   - `validateOoxmlParts(parts)` — async, validates an in-memory map of
- *     `path → contents`. Used by `apply` pre-write (including dry-run).
  *   - `validateDocxFile(path)` — async, opens a docx and validates every
  *     part. Used by `apply` post-write and the standalone `validate` CLI.
- *
- * Both share the same checks; `validateDocxFile` is just a convenience that
- * loads parts from a zip first.
  */
 
 import { existsSync, readFileSync, readdirSync } from "node:fs"
@@ -530,7 +525,7 @@ function checkRelationships(
  * ENTRY POINTS
  * ========================================================== */
 
-export async function validateOoxmlParts(
+async function validateOoxmlParts(
   parts: Map<string, string>,
   packageEntries?: ReadonlyArray<string>,
 ): Promise<ValidationError[]> {
