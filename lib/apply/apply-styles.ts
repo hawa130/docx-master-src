@@ -35,6 +35,8 @@ import {
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
+import { resolveCaptions } from "@lib/parse/caption-resolver.ts"
+import { simulateCaptions } from "@lib/edit/caption-counter.ts"
 import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
 import type {
   ApplyConfig,
@@ -468,6 +470,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       editsPreview = preview.entries
       editTouchedIndices = preview.replacedOrDeletedIndices
     } else {
+      const resolvedCaptions = resolveCaptions(config.captions, stylesDoc)
       const result = await runEditOps({
         documentDoc,
         parsedParagraphs: parsed.paragraphs,
@@ -476,6 +479,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         trackChanges: config.trackChanges ?? false,
         stylesDoc,
         sections: parsed.sections,
+        captions: resolvedCaptions.byIdentifier,
       })
       imageRegistry = result.imageRegistry
       editsApplied = result.report.applied
@@ -499,8 +503,37 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // Word users see correct text before the first F9 / "update fields"
       // prompt. (3) Wrap target paragraphs with <w:bookmarkStart>/<w:bookmarkEnd>
       // pairs so REF can resolve. (4) Flip settings.xml's updateFields flag.
-      const { bookmarkAllocator, pendingBackfills } = result.crossRefs
-      if (bookmarkAllocator.hasAllocations()) {
+      const { bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
+        result.crossRefs
+
+      // Caption counter simulator: walks the body, advances per-identifier
+      // counters, resolves STYLEREF chapter prefixes, returns fieldValues
+      // (per result text element) + fullCaptionText (per caption
+      // paragraph). Backfill below uses fullCaptionText for caption-class
+      // REF targets; outline-numbered targets fall through to the
+      // numbering counter sim's lvlText.
+      const captionSimOutput =
+        pendingCaptionFills.length > 0 || pendingCaptionResets.length > 0
+          ? simulateCaptions(documentDoc, {
+              fills: pendingCaptionFills,
+              resets: pendingCaptionResets,
+              configs: resolvedCaptions.byIdentifier,
+              outlineParagraphs: buildOutlineParagraphsMap(
+                documentDoc,
+                numberingDoc,
+                stylesDoc,
+                resolvedCaptions.styleIdToName,
+              ),
+            })
+          : { fieldValues: new Map<Element, string>(), fullCaptionText: new Map<Element, string>() }
+      for (const [el, text] of captionSimOutput.fieldValues) {
+        el.textContent = text
+      }
+      if (captionSimOutput.fieldValues.size > 0 || captionSimOutput.fullCaptionText.size > 0) {
+        crossRefsTouched = true
+      }
+
+      if (bookmarkAllocator.hasAllocations() || captionSimOutput.fullCaptionText.size > 0) {
         // Resolve each pending backfill's target via the allocator. Every
         // emit path (paragraph-index ref, anchor ref already-adopted,
         // anchor ref forward) registered the name with the allocator by
@@ -539,6 +572,17 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         }
         const counters = simulateNumberingCounters(documentDoc, numberingDoc, stylesDoc)
         for (const pending of resolvedBackfills) {
+          // Caption-class targets: REF \h returns the SEQ-rendered text
+          // (prefix + chapter + counter + suffix). label / number collapse.
+          const captionText = captionSimOutput.fullCaptionText.get(pending.targetParagraph)
+          if (captionText !== undefined) {
+            pending.placeholderTextEl.textContent =
+              pending.display === "full"
+                ? extractParagraphText(pending.targetParagraph)
+                : captionText
+            continue
+          }
+          // Outline-numbered targets: fall through to lvlText backfill.
           const rendered = counters.get(pending.targetParagraph)
           if (!rendered && pending.display !== "full") continue
           const text =
@@ -968,4 +1012,33 @@ function makeCanonicalNameKey(): (name: string) => string {
     toCanonical.set(zh, eng)
   }
   return (name: string) => toCanonical.get(name) ?? name
+}
+
+/** Build `outlineParagraphs: Map<Element, { styleName, rendered }>` for the
+ * caption simulator. Walks the body, finds paragraphs whose pStyle matches
+ * a styleId referenced by some caption's chapterPrefix, looks up its
+ * rendered counter number, returns the pair. Caption simulator uses this
+ * to resolve STYLEREF chapter prefixes. */
+function buildOutlineParagraphsMap(
+  documentDoc: Document,
+  numberingDoc: Document | null,
+  stylesDoc: Document | null,
+  styleIdToName: Map<string, string>,
+): Map<Element, { styleName: string; rendered: string }> {
+  const out = new Map<Element, { styleName: string; rendered: string }>()
+  if (styleIdToName.size === 0) return out
+  const counters = simulateNumberingCounters(documentDoc, numberingDoc, stylesDoc)
+  const w = NS.w
+  for (const [paraEl, rendered] of counters) {
+    const pPr = firstChildNS(paraEl, w, "pPr")
+    if (!pPr) continue
+    const pStyle = firstChildNS(pPr, w, "pStyle")
+    if (!pStyle) continue
+    const styleId = wAttr(pStyle, "val")
+    if (!styleId) continue
+    const styleName = styleIdToName.get(styleId)
+    if (!styleName) continue
+    out.set(paraEl, { styleName, rendered: rendered.number })
+  }
+  return out
 }

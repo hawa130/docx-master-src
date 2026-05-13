@@ -128,6 +128,19 @@ export function simulateCaptions(
   const resetByPara = new Map<Element, PendingCaptionReset>()
   for (const r of input.resets) resetByPara.set(r.paragraph, r)
 
+  // styleName → list of identifiers that reset when a paragraph with
+  // that style is encountered. Derived from each config's last
+  // chapterPrefix entry (the deepest level controls restart, per SEQ \s
+  // semantics).
+  const resetTriggers = new Map<string, string[]>()
+  for (const [identifier, config] of input.configs) {
+    if (config.chapterPrefix.length === 0) continue
+    const lastStyleName = config.chapterPrefix[config.chapterPrefix.length - 1]!.styleName
+    const list = resetTriggers.get(lastStyleName) ?? []
+    list.push(identifier)
+    resetTriggers.set(lastStyleName, list)
+  }
+
   const root = documentDoc.documentElement
   if (!root) return { fieldValues, fullCaptionText }
   const body = firstChildNS(root, w, "body")
@@ -137,6 +150,17 @@ export function simulateCaptions(
     const outlineInfo = input.outlineParagraphs.get(para)
     if (outlineInfo) {
       latestHeading.set(outlineInfo.styleName, outlineInfo.rendered)
+      // Reset any caption counters whose chapter restart hangs off this
+      // heading style. Mirrors Word's SEQ \s N behavior.
+      const triggered = resetTriggers.get(outlineInfo.styleName)
+      if (triggered) {
+        for (const identifier of triggered) {
+          const state = stateFor(states, identifier)
+          state.parent = 0
+          state.sub = 0
+          state.openSubGroup = false
+        }
+      }
       continue
     }
 

@@ -17,6 +17,7 @@ import type { Block } from "@lib/config/edit-types.ts"
 import type { EmitContext } from "@lib/edit/fragment-emit.ts"
 import { buildPPrChildren } from "@lib/edit/fragment-emit.ts"
 import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
+import { emitNumberedEquation } from "@lib/edit/caption-emit.ts"
 
 const w = NS.w
 const m = NS.m
@@ -50,6 +51,68 @@ function buildOMath(
 }
 
 export function emitEquationBlock(
+  block: Extract<Block, { type: "equation" }>,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  // When captionId is set, route to the caption pipeline — emits a 3-col
+  // borderless table with the equation in the middle cell and the
+  // SEQ-based caption in the right cell.
+  if (block.captionId !== undefined) {
+    return emitNumberedEquationDispatch(block, block.captionId, ownerDoc, ctx)
+  }
+  return emitUnnumberedEquationLegacy(block, ownerDoc, ctx)
+}
+
+function emitNumberedEquationDispatch(
+  block: Extract<Block, { type: "equation" }>,
+  captionId: string,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  if (!ctx.resolveCaption) {
+    throw new Error(
+      "EquationBlock.captionId: ctx.resolveCaption not provided by the engine. " +
+        "Numbered equations require the captions table to be declared in the apply config.",
+    )
+  }
+  const config = ctx.resolveCaption(captionId)
+  if (!config) {
+    throw new Error(`EquationBlock: captionId "${captionId}" is not declared in captions table.`)
+  }
+  if (block.subGroup !== undefined && config.subCounter === undefined) {
+    throw new Error(
+      `EquationBlock: subGroup="${block.subGroup}" requires captions["${captionId}"].subCounter to be declared.`,
+    )
+  }
+  const mathSource: { latex: string } | { omml: string } =
+    block.latex !== undefined ? { latex: block.latex } : { omml: block.omml! }
+
+  let bookmark: { id: number; name: string } | undefined
+  if (block.anchor !== undefined) {
+    if (!ctx.allocateCaptionBookmark || !ctx.bindCaptionBookmark) {
+      throw new Error(
+        "EquationBlock.anchor: caption bookmark allocator not provided by the engine.",
+      )
+    }
+    bookmark = ctx.allocateCaptionBookmark(block.anchor)
+  }
+  const { table, fill } = emitNumberedEquation(ownerDoc, {
+    mathSource,
+    equationStyleId: block.styleId ?? "Equation",
+    captionConfig: config,
+    subGroup: block.subGroup,
+    bookmark,
+    usableWidthTwips: ctx.usableWidthTwips,
+  })
+  if (block.anchor !== undefined && ctx.bindCaptionBookmark) {
+    ctx.bindCaptionBookmark(block.anchor, fill.paragraph)
+  }
+  if (ctx.registerCaptionFill) ctx.registerCaptionFill(fill)
+  return table
+}
+
+function emitUnnumberedEquationLegacy(
   block: Extract<Block, { type: "equation" }>,
   ownerDoc: Document,
   ctx: EmitContext,

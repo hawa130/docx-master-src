@@ -67,6 +67,11 @@ import {
   switchesForDisplay,
   type PendingRefBackfill,
 } from "@lib/edit/fields/ref-field.ts"
+import type {
+  PendingCaptionFill,
+  PendingCaptionReset,
+  ResolvedCaptionConfig,
+} from "@lib/edit/caption-counter.ts"
 
 const w = NS.w
 
@@ -193,6 +198,11 @@ export interface RunEditOpsInput {
    * setups. Optional: when absent, table emit falls back to a conservative
    * A4-tight constant. */
   sections?: SectionInfo[]
+  /** Resolved captions config from apply config. Engine wires this into
+   * EmitContext.resolveCaption so caption-bearing blocks (EquationBlock
+   * with captionId, CaptionBlock, CaptionCounterReset) can resolve their
+   * identifier at emit time. Absent → caption blocks throw at emit. */
+  captions?: Map<string, ResolvedCaptionConfig>
 }
 
 export interface RunEditOpsOutput {
@@ -207,6 +217,8 @@ export interface RunEditOpsOutput {
   crossRefs: {
     bookmarkAllocator: BookmarkAllocator
     pendingBackfills: PendingRefBackfill[]
+    pendingCaptionFills: PendingCaptionFill[]
+    pendingCaptionResets: PendingCaptionReset[]
   }
 }
 
@@ -294,10 +306,28 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   }
 
   const pendingBackfills: PendingRefBackfill[] = []
+  const pendingCaptionFills: PendingCaptionFill[] = []
+  const pendingCaptionResets: PendingCaptionReset[] = []
+  const captionAnchorNames = new Set<string>()
+  const captionsMap = input.captions
   const emitCtx: EmitContext = {
     emitImage: (src, widthPt, heightPt, alt, ownerDoc) => {
       const { rId } = imageRegistry.registerImage(src)
       return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
+    },
+    resolveCaption: captionsMap ? (identifier: string) => captionsMap.get(identifier) : undefined,
+    allocateCaptionBookmark: (name) => {
+      captionAnchorNames.add(name)
+      return bookmarkAllocator.allocateRangeBookmark(name)
+    },
+    bindCaptionBookmark: (name, pEl) => {
+      bookmarkAllocator.bindRangeBookmark(name, pEl)
+    },
+    registerCaptionFill: (fill) => {
+      pendingCaptionFills.push(fill)
+    },
+    registerCaptionReset: (reset) => {
+      pendingCaptionResets.push(reset)
     },
     emitRef: (ref, ownerDoc, defaultFormat) => {
       // Resolve target → (paragraph element OR forward-ref name, bookmark
@@ -340,7 +370,13 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // (REF \n and \r switches render the lvlText / counter). The "full"
       // display resolves to the bookmark's text content, which any
       // non-empty paragraph supports — so we relax the check there.
-      if (display !== "full") {
+      //
+      // Caption-class anchors are SEQ-numbered (not numPr) and pass
+      // unconditionally: forward refs match via reserveName's
+      // `directlyNumbered: !!b.captionId` hint; backward refs match via
+      // the `captionAnchorNames` set populated at caption emit time.
+      const isCaptionAnchor = ref.refTo.type === "anchor" && captionAnchorNames.has(ref.refTo.name)
+      if (display !== "full" && !isCaptionAnchor) {
         const predicted =
           ref.refTo.type === "anchor"
             ? bookmarkAllocator.predictedNumberingFor(ref.refTo.name)
@@ -415,6 +451,8 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
     },
     crossRefs: {
       bookmarkAllocator,
+      pendingCaptionFills,
+      pendingCaptionResets,
       pendingBackfills,
     },
   }
@@ -658,13 +696,17 @@ function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) 
   const b = block as Partial<{
     anchor: string
     styleId: string
+    captionId: string
     numbering: { numId: string; level: number }
   }>
   if (typeof b.anchor === "string" && b.anchor) {
     visit({
       anchor: b.anchor,
       styleId: b.styleId,
-      directlyNumbered: !!b.numbering,
+      // Caption blocks (CaptionBlock + EquationBlock with captionId) are
+      // SEQ-numbered, not numPr-numbered. They satisfy InlineRef's
+      // numbering check without participating in the numPr cascade.
+      directlyNumbered: !!b.numbering || !!b.captionId,
     })
   }
   if (block.type === "table") {

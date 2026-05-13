@@ -31,6 +31,12 @@ import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
 import { emitEquationBlock, emitInlineEquation } from "@lib/edit/math/equation-emit.ts"
+import { emitCaptionBlock, emitCaptionReset, type BookmarkRange } from "@lib/edit/caption-emit.ts"
+import type {
+  PendingCaptionFill,
+  PendingCaptionReset,
+  ResolvedCaptionConfig,
+} from "@lib/edit/caption-counter.ts"
 
 export type InlineRef = z.infer<typeof InlineRefSchema>
 
@@ -321,6 +327,26 @@ export interface EmitContext {
    * container or when the document's sectPr lacks pgSz/pgMar — emitters
    * fall back to a conservative constant in that case. */
   usableWidthTwips?: number
+  /* ----- caption pipeline (spec §4.5-§4.7) ----- */
+  /** Resolve an identifier (CaptionBlock.captionId / EquationBlock.captionId)
+   * to its resolved config. Engine populates from apply config's `captions`
+   * table at apply start. Returns undefined when the identifier isn't
+   * declared — emitters throw with agent-readable context. */
+  resolveCaption?: (identifier: string) => ResolvedCaptionConfig | undefined
+  /** Reserve a bookmark id+name for a caption block. The allocator
+   * validates uniqueness and returns id+name; caption-emit uses these
+   * to write bookmarkStart/End inline around the number runs. After
+   * emit, the caller binds the paragraph element via
+   * `bindCaptionBookmark` so REF \h cross-references can resolve. */
+  allocateCaptionBookmark?: (name: string) => BookmarkRange
+  /** Post-emit binding for `allocateCaptionBookmark`. Records the
+   * paragraph element in the allocator's name index. */
+  bindCaptionBookmark?: (name: string, pEl: Element) => void
+  /** Register a caption fill record so the counter sim can compute its
+   * rendered values post-emit. */
+  registerCaptionFill?: (fill: PendingCaptionFill) => void
+  /** Register a caption counter reset marker. */
+  registerCaptionReset?: (reset: PendingCaptionReset) => void
 }
 
 function ensurePPr(p: Element, ownerDoc: Document): Element {
@@ -447,18 +473,70 @@ export function emitBlock(block: Block, ownerDoc: Document, ctx: EmitContext): E
     case "equation":
       return emitEquationBlock(block, ownerDoc, ctx)
     case "caption":
+      return dispatchCaption(block, ownerDoc, ctx)
     case "caption-counter-reset":
-      // Caption emit + counter sim land in subsequent commits; routing
-      // these block types through the engine pipeline + apply-styles is
-      // pending. Schema accepts them so config validation succeeds, but
-      // applying produces a clear error rather than silent drop.
-      throw new Error(
-        `${block.type}: caption pipeline not yet wired into edit-engine. ` +
-          `Schema accepts this block but applying is pending the caption-emit integration commit.`,
-      )
+      return dispatchCaptionReset(block, ownerDoc, ctx)
     default:
       return assertNever(block)
   }
+}
+
+function dispatchCaption(
+  block: Extract<Block, { type: "caption" }>,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  if (!ctx.resolveCaption) {
+    throw new Error(
+      "CaptionBlock: ctx.resolveCaption not provided by the engine. " +
+        "Caption blocks require the captions table to be declared in the apply config.",
+    )
+  }
+  const config = ctx.resolveCaption(block.captionId)
+  if (!config) {
+    throw new Error(
+      `CaptionBlock: captionId "${block.captionId}" is not declared in captions table.`,
+    )
+  }
+  let bookmark: BookmarkRange | undefined
+  if (block.anchor !== undefined) {
+    if (!ctx.allocateCaptionBookmark || !ctx.bindCaptionBookmark) {
+      throw new Error("CaptionBlock.anchor: caption bookmark allocator not provided by the engine.")
+    }
+    bookmark = ctx.allocateCaptionBookmark(block.anchor)
+  }
+  const { paragraph, fill } = emitCaptionBlock(ownerDoc, {
+    captionConfig: config,
+    text: block.text,
+    bookmark,
+  })
+  if (block.anchor !== undefined && ctx.bindCaptionBookmark) {
+    ctx.bindCaptionBookmark(block.anchor, paragraph)
+  }
+  if (ctx.registerCaptionFill) ctx.registerCaptionFill(fill)
+  return paragraph
+}
+
+function dispatchCaptionReset(
+  block: Extract<Block, { type: "caption-counter-reset" }>,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  if (!ctx.resolveCaption) {
+    throw new Error("CaptionCounterReset: ctx.resolveCaption not provided by the engine.")
+  }
+  const config = ctx.resolveCaption(block.captionId)
+  if (!config) {
+    throw new Error(
+      `CaptionCounterReset: captionId "${block.captionId}" is not declared in captions table.`,
+    )
+  }
+  const { paragraph, reset } = emitCaptionReset(ownerDoc, {
+    identifier: block.captionId,
+    newValue: block.newValue ?? 1,
+  })
+  if (ctx.registerCaptionReset) ctx.registerCaptionReset(reset)
+  return paragraph
 }
 
 export function emitFragment(fragment: Fragment, ownerDoc: Document, ctx: EmitContext): Element[] {

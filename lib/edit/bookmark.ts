@@ -202,6 +202,37 @@ export class BookmarkAllocator {
     return this.nameIndex.get(name)
   }
 
+  /** Reserve a name + id for an inline (caption-emitter) bookmark
+   * without binding to any element yet. Caption-emit needs the id+name
+   * upfront to emit the bookmarkStart/End XML, but the paragraph
+   * doesn't exist yet — it's about to be built around the bookmark.
+   *
+   * Same collision semantics as adoptName: source / prior-adopted name
+   * → throw; reserved name → consume the reservation. The returned
+   * assignment is NOT yet in nameIndex; call `bindRangeBookmark` after
+   * the caption paragraph is constructed to record the binding so
+   * `resolveByName` works for REF cross-references. */
+  allocateRangeBookmark(name: string): BookmarkAssignment {
+    if (this.nameIndex.has(name)) {
+      throw new Error(
+        `anchor "${name}" ${this.describeCollision(name)}. Pick a unique anchor name.`,
+      )
+    }
+    this.reservations.delete(name)
+    const id = this.nextId++
+    this.usedNames.add(name)
+    return { id, name }
+  }
+
+  /** Post-allocation binding for `allocateRangeBookmark`. Records the
+   * name → paragraph mapping in `nameIndex` so REF backfill can resolve
+   * the target. Does NOT touch `byElement` — caption-emit already
+   * emitted bookmarkStart/End inline, so commit() must NOT wrap the
+   * paragraph again. */
+  bindRangeBookmark(name: string, pEl: Element): void {
+    this.nameIndex.set(name, { element: pEl, origin: "adopted" })
+  }
+
   /** True iff at least one bookmark will be wrapped at commit. Source
    * bookmarks don't count — they're already in the XML. */
   hasAllocations(): boolean {

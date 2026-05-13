@@ -4,6 +4,8 @@ import type {
   ApplyConfigSchema,
   AssignmentSchema,
   BulkRuleSchema,
+  CaptionEntrySchema,
+  CaptionsSchema,
   NumberingSchema,
   PatternRuleSchema,
   StyleEntrySchema,
@@ -25,6 +27,8 @@ import type { VsDirectReport } from "@lib/shared/vs-direct.ts"
 
 export type StyleConfigEntry = z.infer<typeof StyleEntrySchema>
 export type NumberingConfig = z.infer<typeof NumberingSchema>
+export type CaptionEntry = z.infer<typeof CaptionEntrySchema>
+export type CaptionsConfig = z.infer<typeof CaptionsSchema>
 export type AssignmentEntry = z.infer<typeof AssignmentSchema>
 export type BulkRule = z.infer<typeof BulkRuleSchema>
 export type PatternRule = z.infer<typeof PatternRuleSchema>
