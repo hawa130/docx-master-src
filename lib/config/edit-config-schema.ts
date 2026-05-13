@@ -525,6 +525,12 @@ const FormatOpSchema = z
     }),
   )
 
+// set-run takes a paragraph + run identification, not a paragraph-range
+// locator. Schema is restricted to RunLocatorSchema (at.type === "run").
+// Picking the wrong `at` form with op:"set-run" surfaces as a
+// discriminator mismatch via the dispatch in EditOpSchema, so the agent
+// sees "set-run requires at.type === 'run'" instead of a confusing
+// "with: expected string" from a union fallback path.
 const SetRunOpSchema = z.strictObject({
   op: z.literal("set-run"),
   at: RunLocatorSchema,
@@ -553,7 +559,14 @@ const EditCaptionOpSchema = z.strictObject({
   text: z.string(),
 })
 
-export const EditOpSchema = z.union([
+// Discriminate on `op` so a wrong-shape variant points at the right field.
+// Without this, zod's plain union tries each option and reports the lowest-
+// cost mismatch — which for `{ op: "set-run", at: { type: "paragraph", ... } }`
+// surfaces as "with: expected string, got [...]" against ReplaceOpSchema,
+// not "set-run requires at.type === 'run'". Discriminated dispatch picks the
+// schema by op literal first, then validates the chosen schema's other
+// fields, so all error messages reference the right op contract.
+export const EditOpSchema = z.discriminatedUnion("op", [
   ReplaceOpSchema,
   InsertBeforeOpSchema,
   InsertAfterOpSchema,
@@ -578,10 +591,31 @@ import { formatZodError, type HintFn } from "@lib/config/zod-format.ts"
 
 /** Domain hints that augment zod's defaults for known issue shapes. Returning
  * null falls back to the generic formatter. */
-const customHint: HintFn = (issue, pathStr, _raw) => {
+const customHint: HintFn = (issue, pathStr, raw) => {
   // Color hex regex — explain what's accepted.
   if (issue.code === "invalid_format" && pathStr.endsWith(".color")) {
     return `color must be 6 hex digits without leading "#" (e.g. "1F4E79"). Use "auto" via styleId for theme-aware colors.`
+  }
+  // set-run requires at.type === "run" — discriminated union surfaces the
+  // type mismatch on the `at.type` path; explain the constraint inline so
+  // the agent doesn't have to read the schema to fix the call site. Detect
+  // the case by walking up the issue path to the parent op and reading its
+  // `op` field.
+  if (issue.code === "invalid_value" && pathStr.endsWith(".at.type")) {
+    const opPath = issue.path.slice(0, -2)
+    let cursor: unknown = raw
+    for (const seg of opPath) {
+      if (cursor && typeof cursor === "object") {
+        cursor = (cursor as Record<string | number, unknown>)[seg as string | number]
+      }
+    }
+    const opLiteral =
+      cursor && typeof cursor === "object" && "op" in cursor
+        ? (cursor as { op?: unknown }).op
+        : undefined
+    if (opLiteral === "set-run") {
+      return `set-run requires at.type === "run" (use a RunLocator: { type: "run", paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
+    }
   }
   return null
 }

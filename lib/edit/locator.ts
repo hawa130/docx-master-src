@@ -237,10 +237,13 @@ function resolveHeading(
 }
 
 function resolveWholeBody(ctx: ResolverContext): ResolvedTarget {
-  const paragraphs: Element[] = []
-  for (const child of getChildren(ctx.body)) {
-    if (child.namespaceURI === NS.w && child.localName === "p") paragraphs.push(child)
-  }
+  // Iterate ctx.indexed so the resolved set matches DocumentParser's scope —
+  // body + layout-table cells. A naive `getChildren(ctx.body)` would only
+  // see body-level paragraphs and silently drop everything inside layout
+  // tables (the half of the doc that form-style templates put text into).
+  // Data/form table paragraphs stay out of scope here by design — they
+  // require an explicit `cell` locator.
+  const paragraphs = ctx.indexed.map((p) => p.element)
   return { paragraphs, container: ctx.body }
 }
 

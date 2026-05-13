@@ -45,40 +45,49 @@ import type { ResolvedCaptionConfig } from "@lib/edit/caption-counter.ts"
 
 const w = NS.w
 
+/** Returns the count of paragraphs that received a fresh hidden SEQ
+ * (paragraphs that already carried one are skipped). The count surfaces
+ * in the dry-run change report so the agent can preview chapter-counter
+ * coverage before committing. */
 export function injectChapterCounters(
   documentDoc: Document,
   captions: Map<string, ResolvedCaptionConfig>,
-): void {
+): number {
   // styleId → format. Only entries with a format override participate;
   // bare-string chapterPrefix entries use STYLEREF + heading's native
-  // numbering and don't need a parallel counter.
-  const tracked = new Map<string, SeqFormat>()
-  for (const config of captions.values()) {
+  // numbering and don't need a parallel counter. (caption-resolver pre-
+  // checks cross-entry consistency so the throw below is a defensive
+  // engine-layer guard — every caller routes through resolveCaptions.)
+  const tracked = new Map<string, { format: SeqFormat; captionIdentifier: string }>()
+  for (const [captionIdentifier, config] of captions) {
     for (const entry of config.chapterPrefix) {
       if (entry.format !== undefined) {
         const existing = tracked.get(entry.styleId)
-        if (existing !== undefined && existing !== entry.format) {
+        if (existing !== undefined && existing.format !== entry.format) {
           throw new Error(
-            `captions conflict: styleId "${entry.styleId}" appears under chapterPrefix with both format "${existing}" and "${entry.format}". The hidden auto-chapter counter for one style must use a single format — split into two styleIds or unify the format.`,
+            `captions conflict: chapterPrefix styleId "${entry.styleId}" appears with format "${existing.format}" (captions["${existing.captionIdentifier}"]) and "${entry.format}" (captions["${captionIdentifier}"]). The hidden auto-chapter counter for one style must use a single format — split into two styleIds or unify the format.`,
           )
         }
-        tracked.set(entry.styleId, entry.format)
+        tracked.set(entry.styleId, { format: entry.format, captionIdentifier })
       }
     }
   }
-  if (tracked.size === 0) return
+  if (tracked.size === 0) return 0
 
   const body = firstChildNS(documentDoc.documentElement, w, "body")
-  if (!body) return
+  if (!body) return 0
 
+  let injected = 0
   for (const para of walkBodyParagraphs(body)) {
     const styleId = paragraphStyleId(para)
     if (!styleId) continue
-    const format = tracked.get(styleId)
-    if (format === undefined) continue
+    const entry = tracked.get(styleId)
+    if (entry === undefined) continue
     if (paragraphHasChapterSeq(para, styleId)) continue
-    injectHiddenSeq(para, styleId, format, documentDoc)
+    injectHiddenSeq(para, styleId, entry.format, documentDoc)
+    injected++
   }
+  return injected
 }
 
 function injectHiddenSeq(

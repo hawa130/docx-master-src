@@ -96,30 +96,74 @@ CaptionCounterReset {
 
 ### Chapter-prefixed (中文学术 / GB/T 7713)
 
+H1 renders as `第一章 / 第二章 / 第三章` (chineseCounting numFmt with
+lvlText `第%1章`); captions read `图 1.1 / 表 2.1 / (3.1)` in Arabic.
+Full apply config — declare H1 as the chapter style, install
+multi-level numbering that pairs `chineseCounting` for H1 with Arabic
+for deeper headings, then mount captions with a `format: "arabic"`
+override so the chapter slot re-renders independently of H1's
+rendering:
+
 ```jsonc
-"captions": {
-  "Equation": { "prefix": "(", "suffix": ")",
-                "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
-                "styleId": "EquationNumber" },
-  "Figure":   { "prefix": "图 ",
-                "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
-                "bodySeparator": "  ", "styleId": "FigureCaption" },
-  "Table":    { "prefix": "表 ",
-                "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
-                "bodySeparator": "  ", "styleId": "TableCaption" }
+{
+  "styles": [
+    { "id": "Heading1", "name": "heading 1", "fromParagraph": 12, "outlineLevel": 0 },
+    { "id": "Heading2", "name": "heading 2", "fromParagraph": 20, "outlineLevel": 1 },
+    { "id": "FigureCaption",   "name": "Figure Caption",   "fromParagraph": 40 },
+    { "id": "TableCaption",    "name": "Table Caption",    "fromParagraph": 55 },
+    { "id": "EquationNumber",  "name": "Equation Number",  "fromParagraph": 60 }
+  ],
+  "numbering": {
+    "levels": [
+      { "level": 0, "styleId": "Heading1", "numFmt": "chineseCounting",
+        "lvlText": "第%1章" },
+      { "level": 1, "styleId": "Heading2", "numFmt": "decimal",
+        "lvlText": "%1.%2", "isLgl": true }
+    ]
+  },
+  "captions": {
+    "Figure":   { "prefix": "图 ",
+                  "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
+                  "bodySeparator": "  ", "styleId": "FigureCaption" },
+    "Table":    { "prefix": "表 ",
+                  "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
+                  "bodySeparator": "  ", "styleId": "TableCaption" },
+    "Equation": { "prefix": "(", "suffix": ")",
+                  "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
+                  "styleId": "EquationNumber" }
+  }
 }
 ```
 
+Predicted Word output for captions emitted under H1 = `第一章` / `第二章`:
+
+```
+图 1.1  系统架构
+表 1.1  评估指标
+(1.1)        ← inline equation number
+图 2.1  实验流程
+(2.1)
+```
+
 The `format: "arabic"` overrides H1's native rendering. Chinese theses
-typically style H1 as `chineseCounting` (`第一章` / `第二章`) but want
-captions to read `(1.1)` / `图 1.1`. Without the override, captions
-inherit H1's rendering → `(第一章.1)`. Drop the override (use bare
-string `"Heading1"`) when H1 is already Arabic.
+typically style H1 as `chineseCounting` but want captions to read
+`(1.1) / 图 1.1`. Without the override, captions inherit H1's rendering
+→ `(第一章.1)`. Drop the override (use bare string `"Heading1"`) when
+H1 is already Arabic.
+
+**If your chapter prefix renders as `0`** check (in order): the
+heading style declares an outline level (set `outlineLevel` on the
+style entry); the `chapterPrefix.styleId` exactly matches a `styles[]`
+entry's `id`; the apply call carries the `captions` config (without
+it the cross-ref pipeline skips chapter-SEQ injection entirely).
 
 **How `format` works**: at apply time, the engine injects a hidden
-`SEQ _chap_<styleId> \* <FORMAT> \h` field into each paragraph of the
-referenced style (advances the counter, renders nothing). Captions
-read the counter via `SEQ _chap_<styleId> \c \* <FORMAT>` (`\c` =
+`SEQ _chap_<styleId> \* <FORMAT>` field into each paragraph of the
+referenced style, wrapped in `<w:vanish/>` rPr so the counter
+advances without rendering (Word's SEQ `\h` switch is silently
+overridden by `\*` in the same field, so character-level vanish is
+the reliable hide mechanism). Captions read the counter via
+`SEQ _chap_<styleId> \c \* <FORMAT>` (`\c` =
 repeat current value, no increment). Word's F9 keeps both sides live,
 so adding / removing chapter headings in Word renumbers captions
 correctly.

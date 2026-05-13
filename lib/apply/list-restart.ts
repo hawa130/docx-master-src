@@ -1,5 +1,5 @@
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
 import { forkNumWithStartOverride, setParagraphNumPr } from "@lib/apply/numbering-mutation.ts"
 
 /**
@@ -69,29 +69,29 @@ export function applyListRestartPass(
   }
 
   const w = NS.w
-  const visit = (el: Element) => {
-    for (const child of getChildren(el)) {
-      if (child.namespaceURI === w && child.localName === "p") {
-        const pPr = firstChildNS(child, w, "pPr")
-        const pStyle = pPr ? firstChildNS(pPr, w, "pStyle") : null
-        const styleId = pStyle ? wAttr(pStyle, "val") : ""
-        const target = styleId ? styleIdToTarget.get(styleId) : undefined
-        if (target) {
-          currentRunByStyle.get(target.styleId)!.push(child)
-          // Any non-target run gets flushed by this paragraph not matching
-          // its styleId — handled below.
-          for (const t of targets) {
-            if (t.styleId !== target.styleId) flush(t.styleId)
-          }
-        } else {
-          for (const t of targets) flush(t.styleId)
-        }
-      } else {
-        visit(child)
+  // Scope to body + tbl/tr/tc paragraphs (the canonical walker). The cross-
+  // ref pipeline downstream (`injectChapterCounters`, caption sim, numbering
+  // sim) all share this scope; forking a numId for a list paragraph whose
+  // counter no downstream pass would write would leave the forked numId
+  // unreferenced. Footnotes / endnotes / comments aren't in scope.
+  const body = firstChildNS(documentDoc.documentElement, w, "body")
+  if (!body) return
+  for (const child of walkBodyParagraphs(body)) {
+    const pPr = firstChildNS(child, w, "pPr")
+    const pStyle = pPr ? firstChildNS(pPr, w, "pStyle") : null
+    const styleId = pStyle ? wAttr(pStyle, "val") : ""
+    const target = styleId ? styleIdToTarget.get(styleId) : undefined
+    if (target) {
+      currentRunByStyle.get(target.styleId)!.push(child)
+      // Any non-target run gets flushed by this paragraph not matching
+      // its styleId — handled below.
+      for (const t of targets) {
+        if (t.styleId !== target.styleId) flush(t.styleId)
       }
+    } else {
+      for (const t of targets) flush(t.styleId)
     }
   }
-  visit(documentDoc.documentElement!)
   for (const t of targets) flush(t.styleId)
 
   // Fork every run (including the first). The style-level numId becomes a

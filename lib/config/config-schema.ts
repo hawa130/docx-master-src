@@ -293,7 +293,38 @@ import { formatZodError, valueAtPath, type HintFn } from "@lib/config/zod-format
  * particular issue shapes. Returning null means "use the default zod
  * message". The hints replicate the agent-friendly guidance the hand-written
  * checks used to emit. */
+/** Walk up the issue path to the parent op entry and return its `op` literal,
+ * or undefined when the path doesn't pass through an edit op. Shared by the
+ * set-run hint with `edit-config-schema.ts` — same logic, same lookup. */
+function lookupOpLiteral(raw: unknown, issuePath: readonly PropertyKey[]): unknown {
+  // Path shape inside ApplyConfig: edits[N].at.type → ["edits", N, "at", "type"]
+  // Truncate the last two segments (".at.type") and read .op on the parent.
+  if (issuePath.length < 2) return undefined
+  const opPath = issuePath.slice(0, -2)
+  let cursor: unknown = raw
+  for (const seg of opPath) {
+    if (cursor && typeof cursor === "object") {
+      cursor = (cursor as Record<PropertyKey, unknown>)[seg]
+    } else {
+      return undefined
+    }
+  }
+  if (cursor && typeof cursor === "object" && "op" in cursor) {
+    return (cursor as { op?: unknown }).op
+  }
+  return undefined
+}
+
 const customHint: HintFn = (issue, pathStr, raw) => {
+  // set-run requires at.type === "run". The discriminated union dispatches
+  // on `op` first, so the resulting error is an at.type mismatch — explain
+  // the constraint inline instead of leaving the agent to read the schema.
+  if (issue.code === "invalid_value" && pathStr.endsWith(".at.type")) {
+    const opLiteral = lookupOpLiteral(raw, issue.path)
+    if (opLiteral === "set-run") {
+      return `set-run requires at.type === "run" (use a RunLocator: { type: "run", paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
+    }
+  }
   // Top-of-numbering misplacement: stripPrefixPatterns naturally feels like
   // it should broadcast across all levels, but it lives per-level. The old
   // hand-written validator surfaced this; preserve the message verbatim.

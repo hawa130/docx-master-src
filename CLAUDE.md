@@ -124,6 +124,7 @@ Each tool has one focused job. Default outputs stay scannable; deep info is one 
 
 LLMs are bad at byte-level work; scripts must guarantee these and never bend them under refactoring pressure:
 
+- Paragraph walks go through one of two canonical helpers — `walkBodyParagraphs` (body + tbl/tr/tc; used by the cross-ref pipeline and inspection tools) or `walkIndexedParagraphs` (matches DocumentParser scope: body + layout-table cells, skips data/form). Reimplementing the walk inline is a bug factory — divergent scope between passes was the cause of multiple Phase 1 dogfood failures (chapter SEQ injected against a different set of paragraphs than the counter sim saw)
 - XML-namespace-correct mutation of `styles.xml` / `numbering.xml` / `document.xml`
 - Cross-run formatting preservation (smart-strip's uniform-vs-mixed rule)
 - Character-indent semantics — `firstLineChars` round-trips as `"Nchar"`, fixed twips as `"Npt"`

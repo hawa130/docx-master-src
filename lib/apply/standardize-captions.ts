@@ -57,7 +57,12 @@ export function standardizeCaptions(
     styleToIdentifier.set(config.paragraphStyleId, id)
   }
 
+  // Track paragraph index alongside the canonical walk — cheap counter that
+  // mirrors the body-paragraph order an agent sees from `find_paragraphs` /
+  // `overview`, so warnings can name the exact paragraph to fix.
+  let paragraphIndex = 0
   for (const para of walkBodyParagraphs(body)) {
+    paragraphIndex++
     if (freshlyEmitted.has(para)) continue
     const styleId = paragraphStyleId(para)
     if (!styleId) continue
@@ -68,7 +73,7 @@ export function standardizeCaptions(
     if (!seqIdentifier) continue // not a caption-shaped paragraph
     if (seqIdentifier !== expectedIdentifier) {
       warnings.push(
-        `standardize-captions: paragraph styled as "${styleId}" carries SEQ "${seqIdentifier}" but the captions table expects "${expectedIdentifier}". Passed through unchanged — add the identifier to the captions table to bring it under standardize.`,
+        `standardize-captions: paragraph #${paragraphIndex} styled as "${styleId}" carries SEQ "${seqIdentifier}" but the captions table expects "${expectedIdentifier}". Passed through unchanged — add the identifier to the captions table to bring it under standardize.`,
       )
       continue
     }

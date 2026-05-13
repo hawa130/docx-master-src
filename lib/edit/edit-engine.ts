@@ -280,8 +280,21 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   }
 
   // Pre-resolve every LaTeX expression to OMML before the synchronous emit
-  // chain runs. Single batch keeps temml warm; emit reads from the cache.
-  await prepareLatex(collectLatexFromEdits(edits))
+  // chain runs. Per-edit dispatch keeps the rethrown error pointing at the
+  // offending `edits[N]` index — without this the temml / mml2omml stack
+  // bubbles up with the latex source but no caller context.
+  for (const [i, op] of edits.entries()) {
+    const frag = fragmentOf(op)
+    if (!frag) continue
+    const items: LatexItem[] = []
+    for (const b of frag) items.push(...collectLatexFromBlock(b))
+    if (items.length === 0) continue
+    try {
+      await prepareLatex(items)
+    } catch (err) {
+      throw new Error(`edits[${i}] (${op.op}): ${(err as Error).message}`, { cause: err })
+    }
+  }
 
   const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
@@ -459,10 +472,24 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       ...emitCtx,
       usableWidthTwips: usableWidthForTarget(edit.target, input.sections, resolverCtx),
     }
-    const touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx, {
-      bookmarkAllocator,
-      captionsMap: input.captions,
-    })
+    // Wrap with edits[N] context so emit-side throws (caption-not-declared,
+    // adoptAnchor invariants, image emitter wiring, equation conversion)
+    // surface with the locator the agent wrote. Without this the message
+    // bubbles up bare ("captionId X is not declared") and the agent has no
+    // way to locate the offending op in a multi-edit config.
+    let touched: number
+    try {
+      touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx, {
+        bookmarkAllocator,
+        captionsMap: input.captions,
+      })
+    } catch (err) {
+      const msg = (err as Error).message
+      // Don't double-wrap when applyOne (or resolveOneEdit upstream) already
+      // emitted an `edits[N]` prefix.
+      if (msg.startsWith(`edits[${i}]`)) throw err
+      throw new Error(`edits[${i}] (${edit.op.op}): ${msg}`, { cause: err })
+    }
     perOp.push({ index: i, op: edit.op.op, touched })
   }
 
@@ -676,16 +703,6 @@ function collectLatexFromBlock(b: Fragment[number]): LatexItem[] {
         }
       }
     }
-  }
-  return out
-}
-
-function collectLatexFromEdits(edits: ReadonlyArray<EditOp>): LatexItem[] {
-  const out: LatexItem[] = []
-  for (const op of edits) {
-    const frag = fragmentOf(op)
-    if (!frag) continue
-    for (const b of frag) out.push(...collectLatexFromBlock(b))
   }
   return out
 }

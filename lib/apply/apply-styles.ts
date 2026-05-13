@@ -36,7 +36,13 @@ import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/ed
 import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
 import { resolveCaptions } from "@lib/parse/caption-resolver.ts"
-import { simulateCaptions } from "@lib/edit/caption-counter.ts"
+import {
+  simulateCaptions,
+  type PendingCaptionFill,
+  type PendingCaptionReset,
+} from "@lib/edit/caption-counter.ts"
+import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
+import type { PendingRefBackfill } from "@lib/edit/fields/ref-field.ts"
 import { standardizeCaptions } from "@lib/apply/standardize-captions.ts"
 import { injectChapterCounters } from "@lib/apply/inject-chapter-counters.ts"
 import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
@@ -473,6 +479,16 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // *before* the rules pass (so pattern_rules / bulk_rules / assignments see
   // both pre-existing chrome paragraphs AND the agent-inserted content
   // uniformly — one regex match cleans both kinds of typed prefixes).
+  //
+  // Captions are resolved once here so they're available to both runEditOps
+  // (emit-time identifier lookup) and the cross-reference post-pass below
+  // (chapter SEQ injection, standardize re-emit, counter simulation). A pure
+  // standardize run with no edits still goes through the cross-ref pipeline
+  // after applyToBody — see step 7c.
+  const resolvedCaptions = resolveCaptions(config.captions, stylesDoc)
+  if (!config.dryRun) {
+    for (const wmsg of resolvedCaptions.warnings) console.warn(`Warning: ${wmsg}`)
+  }
   let imageRegistry: ImageAssetRegistry | null = null
   let editsApplied = 0
   let editsTrackChanges = false
@@ -480,6 +496,10 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let editTouchedIndices: Set<number> | undefined
   let crossRefsTouched = false
   let listRestartApplied = false
+  let bookmarkAllocator: BookmarkAllocator | null = null
+  let pendingBackfills: PendingRefBackfill[] = []
+  let pendingCaptionFills: PendingCaptionFill[] = []
+  let pendingCaptionResets: PendingCaptionReset[] = []
   if (config.edits && config.edits.length > 0) {
     if (config.dryRun) {
       // Dry-run: resolve locators + blocker check, but don't mutate. Lets the
@@ -494,8 +514,6 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       editsPreview = preview.entries
       editTouchedIndices = preview.replacedOrDeletedIndices
     } else {
-      const resolvedCaptions = resolveCaptions(config.captions, stylesDoc)
-      for (const wmsg of resolvedCaptions.warnings) console.warn(`Warning: ${wmsg}`)
       const result = await runEditOps({
         documentDoc,
         parsedParagraphs: parsed.paragraphs,
@@ -509,142 +527,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       imageRegistry = result.imageRegistry
       editsApplied = result.report.applied
       editsTrackChanges = result.report.trackChanges
-
-      // Run the list-restart pass BEFORE the cross-ref simulator so the
-      // simulator's counter values reflect what Word will actually render.
-      // For continuous schemes (the default) this pass is a no-op; for
-      // perInstance schemes it forks numIds + writes <w:startOverride>, and
-      // the simulator below honors those overrides when initializing
-      // counters. Without this ordering, dry-run placeholder text would
-      // disagree with the live render.
-      if (installedSchemes.length > 0) {
-        applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
-        listRestartApplied = true
-      }
-
-      // Cross-reference post-pass. (1) Simulate numbering counters against the
-      // current document state — gives us the rendered label / number text per
-      // target paragraph. (2) Backfill each pending REF's placeholder run so
-      // Word users see correct text before the first F9 / "update fields"
-      // prompt. (3) Wrap target paragraphs with <w:bookmarkStart>/<w:bookmarkEnd>
-      // pairs so REF can resolve. (4) Flip settings.xml's updateFields flag.
-      const { bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
-        result.crossRefs
-
-      // Inject hidden auto-chapter SEQ fields into paragraphs whose
-      // style is referenced under any captions.chapterPrefix with a
-      // `format` override. Idempotent; runs after edits so freshly
-      // inserted H1s get counters too.
-      injectChapterCounters(documentDoc, resolvedCaptions.byIdentifier)
-
-      // Standardize re-emit: any caption paragraph already in the doc
-      // (source-doc captions, or output from a prior apply) gets its
-      // pre-body run sequence rebuilt against the current captions
-      // config. Skip paragraphs freshly emitted in this pass — their
-      // emit already used the current config.
-      const freshlyEmitted = new Set<Element>(pendingCaptionFills.map((f) => f.paragraph))
-      const standardizeResult = standardizeCaptions(
-        documentDoc,
-        resolvedCaptions.byIdentifier,
-        bookmarkAllocator,
-        freshlyEmitted,
-      )
-      for (const w of standardizeResult.warnings) console.warn(w)
-      const allCaptionFills = [...pendingCaptionFills, ...standardizeResult.fills]
-
-      // Caption counter simulator: walks the body, advances per-identifier
-      // counters, resolves STYLEREF chapter prefixes, returns fieldValues
-      // (per result text element) + fullCaptionText (per caption
-      // paragraph). Backfill below uses fullCaptionText for caption-class
-      // REF targets; outline-numbered targets fall through to the
-      // numbering counter sim's lvlText.
-      const captionSimOutput =
-        allCaptionFills.length > 0 || pendingCaptionResets.length > 0
-          ? simulateCaptions(documentDoc, {
-              fills: allCaptionFills,
-              resets: pendingCaptionResets,
-              configs: resolvedCaptions.byIdentifier,
-              outlineParagraphs: buildOutlineParagraphsMap(
-                documentDoc,
-                numberingDoc,
-                stylesDoc,
-                resolvedCaptions.styleIdToName,
-              ),
-            })
-          : { fieldValues: new Map<Element, string>(), fullCaptionText: new Map<Element, string>() }
-      for (const [el, text] of captionSimOutput.fieldValues) {
-        el.textContent = text
-      }
-      if (captionSimOutput.fieldValues.size > 0 || captionSimOutput.fullCaptionText.size > 0) {
-        crossRefsTouched = true
-      }
-
-      if (bookmarkAllocator.hasAllocations() || captionSimOutput.fullCaptionText.size > 0) {
-        // Resolve each pending backfill's target via the allocator. Every
-        // emit path (paragraph-index ref, anchor ref already-adopted,
-        // anchor ref forward) registered the name with the allocator by
-        // now, so a single resolve handles all three. A miss here is an
-        // engine bug — pre-scan + emit-time presence checks should have
-        // failed earlier.
-        const resolvedBackfills: Array<{
-          placeholderTextEl: Element
-          targetParagraph: Element
-          targetName: string
-          display: "full" | "label" | "number"
-        }> = pendingBackfills.map((pending) => {
-          const rec = bookmarkAllocator.resolveByName(pending.targetName)
-          if (!rec) {
-            throw new Error(
-              `InlineRef: target bookmark "${pending.targetName}" could not be resolved post-emit. ` +
-                `This is an engine invariant violation; pre-scan should have caught a missing anchor.`,
-            )
-          }
-          return { ...pending, targetParagraph: rec.element }
-        })
-        // Detached-target guard: a later edit op may have removed the
-        // paragraph an earlier InlineRef pointed at. The stale-element
-        // check below catches this BEFORE the counter sim (which iterates
-        // only attached paragraphs and would silently leave the placeholder
-        // empty). Throw with the original locator so the agent can see
-        // which ref needs updating.
-        for (const pending of resolvedBackfills) {
-          if (!isAttachedToDoc(pending.targetParagraph, documentDoc)) {
-            throw new Error(
-              `InlineRef target paragraph was removed by a later edit op. ` +
-                `Reorder edits so the ref op runs before any op that replaces / deletes the target, ` +
-                `or remove the conflicting edit.`,
-            )
-          }
-        }
-        const counters = simulateNumberingCounters(documentDoc, numberingDoc, stylesDoc)
-        for (const pending of resolvedBackfills) {
-          // Caption-class targets: REF \h returns the SEQ-rendered text
-          // (prefix + chapter + counter + suffix). label / number / full
-          // all use the same primary bookmark (display:"full" is rejected
-          // at pre-scan — see InlineRef emit-time check in edit-engine).
-          const captionText = captionSimOutput.fullCaptionText.get(pending.targetParagraph)
-          if (captionText !== undefined) {
-            pending.placeholderTextEl.textContent = captionText
-            continue
-          }
-          // Outline-numbered targets: fall through to lvlText backfill.
-          const rendered = counters.get(pending.targetParagraph)
-          if (!rendered && pending.display !== "full") continue
-          const text =
-            pending.display === "number"
-              ? (rendered?.number ?? "")
-              : pending.display === "full"
-                ? extractParagraphText(pending.targetParagraph)
-                : (rendered?.label ?? "")
-          pending.placeholderTextEl.textContent = text
-        }
-        bookmarkAllocator.commit(documentDoc)
-        crossRefsTouched = true
-      }
+      ;({ bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
+        result.crossRefs)
 
       // Re-parse documentDoc — paragraph indices have shifted since edits inserted
       // new paragraphs. The rules pass below uses parsed.paragraphs directly, so it
-      // needs the post-edit state.
+      // needs the post-edit state. This must happen *before* applyToBody so the
+      // action map (assignments / pattern_rules / bulk_rules) sees correct indices,
+      // and *before* the cross-ref pipeline (step 7c) so chapter-SEQ injection
+      // operates on the post-edit + post-restyle document.
       const reParser = new DocumentParser(documentDoc, resolver, numberingDoc)
       parsed = reParser.parse()
       fpResult = new Fingerprinter().assign(parsed.paragraphs, resolver)
@@ -812,14 +703,186 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // numId per contiguous run of paragraphs with the bound styleId, so each
   // list instance restarts at 1. Continuous schemes (the default) and
   // multi-level schemes (which use lvlRestart) are skipped inside the pass.
-  // Already invoked above when cross-refs ran (must precede the simulator);
-  // this fallback covers configs without edits / cross-refs.
+  // Must precede the caption counter simulator (which honors
+  // <w:startOverride> when initializing counters); without this ordering
+  // dry-run placeholder text would disagree with the live render. Runs
+  // unconditionally so standardize-only configs (no edits, no cross-refs
+  // beyond captions) still trigger it.
   if (installedSchemes.length > 0 && !listRestartApplied) {
     applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
     listRestartApplied = true
   }
 
-  // 7c. Target-set + vs-direct analysis (dry-run only). For each declared
+  // 7c. Cross-reference post-pass. Runs after applyToBody so paragraphs
+  // whose pStyle was set by assignments / pattern_rules / bulk_rules are
+  // visible to injectChapterCounters and the caption simulator (the bug
+  // this restructure fixes: previously the pipeline ran inside the edits
+  // branch, before applyToBody, so only emit-time-styled paragraphs got
+  // chapter SEQ counters). Fires whenever the agent declared a captions
+  // config (chapter SEQs to inject, pre-existing caption paragraphs to
+  // re-emit) OR the edits emitted REFs / captions / resets.
+  //
+  // Dry-run runs the same pipeline so the change report can preview what
+  // chapter SEQs / caption text WOULD be produced; documentDoc mutations
+  // are discarded with the in-memory document because dry-run never writes
+  // to disk. captionsPreview captures the summary surfaced in the report.
+  //
+  // Steps: (1) inject hidden auto-chapter SEQ fields into outline
+  // paragraphs whose style is referenced under any captions.chapterPrefix
+  // with a `format` override. (2) Standardize re-emit: rebuild the
+  // pre-body run sequence of any caption paragraph already in the doc
+  // (source-doc captions or output from a prior apply). (3) Simulate
+  // counters and backfill REF placeholder text + commit bookmark
+  // wrapping. (4) Flip settings.xml's updateFields flag (deferred to
+  // serialize, gated on `crossRefsTouched`).
+  let captionsPreview: {
+    chapterSeqsInjected: number
+    standardizeReemitted: number
+    samples: Array<{ identifier: string; text: string }>
+  } | null = null
+  {
+    const hasCaptionWork =
+      resolvedCaptions.byIdentifier.size > 0 ||
+      pendingBackfills.length > 0 ||
+      pendingCaptionFills.length > 0 ||
+      pendingCaptionResets.length > 0
+    if (hasCaptionWork) {
+      if (!bookmarkAllocator) bookmarkAllocator = new BookmarkAllocator(documentDoc)
+
+      // Inject hidden auto-chapter SEQ fields into paragraphs whose style is
+      // referenced under any captions.chapterPrefix with a `format` override.
+      // Idempotent; runs after applyToBody so paragraphs restyled to an
+      // outline style by assignments / pattern_rules / bulk_rules pick up
+      // the counter too.
+      const chapterSeqsInjected = injectChapterCounters(documentDoc, resolvedCaptions.byIdentifier)
+
+      // Standardize re-emit: any caption paragraph already in the doc
+      // (source-doc captions, or output from a prior apply) gets its
+      // pre-body run sequence rebuilt against the current captions config.
+      // Skip paragraphs freshly emitted in this pass — their emit already
+      // used the current config.
+      const freshlyEmitted = new Set<Element>(pendingCaptionFills.map((f) => f.paragraph))
+      const standardizeResult = standardizeCaptions(
+        documentDoc,
+        resolvedCaptions.byIdentifier,
+        bookmarkAllocator,
+        freshlyEmitted,
+      )
+      for (const w of standardizeResult.warnings) console.warn(w)
+      const allCaptionFills = [...pendingCaptionFills, ...standardizeResult.fills]
+
+      // Caption counter simulator: walks the body, advances per-identifier
+      // counters, resolves STYLEREF chapter prefixes, returns fieldValues
+      // (per result text element) + fullCaptionText (per caption
+      // paragraph). Backfill below uses fullCaptionText for caption-class
+      // REF targets; outline-numbered targets fall through to the
+      // numbering counter sim's lvlText.
+      const captionSimOutput =
+        allCaptionFills.length > 0 || pendingCaptionResets.length > 0
+          ? simulateCaptions(documentDoc, {
+              fills: allCaptionFills,
+              resets: pendingCaptionResets,
+              configs: resolvedCaptions.byIdentifier,
+              outlineParagraphs: buildOutlineParagraphsMap(
+                documentDoc,
+                numberingDoc,
+                stylesDoc,
+                resolvedCaptions.styleIdToName,
+              ),
+            })
+          : { fieldValues: new Map<Element, string>(), fullCaptionText: new Map<Element, string>() }
+      for (const [el, text] of captionSimOutput.fieldValues) {
+        el.textContent = text
+      }
+      if (captionSimOutput.fieldValues.size > 0 || captionSimOutput.fullCaptionText.size > 0) {
+        crossRefsTouched = true
+      }
+
+      // Capture dry-run preview stats. First 5 caption samples reported in
+      // body order — agent sees predicted text without running real apply.
+      if (config.dryRun) {
+        const previewSamples: Array<{ identifier: string; text: string }> = []
+        // Iterate allCaptionFills in pipeline order; map .paragraph → fullText.
+        for (const fill of allCaptionFills) {
+          if (previewSamples.length >= 5) break
+          const text = captionSimOutput.fullCaptionText.get(fill.paragraph)
+          if (text !== undefined) {
+            previewSamples.push({ identifier: fill.identifier, text })
+          }
+        }
+        captionsPreview = {
+          chapterSeqsInjected,
+          standardizeReemitted: standardizeResult.fills.length,
+          samples: previewSamples,
+        }
+      }
+
+      if (bookmarkAllocator.hasAllocations() || captionSimOutput.fullCaptionText.size > 0) {
+        // Resolve each pending backfill's target via the allocator. Every
+        // emit path (paragraph-index ref, anchor ref already-adopted,
+        // anchor ref forward) registered the name with the allocator by
+        // now, so a single resolve handles all three. A miss here is an
+        // engine bug — pre-scan + emit-time presence checks should have
+        // failed earlier.
+        const resolvedBackfills: Array<{
+          placeholderTextEl: Element
+          targetParagraph: Element
+          targetName: string
+          display: "full" | "label" | "number"
+        }> = pendingBackfills.map((pending) => {
+          const rec = bookmarkAllocator!.resolveByName(pending.targetName)
+          if (!rec) {
+            throw new Error(
+              `InlineRef: target bookmark "${pending.targetName}" could not be resolved post-emit. ` +
+                `This is an engine invariant violation; pre-scan should have caught a missing anchor.`,
+            )
+          }
+          return { ...pending, targetParagraph: rec.element }
+        })
+        // Detached-target guard: a later edit op may have removed the
+        // paragraph an earlier InlineRef pointed at. The stale-element
+        // check below catches this BEFORE the counter sim (which iterates
+        // only attached paragraphs and would silently leave the placeholder
+        // empty). Throw with the original locator so the agent can see
+        // which ref needs updating.
+        for (const pending of resolvedBackfills) {
+          if (!isAttachedToDoc(pending.targetParagraph, documentDoc)) {
+            throw new Error(
+              `InlineRef target paragraph was removed by a later edit op. ` +
+                `Reorder edits so the ref op runs before any op that replaces / deletes the target, ` +
+                `or remove the conflicting edit.`,
+            )
+          }
+        }
+        const counters = simulateNumberingCounters(documentDoc, numberingDoc, stylesDoc)
+        for (const pending of resolvedBackfills) {
+          // Caption-class targets: REF \h returns the SEQ-rendered text
+          // (prefix + chapter + counter + suffix). label / number / full
+          // all use the same primary bookmark (display:"full" is rejected
+          // at pre-scan — see InlineRef emit-time check in edit-engine).
+          const captionText = captionSimOutput.fullCaptionText.get(pending.targetParagraph)
+          if (captionText !== undefined) {
+            pending.placeholderTextEl.textContent = captionText
+            continue
+          }
+          // Outline-numbered targets: fall through to lvlText backfill.
+          const rendered = counters.get(pending.targetParagraph)
+          if (!rendered && pending.display !== "full") continue
+          const text =
+            pending.display === "number"
+              ? (rendered?.number ?? "")
+              : pending.display === "full"
+                ? extractParagraphText(pending.targetParagraph)
+                : (rendered?.label ?? "")
+          pending.placeholderTextEl.textContent = text
+        }
+        bookmarkAllocator.commit(documentDoc)
+        crossRefsTouched = true
+      }
+    }
+  }
+
+  // 7d. Target-set + vs-direct analysis (dry-run only). For each declared
   // style, find the paragraphs whose final pStyle is this style (after
   // edits + rules pass), then classify each declared field's per-paragraph
   // direct values as override / redundant / new. Surfaces the gap left by
@@ -951,6 +1014,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     numberingBindings,
     templateImport,
     editsPreview,
+    captionsPreview,
   })
 
   if (editsApplied > 0) {

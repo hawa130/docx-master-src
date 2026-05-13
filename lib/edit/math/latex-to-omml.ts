@@ -91,12 +91,29 @@ export async function prepareLatex(
     try {
       mathml = temml.renderToString(latex, { xml: true, displayMode, throwOnError: true })
     } catch (err) {
-      throw new Error(`LaTeX parse error in ${JSON.stringify(latex)}: ${(err as Error).message}`, {
+      throw new Error(`LaTeX parse error in ${truncateLatex(latex)}: ${(err as Error).message}`, {
         cause: err,
       })
     }
-    ommlCache.set(key, mml2omml(mathml))
+    let omml: string
+    try {
+      omml = mml2omml(mathml)
+    } catch (err) {
+      throw new Error(
+        `MathML → OMML conversion failed for ${truncateLatex(latex)}: ${(err as Error).message}. ` +
+          `Known fragile tokens — see references/equations.md "Known fragile LaTeX tokens"; use the omml escape hatch on the EquationBlock if the failure is unrecoverable.`,
+        { cause: err },
+      )
+    }
+    ommlCache.set(key, omml)
   }
+}
+
+/** Short, JSON-safe rendering of a LaTeX source for error messages.
+ * Cap at 80 chars so a long expression doesn't drown the stderr line. */
+function truncateLatex(latex: string): string {
+  const trimmed = latex.length > 80 ? latex.slice(0, 80) + "…" : latex
+  return JSON.stringify(trimmed)
 }
 
 /** Read a pre-resolved OMML string. Throws when the latex wasn't passed

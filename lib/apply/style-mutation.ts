@@ -33,10 +33,12 @@ export function resolveStyleDef(
   def: StyleConfigEntry,
   paragraphs: ParsedParagraph[],
 ): StyleConfigEntry {
-  // Mode B (no fromParagraph): the schema accepts an `overrides` block on
-  // every style entry, but downstream emission reads top-level fields only —
-  // un-merged overrides drop silently. Spreading them up keeps Mode A and
-  // Mode B symmetric so agents can place fields in either location.
+  // Top-level fields and `overrides` are spread into the same merged shape
+  // in both modes. Mode B (no fromParagraph): top-level + overrides on top
+  // of nothing. Mode A (fromParagraph): extracted typography from the donor
+  // paragraph, then top-level, then overrides (each layer wins over the
+  // previous). Keeps the schema symmetric — an agent placing `outlineLevel`
+  // at top level in Mode A used to silently drop; now it merges.
   if (def.fromParagraph === undefined) {
     return def.overrides ? { ...def, ...def.overrides } : def
   }
@@ -60,9 +62,27 @@ export function resolveStyleDef(
     )
   }
   const extracted = paragraphToStyleEntry(para)
+  // Top-level keys that aren't typography fields (id / name / fromParagraph /
+  // basedOn / overrides) are skipped from the spread — they're handled
+  // explicitly below or are non-mergeable. Everything else (outlineLevel,
+  // size, alignment, ...) layers on top of extracted.
+  const {
+    id: _id,
+    name: _name,
+    fromParagraph: _fp,
+    basedOn: _bo,
+    overrides: _ov,
+    ...topLevel
+  } = def
+  void _id
+  void _name
+  void _fp
+  void _bo
+  void _ov
   return {
     basedOn: "Normal",
     ...extracted,
+    ...topLevel,
     ...(def.overrides ?? {}),
     id: def.id,
     name: def.name,

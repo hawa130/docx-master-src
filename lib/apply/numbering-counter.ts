@@ -29,7 +29,14 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr, wVal } from "@lib/xml/xml-utils.ts"
+import {
+  firstChildNS,
+  getChildren,
+  getChildrenNS,
+  wAttr,
+  wVal,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
 
 export interface RenderedNumbering {
   /** Rendered lvlText with %N placeholders substituted. */
@@ -81,11 +88,11 @@ export function simulateNumberingCounters(
     return m
   }
 
-  // Walk all <w:p> in document order. Including paragraphs inside tables —
-  // captions can live inside layout tables.
-  const allParagraphs = body.getElementsByTagNameNS(w, "p")
-  for (let i = 0; i < allParagraphs.length; i++) {
-    const pEl = allParagraphs[i]!
+  // Walk all <w:p> in document order via the canonical body walker — same
+  // traversal scope as `injectChapterCounters` (chapter-SEQ injection) and
+  // `standardizeCaptions` (caption re-emit). Descends through tbl/tr/tc so
+  // captions / numbered paragraphs inside tables advance counters here too.
+  for (const pEl of walkBodyParagraphs(body)) {
     const binding = resolveParagraphNumbering(pEl, styleNumPr)
     if (!binding) continue
     const { numId, level } = binding

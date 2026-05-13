@@ -53,6 +53,45 @@ export function resolveCaptions(
   // Build styleId → { name, outlineLevel } from styles.xml once.
   const styleIndex = indexStyles(stylesDoc)
 
+  // Cross-entry consistency: every chapterPrefix entry referencing a given
+  // styleId across all captions must use the SAME form (string-only OR
+  // object-only with the same `format`). Mixed string + object on the same
+  // styleId silently produces inconsistent chapter sources (string = STYLEREF
+  // + heading text; object = hidden parallel SEQ counter); two object entries
+  // with different `format` are also disallowed. Same-styleId object + object
+  // with matching format is the only multi-entry case that resolves cleanly.
+  type ChapterFormUse = {
+    captionIdentifier: string
+    form: "string" | "object"
+    format: string | undefined
+  }
+  const styleUses = new Map<string, ChapterFormUse[]>()
+  for (const [captionIdentifier, entry] of Object.entries(raw)) {
+    for (const rawEntry of entry.chapterPrefix ?? []) {
+      const styleId = typeof rawEntry === "string" ? rawEntry : rawEntry.styleId
+      const use: ChapterFormUse = {
+        captionIdentifier,
+        form: typeof rawEntry === "string" ? "string" : "object",
+        format: typeof rawEntry === "string" ? undefined : rawEntry.format,
+      }
+      const prior = styleUses.get(styleId)
+      if (prior) {
+        const first = prior[0]!
+        if (first.form !== use.form || first.format !== use.format) {
+          throw new Error(
+            `captions: chapterPrefix for styleId "${styleId}" is referenced inconsistently — ` +
+              `captions["${first.captionIdentifier}"] uses ${describeForm(first)} but ` +
+              `captions["${use.captionIdentifier}"] uses ${describeForm(use)}. ` +
+              `All chapterPrefix entries for the same styleId must use the SAME form — either the bare ` +
+              `string (heading's native rendering) or an object with a single matching format. ` +
+              `Mixed forms produce divergent chapter sources at render time (STYLEREF + heading text vs hidden parallel SEQ).`,
+          )
+        }
+      }
+      styleUses.set(styleId, [...(prior ?? []), use])
+    }
+  }
+
   for (const [identifier, entry] of Object.entries(raw)) {
     const chapterPrefix: Array<{
       styleName: string
@@ -122,6 +161,11 @@ interface StyleInfo {
   /** 1-indexed outline level (matches SEQ `\s` and Word UI convention).
    * `<w:outlineLvl w:val="0"/>` in styles.xml maps to outlineLevel 1. */
   outlineLevel: number | undefined
+}
+
+function describeForm(use: { form: "string" | "object"; format: string | undefined }): string {
+  if (use.form === "string") return `the bare-string form (heading's native rendering)`
+  return `the object form with format "${use.format ?? "(unset)"}"`
 }
 
 function indexStyles(stylesDoc: Document | null): Map<string, StyleInfo> {

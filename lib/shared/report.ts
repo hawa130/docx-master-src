@@ -177,6 +177,14 @@ export function printReport(args: {
   templateImport: ImportResult | null
   /** dry-run only: per-op preview of edits[] (locator-resolved, not mutated). */
   editsPreview: EditsPreviewEntry[]
+  /** dry-run only: summary of the cross-reference post-pass (chapter SEQ
+   * injection, caption standardize re-emit, predicted caption text). Null
+   * when the run had no captions config or no captions/refs in edits. */
+  captionsPreview: {
+    chapterSeqsInjected: number
+    standardizeReemitted: number
+    samples: Array<{ identifier: string; text: string }>
+  } | null
 }) {
   const lines: string[] = []
   lines.push(
@@ -445,6 +453,23 @@ export function printReport(args: {
     lines.push(
       "  Note: implicit-keep counts above already exclude paragraphs the edits[] pass will replace/delete.",
     )
+    lines.push("")
+  }
+  if (args.captionsPreview) {
+    const cp = args.captionsPreview
+    lines.push("=== Captions / Cross-Refs Preview (dry-run) ===")
+    lines.push(
+      `  Chapter SEQs injected: ${cp.chapterSeqsInjected}  (hidden auto-counters on outline paragraphs)`,
+    )
+    lines.push(
+      `  Caption paragraphs re-emitted: ${cp.standardizeReemitted}  (existing captions rebuilt against current config)`,
+    )
+    if (cp.samples.length > 0) {
+      lines.push(`  Predicted text (first ${cp.samples.length}):`)
+      for (const s of cp.samples) lines.push(`    [${s.identifier}] "${s.text}"`)
+    } else {
+      lines.push(`  Predicted text: (no caption samples — config has captions but body emits none)`)
+    }
     lines.push("")
   }
   if (args.samples.size > 0) {

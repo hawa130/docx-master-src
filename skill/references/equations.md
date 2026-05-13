@@ -124,6 +124,21 @@ Returns `prefix + chapter + counter + suffix` from the SEQ result (e.g.
 - **Inline math inside an InlineRef's display text.** Not supported.
   Embed the InlineRef and the math as sibling InlineNodes.
 
+## Known fragile LaTeX tokens
+
+The MathML→OMML step (`mathml2omml`) chokes on a few inputs that temml
+accepts. When you hit one, switch that specific equation to the `omml`
+escape hatch (`{ "type": "equation", "omml": "<m:oMath>…</m:oMath>" }`)
+and leave the rest as LaTeX. Common offenders:
+
+- `\lVert x \rVert` — use `\|x\|` instead.
+- Anything that emits MathML `<mpadded>` (custom spacing macros, some
+  `\mathrlap` / `\mathllap` shapes) — rewrite with explicit spacing
+  primitives.
+
+The runtime error names the offending `edits[N]` and prints the LaTeX
+source so the problem equation is easy to pinpoint.
+
 ## What's not supported
 
 - **n-ary operator structural bug.** `\sum_{i=1}^{n} i^2`,
