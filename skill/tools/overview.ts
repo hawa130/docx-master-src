@@ -22,9 +22,31 @@ import { loadDocx, parseNumbering } from "@lib/xml/load.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { NS, type DocumentElement, type ParsedParagraph } from "@lib/parse/types.ts"
 import type { LoadedDoc } from "@lib/xml/load.ts"
-import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
 import { pad, paperName, truncate, tw2mm } from "@lib/parse/format.ts"
 import { sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
+import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
+
+const NS_W = NS.w
+
+function captionParagraphStyleId(paragraph: Element): string | undefined {
+  const pPr = firstChildNS(paragraph, NS_W, "pPr")
+  if (!pPr) return undefined
+  const pStyle = firstChildNS(pPr, NS_W, "pStyle")
+  if (!pStyle) return undefined
+  return wAttr(pStyle, "val") ?? undefined
+}
+
+function* walkCaptionParas(root: Element): Generator<Element> {
+  for (const child of getChildren(root)) {
+    if (child.namespaceURI !== NS_W) continue
+    if (child.localName === "p") {
+      yield child
+    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
+      yield* walkCaptionParas(child)
+    }
+  }
+}
 
 type ParasMode = "full" | "none" | { from: number; to: number }
 
@@ -92,6 +114,11 @@ async function main() {
     out.push("")
     out.push(...renderNumbering(doc))
     out.push("")
+    const captionLines = renderCaptions(doc)
+    if (captionLines.length > 0) {
+      out.push(...captionLines)
+      out.push("")
+    }
     out.push(...renderVisualSummary(doc))
     out.push("")
     out.push(...renderDirectFormatPerFingerprint(doc))
@@ -455,6 +482,66 @@ function formatSize(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(2)} MB`
+}
+
+function renderCaptions(doc: LoadedDoc): string[] {
+  const documentDoc = doc.documentDoc
+  if (!documentDoc) return []
+  const body = firstChildNS(documentDoc.documentElement, NS_W, "body")
+  if (!body) return []
+
+  interface Summary {
+    identifier: string
+    format: string | undefined
+    restartAtOutlineLevel: number | undefined
+    paragraphStyleIds: Set<string>
+    occurrences: number
+  }
+  const byId = new Map<string, Summary>()
+
+  for (const para of walkCaptionParas(body)) {
+    const runs: Element[] = []
+    for (const c of getChildren(para)) {
+      if (c.namespaceURI === NS_W && c.localName === "r") runs.push(c)
+    }
+    if (runs.length === 0) continue
+    const parsed = parseFieldRuns(runs)
+    for (const entry of parsed) {
+      if (entry.kind !== "field" || entry.fieldType !== "SEQ") continue
+      const id = entry.details.identifier
+      if (!id) continue
+      let summary = byId.get(id)
+      if (!summary) {
+        summary = {
+          identifier: id,
+          format: entry.details.format,
+          restartAtOutlineLevel: entry.details.restartAtOutlineLevel,
+          paragraphStyleIds: new Set(),
+          occurrences: 0,
+        }
+        byId.set(id, summary)
+      }
+      summary.occurrences++
+      const styleId = captionParagraphStyleId(para)
+      if (styleId) summary.paragraphStyleIds.add(styleId)
+      break
+    }
+  }
+
+  if (byId.size === 0) return []
+
+  const lines = ["=== Captions detected (SEQ identifiers in body) ==="]
+  for (const s of byId.values()) {
+    const styleNote =
+      s.paragraphStyleIds.size === 0 ? "(unstyled)" : [...s.paragraphStyleIds].join(", ")
+    const fmt = s.format ?? "(unknown)"
+    const restart = s.restartAtOutlineLevel ? `restart@H${s.restartAtOutlineLevel}` : "global"
+    lines.push(
+      `  ${s.identifier.padEnd(20)} format=${fmt.padEnd(10)} ${restart.padEnd(14)} occurrences=${s.occurrences}  style=${styleNote}`,
+    )
+  }
+  lines.push(`  (run \`inspect_caption <doc> <identifier>\` for per-occurrence details)`)
+  return lines
 }
 
 main()
