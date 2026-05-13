@@ -96,12 +96,9 @@ schema rejects `subGroup`).
 { "refTo": { "type": "anchor", "name": "eq-pythagoras" }, "display": "label" }
 ```
 
-For caption-class targets, `display: "label"` and `display: "number"`
-collapse to the same rendering — both return `prefix + chapter + counter
-+ suffix` from the SEQ field result (e.g. `"(2.3)"`). The decoration
-is part of the bookmark range, so a single REF `\h` retrieves the whole
-thing. `display: "full"` on an EquationBlock anchor throws (no body
-text to return).
+Returns `prefix + chapter + counter + suffix` from the SEQ result (e.g.
+`"(2.3)"`). Caption-class display routing detailed in
+[`cross-references.md`](cross-references.md).
 
 ## Integration with the style system
 

@@ -5,20 +5,6 @@ Word-native caption-class numbering — SEQ + STYLEREF fields + bookmark
 ... — anything that needs a chapter-prefixed enumerator with cross-
 references.
 
-## Why SEQ (not numPr)
-
-Word's data model splits "numbered things" into two kinds:
-
-- **`numPr` / `numbering.xml`** — outline numbering (H1–H6), bullet /
-  ordered lists. Structural. (Keep using this for headings + lists.)
-- **`SEQ` fields** — caption-class enumerators. Document-local counters
-  keyed by identifier. (Use this for captions.)
-
-A previous version of the skill used numPr for captions too. That worked
-mechanically but lost: Word UI's References → Cross-reference dialog
-integration, clean chapter-prefix decoupling, independent counters per
-caption type. The captions table fixes all three.
-
 ## Quick start
 
 ```jsonc
@@ -104,7 +90,7 @@ CaptionCounterReset {
 
 ## Templates
 
-### 中文学术 (GB/T 7713 — chapter-prefixed, Heading 1 outline-numbered)
+### Chapter-prefixed (中文学术 / GB/T 7713)
 
 ```jsonc
 "captions": {
@@ -117,38 +103,13 @@ CaptionCounterReset {
 }
 ```
 
-### English academic (chapter-prefixed)
+For English academic: same shape, replace `"图 "` / `"表 "` with
+`"Figure "` / `"Table "` and `bodySeparator: "  "` with `": "`.
 
-```jsonc
-"captions": {
-  "Equation": { "prefix": "(", "suffix": ")",
-                "chapterPrefix": ["Heading1"], "styleId": "EquationNumber" },
-  "Figure":   { "prefix": "Figure ", "chapterPrefix": ["Heading1"],
-                "bodySeparator": ": ", "styleId": "FigureCaption" },
-  "Table":    { "prefix": "Table ", "chapterPrefix": ["Heading1"],
-                "bodySeparator": ": ", "styleId": "TableCaption" }
-}
-```
+For short papers / no chapters: drop `chapterPrefix` (global counter).
 
-### Short paper / no chapters (global continuous)
-
-```jsonc
-"captions": {
-  "Equation": { "prefix": "(", "suffix": ")", "styleId": "EquationNumber" },
-  "Figure":   { "prefix": "Figure ", "bodySeparator": ": ", "styleId": "FigureCaption" }
-}
-```
-
-### Theorem-class (custom identifier)
-
-```jsonc
-"captions": {
-  "Theorem": { "prefix": "定理 ", "chapterPrefix": ["Heading1"],
-               "bodySeparator": "  ", "styleId": "TheoremStmt" },
-  "Lemma":   { "prefix": "引理 ", "chapterPrefix": ["Heading1"],
-               "bodySeparator": "  ", "styleId": "LemmaStmt" }
-}
-```
+For theorem-class / lemmas / corollaries: same shape, custom
+identifier + prefix.
 
 ### Subequations
 
@@ -163,9 +124,9 @@ CaptionCounterReset {
 }
 ```
 
-Then on EquationBlock blocks: omit `subGroup` for standalone (1) / (2) /
-(3); set `"subGroup": "start"` for (2a); set `"subGroup": "continue"`
-for (2b) / (2c) / ...
+On EquationBlock: omit `subGroup` for standalone `(1)` / `(2)` / `(3)`;
+`"subGroup": "start"` for `(2a)`; `"subGroup": "continue"` for `(2b)` /
+`(2c)` / ...
 
 ## How rendering works (under the hood)
 
@@ -196,13 +157,12 @@ chapter prefix (`["Heading1", "Heading2"]`), `\s 2` instead.
 { "refTo": { "type": "anchor", "name": "fig-arch" }, "display": "label" }
 ```
 
-`display: "label"` and `display: "number"` collapse on caption-class
-targets — both return the SEQ result with full decoration. `display:
-"full"`:
-- On CaptionBlock: returns the entire paragraph (number + bodySeparator
-  + body). Triggers a secondary internal bookmark allocation around
-  the whole paragraph.
-- On EquationBlock: throws (no body to return).
+For caption-class targets, `display: "label"` / `"number"` / `"full"`
+all return the SEQ-rendered text with full decoration (prefix +
+chapter + counter + suffix). The variants collapse on this target
+class — the bookmark wraps just the number range, so REF `\h` returns
+that whether you ask for label / number / full. Full routing rules in
+[`cross-references.md`](cross-references.md).
 
 ## Editing existing captions
 
@@ -222,15 +182,11 @@ Or target by identifier + body-order index:
   "text": "..." }
 ```
 
-`edit-caption` replaces only the body text — the SEQ / STYLEREF fields
-and bookmark stay intact so cross-references keep resolving. Throws on
-EquationBlock targets (no body to edit) — to change an equation, delete
-+ re-emit it.
-
-Why not `replace` op on the whole caption paragraph? The field blocker
-scan refuses it: a caption paragraph contains a complex field, and
-paragraph-level destructive ops would break the SEQ chain. Use
-`edit-caption` for body changes, `delete-paragraph` for whole removal.
+`edit-caption` replaces only the body text — SEQ / STYLEREF fields and
+bookmark stay intact so cross-references keep resolving. Throws on
+EquationBlock targets (no body to edit) — to change an equation,
+delete + re-emit. `replace_paragraph` / paragraph-level destructive ops
+on caption paragraphs are blocked by the field scan.
 
 ## Resetting a caption counter mid-document
 
@@ -258,16 +214,11 @@ where each major section gets its own caption counter.
 
 ## Standardize re-emit (source-doc captions)
 
-When standardize runs on a doc that already contains SEQ-based captions
-(from a prior apply or Word's Insert Caption), it walks the body and
-rebuilds the pre-body run sequence of each caption paragraph in place
-using the current `captions[<id>]` config. Bookmark id / SEQ identifier
-/ body text preserved. Identifier mismatch (SEQ in source whose
-identifier isn't declared) → passed through unchanged + warned.
-
-Useful for iterating on captions config across apply runs: change the
-prefix once, all existing captions re-render with the new shape on the
-next apply.
+Existing SEQ captions in the source doc get re-rendered with the
+current `captions[<id>]` config on each apply — useful when iterating
+on prefix / chapter-prefix shape across runs. Bookmark + identifier +
+body text preserved. Identifier mismatch (SEQ exists for an
+unconfigured identifier) → pass through + warn.
 
 ## Discovering existing captions
 
