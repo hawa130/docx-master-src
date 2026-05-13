@@ -1,8 +1,6 @@
 # Equations (`{ "type": "equation", ... }` and `{ "math": "..." }`)
 
-LaTeX → OMML rendering for display equations and inline math. Numbered
-equations use the captions pipeline (SEQ + STYLEREF + bookmark, Word's
-native caption mechanism) — see [`captions.md`](captions.md).
+LaTeX → OMML rendering for display equations and inline math. Numbered equations use the captions pipeline (SEQ + STYLEREF + bookmark, Word's native caption mechanism) — see [`captions.md`](captions.md).
 
 ## Quick start
 
@@ -51,21 +49,13 @@ With `captionId` set, the engine emits a 3-column borderless table:
 [ left spacer | centered OMML | (chapter.counter) ]
 ```
 
-Right cell is a SEQ + STYLEREF caption with the prefix / suffix /
-chapter prefix declared in `captions[<id>]`. The whole "number +
-decoration" range carries a bookmark named after `anchor`; body-text
-InlineRefs resolve to the rendered caption text (e.g. `"(2.3)"`) via
-REF `\h`.
+Right cell is a SEQ + STYLEREF caption with the prefix / suffix / chapter prefix declared in `captions[<id>]`. The whole "number + decoration" range carries a bookmark named after `anchor`; body-text InlineRefs resolve to the rendered caption text (e.g. `"(2.3)"`) via REF `\h`.
 
-Without `captionId`, the engine emits a single centered paragraph with
-just the OMML — no table, no caption, no bookmark.
+Without `captionId`, the engine emits a single centered paragraph with just the OMML — no table, no caption, no bookmark.
 
 ## LaTeX coverage
 
-The renderer is [Temml](https://temml.org/) — supports most of LaTeX
-math mode. When a specific expression triggers temml's known issues, fall
-back to the `omml` escape hatch: pass pre-converted OMML directly and the
-engine embeds it as-is.
+The renderer is [Temml](https://temml.org/) — supports most of LaTeX math mode. When a specific expression triggers temml's known issues, fall back to the `omml` escape hatch: pass pre-converted OMML directly and the engine embeds it as-is.
 
 ## Subequations — `subGroup`
 
@@ -85,8 +75,7 @@ engine embeds it as-is.
 { "type": "equation", "latex": "w = 4", "captionId": "Equation", "anchor": "eq-3" }
 ```
 
-Requires `captions["Equation"].subCounter` to be declared (otherwise the
-schema rejects `subGroup`).
+Requires `captions["Equation"].subCounter` to be declared (otherwise the schema rejects `subGroup`).
 
 ## Cross-references
 
@@ -96,9 +85,7 @@ schema rejects `subGroup`).
 { "refTo": { "type": "anchor", "name": "eq-pythagoras" }, "display": "label" }
 ```
 
-Returns `prefix + chapter + counter + suffix` from the SEQ result (e.g.
-`"(2.3)"`). Caption-class display routing detailed in
-[`cross-references.md`](cross-references.md).
+Returns `prefix + chapter + counter + suffix` from the SEQ result (e.g. `"(2.3)"`). Caption-class display routing detailed in [`cross-references.md`](cross-references.md).
 
 ## Integration with the style system
 
@@ -111,43 +98,23 @@ Returns `prefix + chapter + counter + suffix` from the SEQ result (e.g.
 
 ## Edge cases
 
-- **`captionId` references undeclared identifier.** Schema validation
-  throws — declare the entry in `captions` first.
-- **`anchor` without `captionId`.** Schema throws — without numbering,
-  REF \h has no resolved target to return.
-- **`display: "full"` on EquationBlock target.** Pre-scan throws — the
-  equation paragraph has no body text.
-- **trackChanges + equation insert.** Engine throws at emit. OOXML's
-  tracked-change wrappers don't have a clean "equation inserted" shape.
-  Run equation insertion without trackChanges; use trackChanges for
-  subsequent surrounding edits.
-- **Inline math inside an InlineRef's display text.** Not supported.
-  Embed the InlineRef and the math as sibling InlineNodes.
+- **`captionId` references undeclared identifier.** Schema validation throws — declare the entry in `captions` first.
+- **`anchor` without `captionId`.** Schema throws — without numbering, REF \h has no resolved target to return.
+- **`display: "full"` on EquationBlock target.** Pre-scan throws — the equation paragraph has no body text.
+- **trackChanges + equation insert.** Engine throws at emit. OOXML's tracked-change wrappers don't have a clean "equation inserted" shape. Run equation insertion without trackChanges; use trackChanges for subsequent surrounding edits.
+- **Inline math inside an InlineRef's display text.** Not supported. Embed the InlineRef and the math as sibling InlineNodes.
 
 ## Known fragile LaTeX tokens
 
-The MathML→OMML step (`mathml2omml`) chokes on a few inputs that temml
-accepts. When you hit one, switch that specific equation to the `omml`
-escape hatch (`{ "type": "equation", "omml": "<m:oMath>…</m:oMath>" }`)
-and leave the rest as LaTeX. Common offenders:
+The MathML→OMML step (`mathml2omml`) chokes on a few inputs that temml accepts. When you hit one, switch that specific equation to the `omml` escape hatch (`{ "type": "equation", "omml": "<m:oMath>…</m:oMath>" }`) and leave the rest as LaTeX. Common offenders:
 
 - `\lVert x \rVert` — use `\|x\|` instead.
-- Anything that emits MathML `<mpadded>` (custom spacing macros, some
-  `\mathrlap` / `\mathllap` shapes) — rewrite with explicit spacing
-  primitives.
+- Anything that emits MathML `<mpadded>` (custom spacing macros, some `\mathrlap` / `\mathllap` shapes) — rewrite with explicit spacing primitives.
 
-The runtime error names the offending `edits[N]` and prints the LaTeX
-source so the problem equation is easy to pinpoint.
+The runtime error names the offending `edits[N]` and prints the LaTeX source so the problem equation is easy to pinpoint.
 
 ## What's not supported
 
-- **n-ary operator structural bug.** `\sum_{i=1}^{n} i^2`,
-  `\int_0^1 x\,dx`, `\prod_{k=1}^{n} a_k` render with a dashed empty
-  box (`<m:e/>`) before the operand. Word's calculation is right but
-  visuals are wrong. Comes from `mathml2omml` (LGPL); fix waits on a
-  self-built MathML→OMML translator.
-- **LaTeX `\tag{}` / `\label{}` / `equation` environment.** Use the
-  `captionId` + `anchor` pattern instead.
-- **Editing an existing equation's LaTeX in place.** Locators target
-  paragraphs, not OMML subtrees. To change an equation, `replace` the
-  whole paragraph (or `delete` then `insert-after`).
+- **n-ary operator structural bug.** `\sum_{i=1}^{n} i^2`, `\int_0^1 x\,dx`, `\prod_{k=1}^{n} a_k` render with a dashed empty box (`<m:e/>`) before the operand. Word's calculation is right but visuals are wrong. Comes from `mathml2omml` (LGPL); fix waits on a self-built MathML→OMML translator.
+- **LaTeX `\tag{}` / `\label{}` / `equation` environment.** Use the `captionId` + `anchor` pattern instead.
+- **Editing an existing equation's LaTeX in place.** Locators target paragraphs, not OMML subtrees. To change an equation, `replace` the whole paragraph (or `delete` then `insert-after`).
