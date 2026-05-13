@@ -66,6 +66,8 @@ export function resolveStyleDef(
   // basedOn / overrides) are skipped from the spread — they're handled
   // explicitly below or are non-mergeable. Everything else (outlineLevel,
   // size, alignment, ...) layers on top of extracted.
+  // Underscore-prefixed names tell tsc + oxlint these destructured fields
+  // are intentionally discarded; only `topLevel` is read below.
   const {
     id: _id,
     name: _name,
@@ -74,11 +76,6 @@ export function resolveStyleDef(
     overrides: _ov,
     ...topLevel
   } = def
-  void _id
-  void _name
-  void _fp
-  void _bo
-  void _ov
   return {
     basedOn: "Normal",
     ...extracted,

@@ -742,6 +742,21 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // are discarded with the in-memory document because dry-run never writes
   // to disk. captionsPreview captures the summary surfaced in the report.
   //
+  // INVARIANT (dry-run ↔ real-apply caption text consistency): the
+  // `Predicted text` lines surfaced in the dry-run report MUST be
+  // byte-identical to the field-portion (prefix + chapter parts + counter
+  // + sub + suffix) rendered by real apply for the same paragraph. The
+  // contract is enforced structurally — both modes call the same
+  // `injectChapterCounters` → `standardizeCaptions` → `simulateCaptions`
+  // sequence on the same documentDoc, and `captionsPreview.samples` is
+  // populated from the very `fullCaptionText` map that real-apply backfill
+  // also reads. Future edits to this pipeline (counter sim, fill ordering,
+  // chapter STYLEREF resolution, format override) MUST preserve this
+  // unconditional shared-pipeline shape. If a step becomes mode-specific,
+  // verify post-change that dry-run `Predicted text` still matches the
+  // `<w:t>` content of the corresponding caption paragraph in the written
+  // docx; a divergence makes the dry-run preview a liar.
+  //
   // Steps: (1) inject hidden auto-chapter SEQ fields into outline
   // paragraphs whose style is referenced under any captions.chapterPrefix
   // with a `format` override. (2) Standardize re-emit: rebuild the
@@ -815,7 +830,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       }
 
       // Capture dry-run preview stats. First 5 caption samples reported in
-      // body order — agent sees predicted text without running real apply.
+      // pipeline order — agent sees predicted text without running real
+      // apply. Texts come from the same `fullCaptionText` map that
+      // real-apply backfill reads, so previewed text matches the
+      // field-portion of the written caption paragraph byte-for-byte (see
+      // INVARIANT note on the enclosing block).
       if (config.dryRun) {
         const previewSamples: Array<{ identifier: string; text: string }> = []
         // Iterate allCaptionFills in pipeline order; map .paragraph → fullText.

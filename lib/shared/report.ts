@@ -431,7 +431,9 @@ export function printReport(args: {
     lines.push("")
   }
   if (args.editsPreview.length > 0) {
-    lines.push("=== Edits Preview (locator-resolved; not yet applied in dry-run) ===")
+    lines.push(
+      "=== Edits Preview (locator-resolved; applied in memory, not written to disk in dry-run) ===",
+    )
     let totalReplaceDelete = 0
     let totalInsert = 0
     for (const e of args.editsPreview) {
