@@ -43,7 +43,7 @@ export type SeqFormat =
 
 /** Mapping from agent-facing format string to Word's `\*` switch token.
  * Engine emits these verbatim in instrText. */
-const FORMAT_SWITCH: Record<SeqFormat, string> = {
+export const FORMAT_SWITCH: Record<SeqFormat, string> = {
   arabic: "ARABIC",
   alphabetic: "alphabetic",
   ALPHABETIC: "ALPHABETIC",

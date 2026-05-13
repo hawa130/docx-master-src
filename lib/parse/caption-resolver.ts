@@ -54,8 +54,15 @@ export function resolveCaptions(
   const styleIndex = indexStyles(stylesDoc)
 
   for (const [identifier, entry] of Object.entries(raw)) {
-    const chapterPrefix: Array<{ styleName: string; outlineLevel: number }> = []
-    for (const styleId of entry.chapterPrefix ?? []) {
+    const chapterPrefix: Array<{
+      styleName: string
+      styleId: string
+      outlineLevel: number
+      format?: import("@lib/edit/caption-counter.ts").ResolvedChapterPrefixEntry["format"]
+    }> = []
+    for (const rawEntry of entry.chapterPrefix ?? []) {
+      const styleId = typeof rawEntry === "string" ? rawEntry : rawEntry.styleId
+      const format = typeof rawEntry === "string" ? undefined : rawEntry.format
       const info = styleIndex.get(styleId)
       if (!info) {
         throw new Error(
@@ -70,7 +77,9 @@ export function resolveCaptions(
       }
       chapterPrefix.push({
         styleName: info.name,
+        styleId,
         outlineLevel: info.outlineLevel ?? 0,
+        format,
       })
       styleIdToName.set(styleId, info.name)
     }

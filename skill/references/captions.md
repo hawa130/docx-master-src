@@ -56,7 +56,11 @@ CaptionEntry {
   format?: "arabic" | "alphabetic" | "ALPHABETIC"
          | "roman" | "ROMAN" | "chinese" | "chinese-formal"
                                     // default "arabic"
-  chapterPrefix?: string[]          // ordered styleIds (any depth);
+  chapterPrefix?: Array<              // ordered, any depth; default []
+    string                            //   bare styleId — use heading's native number rendering
+    | { styleId: string;              //   force format (re-renders heading counter as Arabic /
+        format?: SeqFormat }          //   alphabetic / roman / ... regardless of heading's native numFmt;
+  >                                   //   the 中文 academic case: H1 displays "第一章", caption shows "1.1"
                                     // default [] (global, no restart)
   chapterSeparator?: string         // joins chapter levels + counter
                                     // (default ".")
@@ -95,16 +99,26 @@ CaptionCounterReset {
 ```jsonc
 "captions": {
   "Equation": { "prefix": "(", "suffix": ")",
-                "chapterPrefix": ["Heading1"], "styleId": "EquationNumber" },
-  "Figure":   { "prefix": "图 ", "chapterPrefix": ["Heading1"],
+                "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
+                "styleId": "EquationNumber" },
+  "Figure":   { "prefix": "图 ",
+                "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
                 "bodySeparator": "  ", "styleId": "FigureCaption" },
-  "Table":    { "prefix": "表 ", "chapterPrefix": ["Heading1"],
+  "Table":    { "prefix": "表 ",
+                "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
                 "bodySeparator": "  ", "styleId": "TableCaption" }
 }
 ```
 
-For English academic: same shape, replace `"图 "` / `"表 "` with
-`"Figure "` / `"Table "` and `bodySeparator: "  "` with `": "`.
+The `format: "arabic"` overrides H1's native rendering. Chinese theses
+typically style H1 as `chineseCounting` (`第一章` / `第二章`) but want
+captions to read `(1.1)` / `图 1.1`. Without the override, captions
+inherit H1's rendering → `(一.1)`. Drop the override (use bare string
+`"Heading1"`) when H1 is already Arabic.
+
+For English academic: same shape, drop the format override, replace
+`"图 "` / `"表 "` with `"Figure "` / `"Table "` and `bodySeparator: "  "`
+with `": "`.
 
 For short papers / no chapters: drop `chapterPrefix` (global counter).
 

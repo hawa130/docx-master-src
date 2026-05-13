@@ -41,12 +41,26 @@ const w = NS.w
 
 /** Resolved form of a `captions[id]` config entry. styleId references
  * resolved to styleName + outlineLevel via styles.xml lookup upstream. */
+export interface ResolvedChapterPrefixEntry {
+  styleName: string
+  /** Heading's styleId — used by the sim to count occurrences when a
+   * `format` override is in effect (count integer instead of relying on
+   * the heading's rendered text). */
+  styleId: string
+  outlineLevel: number
+  /** When set, override the heading's native number rendering with this
+   * format. Emitted to Word's runtime as a `\* <FORMAT>` switch on
+   * STYLEREF; the counter sim re-formats the per-style integer
+   * occurrence count. */
+  format?: SeqFormat
+}
+
 export interface ResolvedCaptionConfig {
   identifier: string
   prefix: string
   suffix: string
   format: SeqFormat
-  chapterPrefix: Array<{ styleName: string; outlineLevel: number }>
+  chapterPrefix: ResolvedChapterPrefixEntry[]
   chapterSeparator: string
   bodySeparator: string
   paragraphStyleId: string
@@ -121,7 +135,14 @@ export function simulateCaptions(
   const fieldValues = new Map<Element, string>()
   const fullCaptionText = new Map<Element, string>()
   const states = new Map<string, CounterState>()
+  /** styleName → heading's rendered counter text (e.g. "一"). Used when
+   * the chapterPrefix entry has no `format` override — STYLEREF returns
+   * the heading's native rendering. */
   const latestHeading = new Map<string, string>()
+  /** styleName → integer occurrence count. Used when a chapterPrefix
+   * entry's `format` override is in effect — counter sim re-formats the
+   * integer per the override (matching Word's `\* <FORMAT>` runtime). */
+  const latestHeadingCount = new Map<string, number>()
 
   const fillByPara = new Map<Element, PendingCaptionFill>()
   for (const f of input.fills) fillByPara.set(f.paragraph, f)
@@ -150,6 +171,10 @@ export function simulateCaptions(
     const outlineInfo = input.outlineParagraphs.get(para)
     if (outlineInfo) {
       latestHeading.set(outlineInfo.styleName, outlineInfo.rendered)
+      latestHeadingCount.set(
+        outlineInfo.styleName,
+        (latestHeadingCount.get(outlineInfo.styleName) ?? 0) + 1,
+      )
       // Reset any caption counters whose chapter restart hangs off this
       // heading style. Mirrors Word's SEQ \s N behavior.
       const triggered = resetTriggers.get(outlineInfo.styleName)
@@ -190,12 +215,22 @@ export function simulateCaptions(
     const state = stateFor(states, fill.identifier)
     applyFillToState(state, fill)
 
-    // Resolve STYLEREF chapter prefix values
+    // Resolve STYLEREF chapter prefix values.
+    // With format override: count integer occurrences of the styled
+    // paragraph and format per override (mirrors Word's STYLEREF
+    // \* <FORMAT> runtime). Without override: use the heading's native
+    // rendering captured at the latestHeading map.
     for (let i = 0; i < fill.chapterPrefixResults.length; i++) {
       const entry = config.chapterPrefix[i]
       const resultEl = fill.chapterPrefixResults[i]!
       if (!entry) continue
-      const rendered = latestHeading.get(entry.styleName) ?? "0"
+      let rendered: string
+      if (entry.format !== undefined) {
+        const count = latestHeadingCount.get(entry.styleName) ?? 0
+        rendered = count > 0 ? formatCounter(count, entry.format) : "0"
+      } else {
+        rendered = latestHeading.get(entry.styleName) ?? "0"
+      }
       fieldValues.set(resultEl, rendered)
     }
 

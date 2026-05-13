@@ -28,7 +28,7 @@ import { NS } from "@lib/parse/types.ts"
 import { parseXml } from "@lib/xml/reader.ts"
 import { buildPlainTextRun } from "@lib/xml/xml-utils.ts"
 import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
-import { emitSeqField } from "@lib/edit/fields/seq-field.ts"
+import { emitSeqField, FORMAT_SWITCH as FORMAT_SWITCH_TOKEN } from "@lib/edit/fields/seq-field.ts"
 import { emitStyleRefField } from "@lib/edit/fields/styleref-field.ts"
 import type { BookmarkRange } from "@lib/edit/bookmark.ts"
 import type {
@@ -248,9 +248,18 @@ export function buildCaptionRunSequence(
 
   const chapterPrefixResults: Element[] = []
   for (const entry of config.chapterPrefix) {
+    // STYLEREF \n returns the heading's rendered paragraph number. The
+    // optional `format` override appends Word's `\* <FORMAT>` switch,
+    // which re-formats the underlying counter integer regardless of
+    // the heading's native numFmt — handles the common 中文学术 case
+    // where H1 displays "第一章" but captions need Arabic "1.1".
+    const switches = ["\\n"]
+    if (entry.format !== undefined) {
+      switches.push(`\\* ${FORMAT_SWITCH_TOKEN[entry.format]}`)
+    }
     const { runs: styleRefRuns, resultTextEl } = emitStyleRefField(ownerDoc, {
       styleName: entry.styleName,
-      switches: ["\\n"],
+      switches,
     })
     for (const r of styleRefRuns) runs.push(r)
     chapterPrefixResults.push(resultTextEl)

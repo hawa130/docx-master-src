@@ -167,6 +167,19 @@ export const CaptionSubCounterSchema = z.strictObject({
   suffix: z.optional(z.string()),
 })
 
+/** A chapterPrefix entry. Bare string = use heading's native rendering
+ * (e.g. H1 with chineseCounting numFmt renders "一"). Object form with
+ * `format` forces the chapter number to render in that format — useful
+ * for the common Chinese academic style where H1 displays "第一章" but
+ * captions need Arabic "1.1". */
+export const ChapterPrefixEntrySchema = z.union([
+  NonEmptyString,
+  z.strictObject({
+    styleId: NonEmptyString,
+    format: z.optional(CaptionFormatSchema),
+  }),
+])
+
 /** Per-identifier caption configuration. Block-level `captionId`
  * references the key. `styleId` is required — every caption identifier
  * must declare what paragraph style to use; no implicit fallback. */
@@ -174,7 +187,7 @@ export const CaptionEntrySchema = z.strictObject({
   prefix: z.optional(z.string()),
   suffix: z.optional(z.string()),
   format: z.optional(CaptionFormatSchema),
-  chapterPrefix: z.optional(z.array(NonEmptyString)),
+  chapterPrefix: z.optional(z.array(ChapterPrefixEntrySchema)),
   chapterSeparator: z.optional(z.string()),
   bodySeparator: z.optional(z.string()),
   styleId: NonEmptyString,
