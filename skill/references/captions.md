@@ -113,8 +113,18 @@ CaptionCounterReset {
 The `format: "arabic"` overrides H1's native rendering. Chinese theses
 typically style H1 as `chineseCounting` (`第一章` / `第二章`) but want
 captions to read `(1.1)` / `图 1.1`. Without the override, captions
-inherit H1's rendering → `(一.1)`. Drop the override (use bare string
-`"Heading1"`) when H1 is already Arabic.
+inherit H1's rendering → `(第一章.1)`. Drop the override (use bare
+string `"Heading1"`) when H1 is already Arabic.
+
+**Trade-off when `format` is set**: the chapter number is emitted as
+plain text (not a Word field). Word's STYLEREF `\* <FORMAT>` can't
+reliably re-format non-Arabic source numFmts — `\n` returns the
+heading's full lvlText ("第一章") and the format switch doesn't
+extract the numeric portion. Plain text guarantees correct rendering
+across Word versions. The cost: Word's F9 doesn't refresh chapter
+numbers if H1s are added/removed later — but that's fine for the
+generate-then-publish workflow (agents regenerate via the pipeline,
+not F9-driven Word edits).
 
 For English academic: same shape, drop the format override, replace
 `"图 "` / `"表 "` with `"Figure "` / `"Table "` and `bodySeparator: "  "`

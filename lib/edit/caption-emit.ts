@@ -28,7 +28,7 @@ import { NS } from "@lib/parse/types.ts"
 import { parseXml } from "@lib/xml/reader.ts"
 import { buildPlainTextRun } from "@lib/xml/xml-utils.ts"
 import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
-import { emitSeqField, FORMAT_SWITCH as FORMAT_SWITCH_TOKEN } from "@lib/edit/fields/seq-field.ts"
+import { emitSeqField } from "@lib/edit/fields/seq-field.ts"
 import { emitStyleRefField } from "@lib/edit/fields/styleref-field.ts"
 import type { BookmarkRange } from "@lib/edit/bookmark.ts"
 import type {
@@ -248,20 +248,33 @@ export function buildCaptionRunSequence(
 
   const chapterPrefixResults: Element[] = []
   for (const entry of config.chapterPrefix) {
-    // STYLEREF \n returns the heading's rendered paragraph number. The
-    // optional `format` override appends Word's `\* <FORMAT>` switch,
-    // which re-formats the underlying counter integer regardless of
-    // the heading's native numFmt — handles the common 中文学术 case
-    // where H1 displays "第一章" but captions need Arabic "1.1".
-    const switches = ["\\n"]
+    let resultTextEl: Element
     if (entry.format !== undefined) {
-      switches.push(`\\* ${FORMAT_SWITCH_TOKEN[entry.format]}`)
+      // Format override: emit a plain text run that the counter sim
+      // backfills with the re-formatted integer (e.g. "1" instead of
+      // the heading's native "一"). Word's STYLEREF + `\* <FORMAT>`
+      // can't reliably re-format non-Arabic source numFmts — `\n`
+      // returns the heading's full rendered lvlText ("第一章"), and
+      // `\* ARABIC` doesn't extract the numeric portion. Plain text
+      // means F9 won't refresh the chapter number on H1 edits — agents
+      // regenerate via the pipeline rather than F9-driven Word edits,
+      // so this trade-off is acceptable.
+      const r = ownerDoc.createElementNS(w, "w:r")
+      const t = ownerDoc.createElementNS(w, "w:t")
+      t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve")
+      r.appendChild(t)
+      runs.push(r)
+      resultTextEl = t
+    } else {
+      // No override: STYLEREF \n returns the heading's native paragraph
+      // number rendering. Word's F9 re-resolves on H1 changes.
+      const { runs: styleRefRuns, resultTextEl: t } = emitStyleRefField(ownerDoc, {
+        styleName: entry.styleName,
+        switches: ["\\n"],
+      })
+      for (const r of styleRefRuns) runs.push(r)
+      resultTextEl = t
     }
-    const { runs: styleRefRuns, resultTextEl } = emitStyleRefField(ownerDoc, {
-      styleName: entry.styleName,
-      switches,
-    })
-    for (const r of styleRefRuns) runs.push(r)
     chapterPrefixResults.push(resultTextEl)
     // separator after every chapter ref (including the last, joining to SEQ)
     runs.push(buildPlainTextRun(ownerDoc, config.chapterSeparator))
