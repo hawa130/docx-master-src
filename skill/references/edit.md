@@ -47,6 +47,7 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 - **`delete`** — `{ ... }`. Removes the targeted paragraph(s).
 - **`format`** — `{ ..., "styleId"?, "runFormat"?, "paraFormat"? }`. Mutates existing paragraphs without changing their content. At least one of styleId / runFormat / paraFormat required.
 - **`set-run`** — `{ "at": <run-locator>, "with": "value text", "format"?: { ... } }`. Replaces the targeted run's text while preserving its rPr (font / underline / size carry through). Use for filling form-fill placeholder runs without manually reconstructing label + value runs. `format` accepts the same fields as `runFormat` (bold / italic / underline / strike / color / fontLatin / fontCJK / size / vertAlign); absent, the run's existing rPr stays verbatim.
+- **`edit-caption`** — `{ "target": { "anchor": "<name>" } | { "captionId": "<id>", "index": N }, "text": "<string>" }`. Replaces the body text of an existing caption paragraph; preserves SEQ / STYLEREF fields and bookmark so cross-references keep resolving. Throws on EquationBlock targets (no body). See [`captions.md`](captions.md).
 
 ### Match-destination formatting (default)
 
@@ -60,10 +61,22 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 { "type": "paragraph", "text": "...", "styleId"?, "paraFormat"?, "runFormat"?, "numbering"?, "anchor"? }
 { "type": "image", "src": "path", "widthPt": N, "heightPt": N, "alt"?, "styleId"?, "paraFormat"? }
 { "type": "table", "rows": [[...]], "headerRows"?, "headerStyle"?, "cols"?, "borders"?, "alignment"?, "layout"? }
-{ "type": "equation", "latex": "...", "styleId"?, "paraFormat"?, "anchor"? }
+{ "type": "equation", "latex"?: "...", "omml"?: "...", "styleId"?, "paraFormat"?,
+  "captionId"?: "<id>", "subGroup"?: "start"|"continue", "anchor"? }
+{ "type": "caption", "captionId": "<id>", "text": "...", "anchor"? }
+{ "type": "caption-counter-reset", "captionId": "<id>", "newValue"?: N }
 { "type": "page-break" }
 { "type": "horizontal-rule" }
 ```
+
+`equation` takes exactly one of `latex` / `omml` (omml is the escape
+hatch when temml fails). `captionId` switches to the 3-col numbered
+layout; `subGroup` only legal with captionId. See [`equations.md`](equations.md)
++ [`captions.md`](captions.md).
+
+`caption` and `caption-counter-reset` are caption-pipeline blocks —
+they need a `captions` table declared at the apply config root. See
+[`captions.md`](captions.md).
 
 `anchor` attaches a stable bookmark name (Word's `[A-Za-z_][\w-]{0,39}` rule) so later `InlineRef` nodes can target this new paragraph via `refTo: { "type": "anchor", "name": ... }`. The only way to ref a paragraph created in this same `apply` run — paragraph-index locators reference pre-edit state. See [`cross-references.md`](cross-references.md).
 

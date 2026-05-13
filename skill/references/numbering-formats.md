@@ -56,29 +56,20 @@ Level 1: （一） / （二） / （三）      numFmt=chineseCounting  lvlText=
 Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."        suff="space"
 ```
 
-## Single-Counter Patterns (Captions, References, …)
+## Single-Counter Patterns (Reference List, Procedural Lists, …)
 
-For paragraph roles that need a sequence but not a hierarchy — figure captions, table captions, reference list entries, theorem numbering, appendix items — bind a one-level numbering scheme.
+For paragraph roles that need a sequence but not a hierarchy — reference
+list entries, procedural numbered steps, appendix items — bind a
+one-level numbering scheme. **Caption-class numbering (figures /
+tables / equations / theorems) uses a different mechanism — SEQ +
+STYLEREF fields via the top-level `captions` table; see
+[`captions.md`](captions.md). Caption-class styleIds must NOT appear in
+`numbering[]` — apply rejects that combination.**
 
-Default counter scope: one continuous counter across the document (`restart: "continuous"`, implicit). Every paragraph bound to the scheme shares one running counter — what captions, references, equations, and appendix items want. The only opt-out is procedural `1./2./3.` list shapes (see "Procedural Numbered Lists" below), which need `restart: "perInstance"`.
-
-### Figure / Table Caption (flat counter)
-```
-Level 0: 图 1 / 图 2 / 图 3            numFmt=decimal  lvlText="图 %1"   suff="space"
-Level 0: 表 1 / 表 2 / 表 3            numFmt=decimal  lvlText="表 %1"   suff="space"
-```
-Use a separate `numId` per caption family so figures and tables count independently.
-
-Pair the caption style with a `FigureImage` body style (`alignment: "center"`, small `spaceBefore` / `spaceAfter` to butt the image against its caption) and set the image block's `styleId: "FigureImage"` — without it the image paragraph emits no pPr and renders left-aligned with default spacing regardless of what the caption style declares.
-
-**Position convention.** `FigureCaption` paragraphs sit **below** the image. `TableCaption` paragraphs sit **above** the `{ "type": "table", ... }` block. `EquationNumber` paragraphs sit to the **right** of the equation on the same line (compose via 3-column borderless `TableBlock`; see [`equations.md`](equations.md)). All bind to single-level continuous counters (default `restart`); body text refs target the caption / number paragraph's `anchor`, never the figure / table / equation paragraph itself.
-
-### Chapter-Prefixed Caption (`图 1-1`, `表 1-1`, `图 2-1`, ...)
-```
-Level 0: (mirrors Heading1's counter; no display)  numFmt=decimal  lvlText=""        suff="nothing"
-Level 1: 图 1-1 / 图 1-2 / 图 2-1                  numFmt=decimal  lvlText="图 %1-%2" suff="space"
-```
-Captions sit on level 1; level 0 silently tracks the chapter number, restart-on-Heading1 via the chapter style's own numbering. Bind caption paragraphs to level 1; the body never sees level 0. For tables use the same shape with `lvlText="表 %1-%2"` on a separate `numId` so figures and tables count independently.
+Default counter scope: one continuous counter across the document
+(`restart: "continuous"`, implicit). The only opt-out is procedural
+`1./2./3.` list shapes (see "Procedural Numbered Lists" below), which
+need `restart: "perInstance"`.
 
 ### Reference List
 ```
