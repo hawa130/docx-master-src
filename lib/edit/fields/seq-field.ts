@@ -21,12 +21,16 @@
  *   `\c`            repeat the previous value of this identifier without
  *                   incrementing (used by subequation "continue" members
  *                   to keep the parent number stable across (1a)(1b)).
- *   `\h`            hide the field result — Word renders nothing. Used
- *                   for CaptionCounterReset's marker field whose only
- *                   purpose is to advance counter state.
  *
  * Format preservation (rPr replication + MERGEFORMAT) handled by the
  * shared skeleton — see `complex-field.ts`.
+ *
+ * No `\h` (hide) switch: Word's documented quirk is that `\h` is
+ * silently overridden by a `\*` format switch in the same field
+ * (Microsoft Q&A; Office Watch). Since our emitter always emits `\*`,
+ * `\h` would silently fail. Callers that need a hidden counter-advance
+ * marker wrap each emitted run in `<w:vanish/>` rPr instead (see
+ * `addVanishRPr` in `lib/xml/xml-utils.ts`).
  */
 
 import { emitComplexField } from "@lib/edit/fields/complex-field.ts"
@@ -71,9 +75,6 @@ export interface SeqFieldSpec {
    * switch). Mutually exclusive with `resetTo`. Used by subequation
    * "continue" members. */
   repeat?: boolean
-  /** Hide the field result (`\h` switch). Word renders nothing — used
-   * for CaptionCounterReset's marker field. */
-  hidden?: boolean
   /** Initial result text shown before Word updates fields. Empty by
    * default — counter sim backfills the rendered value later. */
   initialResult?: string
@@ -103,9 +104,6 @@ export function emitSeqField(
   }
   if (spec.repeat) {
     parts.push("\\c")
-  }
-  if (spec.hidden) {
-    parts.push("\\h")
   }
 
   const { runs, resultTextEl } = emitComplexField(ownerDoc, {

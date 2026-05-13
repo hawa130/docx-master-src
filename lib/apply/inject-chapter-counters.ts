@@ -1,9 +1,9 @@
 /**
- * Inject a hidden auto-chapter SEQ field at the start of each paragraph
- * whose style is referenced under `chapterPrefix` with a `format`
- * override. Caption-emit's chapter prefix `SEQ _chap_<styleId> \c \*
- * <FORMAT>` reads the counter via Word's `\c` (repeat) switch; the
- * injected field is what advances the counter.
+ * Inject a hidden auto-chapter SEQ field into each paragraph whose
+ * style is referenced under `chapterPrefix` with a `format` override.
+ * Caption-emit's chapter prefix `SEQ _chap_<styleId> \c \* <FORMAT>`
+ * reads the counter via Word's `\c` (repeat) switch; the injected
+ * field is what advances the counter on each heading.
  *
  * Why a parallel hidden counter instead of `STYLEREF "Heading 1" \n
  * \* ARABIC`: STYLEREF \n returns the heading's full rendered lvlText
@@ -12,12 +12,32 @@
  * hidden SEQ maintains a parallel Arabic counter that Word's F9 keeps
  * live on H1 add / remove.
  *
- * Idempotent: skips paragraphs that already carry an `_chap_<styleId>`
- * SEQ field at the start (re-applying doesn't double-inject).
+ * Field placement: appended at the END of the heading paragraph. The
+ * heading's own auto-numbering counter (e.g. lvlText "第%1章") renders
+ * at the paragraph's visual start; a SEQ field at that position
+ * conflicts with the lvlText layout slot in some Word versions and
+ * suppresses the heading's prefix. Tail placement still advances the
+ * counter (Word evaluates fields document-wide on F9) and the cross-
+ * paragraph SEQ \c ordering is preserved (headings precede captions
+ * in body order).
+ *
+ * Hiding: character-level `<w:vanish/>` rPr on each run (via
+ * `addVanishRPr`). Word's SEQ `\h` switch is silently overridden by a
+ * `\*` format switch in the same field — and we always emit `\*` —
+ * so the rPr-level vanish is the reliable hide mechanism.
+ *
+ * Idempotent: skips paragraphs that already carry the matching
+ * `_chap_<styleId>` SEQ field anywhere in their run sequence.
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr, walkBodyParagraphs } from "@lib/xml/xml-utils.ts"
+import {
+  addVanishRPr,
+  firstChildNS,
+  getChildren,
+  wAttr,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
 import { parseFieldRuns } from "@lib/edit/fields/field-parse.ts"
 import { emitSeqField, type SeqFormat } from "@lib/edit/fields/seq-field.ts"
 import { chapterCounterIdentifier } from "@lib/edit/caption-emit.ts"
@@ -67,45 +87,13 @@ function injectHiddenSeq(
   format: SeqFormat,
   ownerDoc: Document,
 ): void {
-  // Emit the SEQ field WITHOUT \h. Word's documented \h-on-SEQ
-  // semantics: "the `\h` switch does NOT hide the result when a `\*`
-  // format switch is also present" (verified in Microsoft Q&A — both
-  // `\*` and `\#` unhide a `\h` SEQ). Since we always emit `\* ARABIC`
-  // (or whatever the format is), `\h` would silently fail and the
-  // chapter number would render inside the H1.
-  //
-  // Use character-level `<w:vanish/>` rPr instead — robust against the
-  // format-switch interaction, and Word's counter still advances since
-  // the SEQ field itself runs (only its rendered text is hidden).
   const { runs } = emitSeqField(ownerDoc, {
     identifier: chapterCounterIdentifier(styleId),
     format,
   })
-  for (const r of runs) addVanishRPr(r, ownerDoc)
-
-  // Append at end of paragraph. Word draws the heading's own numbering
-  // counter (lvlText "第%1章") at the visual start; placing the SEQ
-  // field at the start could interfere with that layout slot in some
-  // Word versions. Tail placement still advances the counter (Word's
-  // F9 evaluates the field) and the cross-paragraph SEQ \c order is
-  // preserved (the H1 paragraph still precedes captions in body
-  // order).
-  for (const r of runs) paragraph.appendChild(r)
-}
-
-/** Prepend `<w:vanish/>` to a run's rPr (creating rPr if absent) so
- * Word renders the run as hidden text — counter still advances, no
- * visible artifact in the paragraph. rPr must be the first child of
- * the run per CT_R schema order. */
-function addVanishRPr(run: Element, ownerDoc: Document): void {
-  let rPr = firstChildNS(run, w, "rPr")
-  if (!rPr) {
-    rPr = ownerDoc.createElementNS(w, "w:rPr")
-    run.insertBefore(rPr, run.firstChild)
-  }
-  const existing = firstChildNS(rPr, w, "vanish")
-  if (!existing) {
-    rPr.insertBefore(ownerDoc.createElementNS(w, "w:vanish"), rPr.firstChild)
+  for (const r of runs) {
+    addVanishRPr(r, ownerDoc)
+    paragraph.appendChild(r)
   }
 }
 

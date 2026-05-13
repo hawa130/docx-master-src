@@ -130,3 +130,28 @@ export function buildPlainTextRun(ownerDoc: Document, text: string): Element {
   r.appendChild(t)
   return r
 }
+
+/** Prepend `<w:vanish/>` to a run's rPr (creating rPr if absent). The
+ * run's text becomes hidden via character-level formatting — preferred
+ * over Word's SEQ `\h` switch, which is silently overridden by a `\*`
+ * format switch in the same field. Used by the caption pipeline to
+ * hide counter-advance fields injected into headings or reset markers
+ * without affecting the field's counter side-effect. rPr must be the
+ * first child of the run per CT_R schema order. */
+export function addVanishRPr(run: Element, ownerDoc: Document): void {
+  let rPr: Element | null = null
+  for (const c of getChildren(run)) {
+    if (c.namespaceURI === NS.w && c.localName === "rPr") {
+      rPr = c
+      break
+    }
+  }
+  if (!rPr) {
+    rPr = ownerDoc.createElementNS(NS.w, "w:rPr")
+    run.insertBefore(rPr, run.firstChild)
+  }
+  for (const c of getChildren(rPr)) {
+    if (c.namespaceURI === NS.w && c.localName === "vanish") return
+  }
+  rPr.insertBefore(ownerDoc.createElementNS(NS.w, "w:vanish"), rPr.firstChild)
+}

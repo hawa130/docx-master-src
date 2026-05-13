@@ -9,8 +9,8 @@
  * CaptionBlock → single paragraph: prefix + STYLEREFs + SEQ + suffix +
  * bodySeparator + text (the last two omitted when text is empty).
  *
- * CaptionCounterReset → single paragraph with one hidden SEQ field
- * (`\r N \h`) — invisible counter advance marker.
+ * CaptionCounterReset → single paragraph with one SEQ `\r N` field
+ * wrapped in `<w:vanish/>` rPr — invisible counter-advance marker.
  *
  * All caption-bearing emitters return both the XML root element AND a
  * PendingCaptionFill / PendingCaptionReset record. The apply pipeline
@@ -26,7 +26,7 @@
 
 import { NS } from "@lib/parse/types.ts"
 import { parseXml } from "@lib/xml/reader.ts"
-import { buildPlainTextRun } from "@lib/xml/xml-utils.ts"
+import { addVanishRPr, buildPlainTextRun } from "@lib/xml/xml-utils.ts"
 import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
 import { emitSeqField } from "@lib/edit/fields/seq-field.ts"
 import { emitStyleRefField } from "@lib/edit/fields/styleref-field.ts"
@@ -167,12 +167,12 @@ export interface CaptionResetOptions {
   newValue: number
 }
 
-/** Emit a hidden SEQ marker paragraph that resets the identifier's
- * counter so the NEXT caption emits the agent's specified `newValue`.
- * Word's `SEQ \r N` resets the counter to N AND the marker field itself
- * emits N (hidden); the next visible SEQ increments to N+1. To match
- * the agent's intent ("the next caption is newValue"), emit `\r
- * (newValue - 1)`. Counter sim mirrors the same convention. */
+/** Emit a SEQ-marker paragraph (vanish-hidden) that resets the
+ * identifier's counter so the NEXT caption emits the agent's specified
+ * `newValue`. Word's `SEQ \r N` resets to N AND the marker itself
+ * emits N; the next visible SEQ increments to N+1. To match agent
+ * intent ("the next caption is newValue"), emit `\r (newValue - 1)`.
+ * Counter sim mirrors the same convention. */
 export function emitCaptionReset(
   ownerDoc: Document,
   opts: CaptionResetOptions,
@@ -184,21 +184,17 @@ export function emitCaptionReset(
   pPr.appendChild(pStyle)
   p.appendChild(pPr)
 
-  // Drop SEQ `\h` switch — Word's documented quirk is that `\h` does
-  // NOT hide the result when a `\*` format switch is also present (and
-  // we always emit `\* ARABIC`). Wrap each run's rPr in `<w:vanish/>`
-  // for character-level hiding instead — the SEQ counter still
-  // advances (Word evaluates the field), but no rendered artifact
-  // appears in the paragraph.
+  // Word's SEQ `\h` switch is silently overridden by a `\*` format
+  // switch in the same field, so we hide the marker via character-
+  // level `<w:vanish/>` rPr on every run. The SEQ counter still
+  // advances (field is evaluated) but renders nothing.
   const { runs } = emitSeqField(ownerDoc, {
     identifier: opts.identifier,
     format: "arabic",
     resetTo: opts.newValue - 1,
   })
   for (const r of runs) {
-    const rPr = ownerDoc.createElementNS(w, "w:rPr")
-    rPr.appendChild(ownerDoc.createElementNS(w, "w:vanish"))
-    r.insertBefore(rPr, r.firstChild)
+    addVanishRPr(r, ownerDoc)
     p.appendChild(r)
   }
 
