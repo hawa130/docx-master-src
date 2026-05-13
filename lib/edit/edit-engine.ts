@@ -72,6 +72,7 @@ import type {
   PendingCaptionReset,
   ResolvedCaptionConfig,
 } from "@lib/edit/caption-counter.ts"
+import { applyEditCaption, resolveEditCaptionTarget } from "@lib/edit/edit-caption-op.ts"
 
 const w = NS.w
 
@@ -437,7 +438,10 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       ...emitCtx,
       usableWidthTwips: usableWidthForTarget(edit.target, input.sections, resolverCtx),
     }
-    const touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx)
+    const touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx, {
+      bookmarkAllocator,
+      captionsMap: input.captions,
+    })
     perOp.push({ index: i, op: edit.op.op, touched })
   }
 
@@ -523,12 +527,14 @@ function resolveOneEdit(op: EditOp, resolverCtx: ResolverContext, _opIndex: numb
     }
   }
   if (op.op === "edit-caption") {
-    // Resolver wiring lands in a subsequent commit. Until then,
-    // edit-caption ops surface a clear error at apply time.
-    throw new Error(
-      "edit-caption op: target resolution not yet wired into the engine. " +
-        "Schema accepts the op but applying it is pending phase 3 integration.",
-    )
+    // Target resolution happens at apply time (needs the live doc to
+    // walk SEQ-bearing paragraphs). Synthesize a resolved target with
+    // the body element as a placeholder; applyOne re-resolves against
+    // the post-emit state.
+    return {
+      op,
+      target: { paragraphs: [], container: resolverCtx.body },
+    }
   }
   return { op, target: resolveLocator(op.at, resolverCtx) }
 }
@@ -731,6 +737,58 @@ function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) 
 
 /* ------------- per-op apply ------------- */
 
+interface ApplyDeps {
+  bookmarkAllocator: BookmarkAllocator
+  captionsMap: Map<string, ResolvedCaptionConfig> | undefined
+}
+
+function applyEditCaptionOp(
+  op: Extract<EditOp, { op: "edit-caption" }>,
+  documentDoc: Document,
+  deps: ApplyDeps,
+): number {
+  if (!deps.captionsMap) {
+    throw new Error(
+      "edit-caption: captions table not declared in apply config. Add the identifier to `captions`.",
+    )
+  }
+  const para = resolveEditCaptionTarget({
+    documentDoc,
+    target: op.target,
+    text: op.text,
+    bookmarkAllocator: deps.bookmarkAllocator,
+    captionsConfigs: deps.captionsMap,
+  })
+  // Find the caption's identifier so we can fetch bodySeparator.
+  // The target paragraph's pStyle maps back via the configs index.
+  let config: ResolvedCaptionConfig | undefined
+  if ("captionId" in op.target) {
+    config = deps.captionsMap.get(op.target.captionId)
+  } else {
+    // Anchor target — walk captions configs and pick the one whose
+    // paragraphStyleId matches this paragraph's pStyle.
+    const pPr = firstChildNS(para, w, "pPr")
+    const pStyle = pPr ? firstChildNS(pPr, w, "pStyle") : null
+    const styleId = pStyle ? (pStyle.getAttributeNS(w, "val") ?? null) : null
+    if (styleId) {
+      for (const c of deps.captionsMap.values()) {
+        if (c.paragraphStyleId === styleId) {
+          config = c
+          break
+        }
+      }
+    }
+  }
+  if (!config) {
+    throw new Error(
+      "edit-caption: could not resolve caption config for the target paragraph. " +
+        "The paragraph's pStyle doesn't match any captions[<id>].styleId.",
+    )
+  }
+  applyEditCaption(para, op.text, config, documentDoc)
+  return 1
+}
+
 function applyOne(
   edit: ResolvedEdit,
   documentDoc: Document,
@@ -738,6 +796,7 @@ function applyOne(
   emitCtx: EmitContext,
   stale: Set<Element>,
   resolverCtx: ResolverContext,
+  deps: ApplyDeps,
 ): number {
   switch (edit.op.op) {
     case "replace":
@@ -770,9 +829,7 @@ function applyOne(
       }
       return applySetRun(edit.runRef, edit.op, documentDoc, trackContext)
     case "edit-caption":
-      // Implementation lands in a subsequent commit; resolver throws
-      // earlier in resolveOneEdit so this branch is unreachable today.
-      throw new Error("edit-caption: not yet implemented")
+      return applyEditCaptionOp(edit.op, documentDoc, deps)
     default:
       return assertNever(edit.op)
   }
