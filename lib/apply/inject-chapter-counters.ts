@@ -83,19 +83,14 @@ function injectHiddenSeq(
   })
   for (const r of runs) addVanishRPr(r, ownerDoc)
 
-  // Insert after pPr if present, otherwise at paragraph start. Each
-  // insertBefore call adds the new node immediately before `anchorNode`;
-  // walking forward keeps the field's begin / instr / separate /
-  // result / end order intact in the DOM. (Reverse iteration here
-  // would silently swap the order — fldChar end would land at the
-  // front, Word reads it before begin, the whole field breaks.)
-  const pPr = firstChildNS(paragraph, w, "pPr")
-  const anchorNode = pPr ? pPr.nextSibling : paragraph.firstChild
-  if (anchorNode) {
-    for (const r of runs) paragraph.insertBefore(r, anchorNode)
-  } else {
-    for (const r of runs) paragraph.appendChild(r)
-  }
+  // Append at end of paragraph. Word draws the heading's own numbering
+  // counter (lvlText "第%1章") at the visual start; placing the SEQ
+  // field at the start could interfere with that layout slot in some
+  // Word versions. Tail placement still advances the counter (Word's
+  // F9 evaluates the field) and the cross-paragraph SEQ \c order is
+  // preserved (the H1 paragraph still precedes captions in body
+  // order).
+  for (const r of runs) paragraph.appendChild(r)
 }
 
 /** Prepend `<w:vanish/>` to a run's rPr (creating rPr if absent) so
