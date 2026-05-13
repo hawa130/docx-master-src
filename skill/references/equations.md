@@ -1,12 +1,18 @@
 # Equations (`{ "type": "equation", ... }` and `{ "math": "..." }`)
 
-LaTeX → OMML rendering for display equations and inline math.
+LaTeX → OMML rendering for display equations and inline math. Numbered
+equations use the captions pipeline (SEQ + STYLEREF + bookmark, Word's
+native caption mechanism) — see [`captions.md`](captions.md).
 
 ## Quick start
 
 ```jsonc
-// Display (block)
+// Unnumbered display
 { "type": "equation", "latex": "E = mc^2" }
+
+// Numbered display (chapter-prefixed when captions.Equation declares chapterPrefix)
+{ "type": "equation", "latex": "a^2 + b^2 = c^2",
+  "captionId": "Equation", "anchor": "eq-pythagoras" }
 
 // Inline (inside a paragraph's text array)
 { "type": "paragraph", "text": [
@@ -21,54 +27,115 @@ LaTeX → OMML rendering for display equations and inline math.
 ```ts
 EquationBlock {
   type: "equation"
-  latex: string              // LaTeX expression (Temml subset — see below)
-  styleId?: string           // paragraph style for the wrapping <w:p>
+  latex?: string              // LaTeX expression (Temml subset — see below)
+  omml?: string               // raw OMML (escape hatch when temml fails)
+                              // exactly one of latex / omml required
+  styleId?: string            // paragraph style for the equation's <w:p>;
+                              // defaults to "Equation"
   paraFormat?: ParagraphFormat
-  anchor?: string            // bookmark; emits valid, but caption paragraph is the practical InlineRef target — see below
+  captionId?: string          // declares a numbered equation; references
+                              // captions[<id>]. Omit for unnumbered.
+  subGroup?: "start" | "continue"  // subequations: (1a)(1b)(1c). Requires
+                              // captionId + captions[<id>].subCounter.
+  anchor?: string             // bookmark name; requires captionId
 }
 
-InlineEquation { math: string }   // appears inside Paragraph.text[] alongside { text, format } and { refTo }
+InlineEquation { math: string }   // inside Paragraph.text[] alongside { text, format } and { refTo }
 ```
+
+## Numbered equations — layout
+
+With `captionId` set, the engine emits a 3-column borderless table:
+
+```
+[ left spacer | centered OMML | (chapter.counter) ]
+```
+
+Right cell is a SEQ + STYLEREF caption with the prefix / suffix /
+chapter prefix declared in `captions[<id>]`. The whole "number +
+decoration" range carries a bookmark named after `anchor`; body-text
+InlineRefs resolve to the rendered caption text (e.g. `"(2.3)"`) via
+REF `\h`.
+
+Without `captionId`, the engine emits a single centered paragraph with
+just the OMML — no table, no caption, no bookmark.
 
 ## LaTeX coverage
 
-The renderer is [Temml](https://temml.org/) — supports most of LaTeX math mode. Inline math doesn't number itself; use the caption pattern below for any numbered equation, regardless of display vs inline shape.
+The renderer is [Temml](https://temml.org/) — supports most of LaTeX
+math mode. When a specific expression triggers temml's known issues, fall
+back to the `omml` escape hatch: pass pre-converted OMML directly and the
+engine embeds it as-is.
 
-## Numbering and cross-references
-
-Standard 学术 / IEEE / GB/T 7713 convention: equation centered on its line, number flush right on the same line — `equation ........... (1)`. Compose via a 3-column borderless `TableBlock` (empty / equation / numbered paragraph):
+## Subequations — `subGroup`
 
 ```jsonc
-{ "type": "table", "borders": "none",
-  "cols": [{ "width": "auto" }, { "width": 300 }, { "width": "auto" }],
-  "rows": [[
-    "",
-    [{ "type": "equation", "latex": "\\sum_{i=1}^{n} a_i" }],
-    [{ "type": "paragraph", "styleId": "EquationNumber",
-       "paraFormat": { "alignment": "right" },
-       "anchor": "eq-sum", "text": "" }]
-  ]]}
+// (1) standalone — followed by a sub-group
+{ "type": "equation", "latex": "x = 1", "captionId": "Equation", "anchor": "eq-1" },
+
+// (2a) subgroup start — parent counter advances, sub resets to a
+{ "type": "equation", "latex": "y = 2", "captionId": "Equation",
+  "subGroup": "start", "anchor": "eq-2a" },
+
+// (2b) subgroup continue — parent unchanged, sub advances to b
+{ "type": "equation", "latex": "z = 3", "captionId": "Equation",
+  "subGroup": "continue", "anchor": "eq-2b" },
+
+// (3) standalone after subgroup — parent advances normally
+{ "type": "equation", "latex": "w = 4", "captionId": "Equation", "anchor": "eq-3" }
 ```
 
-`EquationNumber` is bound to a single-level counter scheme (e.g. `lvlText: "(%1)"`) so the right cell renders as `(1)`, `(2)`, … automatically. Body-text refs target the numbered paragraph via `InlineRef` against its `anchor` (see `cross-references.md`).
+Requires `captions["Equation"].subCounter` to be declared (otherwise the
+schema rejects `subGroup`).
 
-The equation paragraph itself holds no readable text, so cross-refs must anchor on the numbered paragraph, not on the equation.
+## Cross-references
+
+`InlineRef` targets the equation's anchor:
+
+```jsonc
+{ "refTo": { "type": "anchor", "name": "eq-pythagoras" }, "display": "label" }
+```
+
+For caption-class targets, `display: "label"` and `display: "number"`
+collapse to the same rendering — both return `prefix + chapter + counter
++ suffix` from the SEQ field result (e.g. `"(2.3)"`). The decoration
+is part of the bookmark range, so a single REF `\h` retrieves the whole
+thing. `display: "full"` on an EquationBlock anchor throws (no body
+text to return).
 
 ## Integration with the style system
 
 | What | How |
 |---|---|
-| Centered display | Display equations center by default. Override via `styleId` + `paraFormat.alignment` for left/right. |
-| Caption numbering | EquationCaption gets a single-level continuous numbering scheme — same shape as FigureCaption / TableCaption. See `numbering-formats.md`. |
-| pattern_rules / bulk_rules | Apply to the caption paragraph normally. The equation paragraph contains no `<w:r>` runs (the OMML is its sole child), so text-pattern matching skips it. |
+| Numbered vs unnumbered | Presence of `captionId` on the EquationBlock |
+| Caption format | Declared once in `captions[<id>]` — prefix / suffix / format / chapterPrefix / styleId |
+| Equation paragraph style | `EquationBlock.styleId` (default `"Equation"`); separate from the caption paragraph style |
+| pattern_rules / bulk_rules | Apply to surrounding paragraphs; the equation paragraph contains only OMML so text-pattern matching skips it. |
 
 ## Edge cases
 
-- **Inline math inside an InlineRef's display text.** Not supported. InlineRef emits the resolved text as `<w:r>` runs; embedding `<m:oMath>` inside a REF field is non-standard. Place the InlineRef and the math as sibling InlineNodes instead.
-- **trackChanges + equation insert.** Engine throws at emit. OOXML's tracked-change wrappers don't have a clean "equation inserted" shape. Run equation insertion without trackChanges; use trackChanges for subsequent surrounding edits.
+- **`captionId` references undeclared identifier.** Schema validation
+  throws — declare the entry in `captions` first.
+- **`anchor` without `captionId`.** Schema throws — without numbering,
+  REF \h has no resolved target to return.
+- **`display: "full"` on EquationBlock target.** Pre-scan throws — the
+  equation paragraph has no body text.
+- **trackChanges + equation insert.** Engine throws at emit. OOXML's
+  tracked-change wrappers don't have a clean "equation inserted" shape.
+  Run equation insertion without trackChanges; use trackChanges for
+  subsequent surrounding edits.
+- **Inline math inside an InlineRef's display text.** Not supported.
+  Embed the InlineRef and the math as sibling InlineNodes.
 
-## What's not supported (v1)
+## What's not supported
 
-- **n-ary operator structural bug.** `\sum_{i=1}^{n} i^2`, `\int_0^1 x \, dx`, `\prod_{k=1}^{n} a_k` render with a dashed empty box (`<m:e/>`) before the operand — Word still computes correctly, but the visual is wrong. Comes from `mathml2omml` (LGPL); fix planned for v2 (self-built MathML→OMML translator).
-- **Equation numbering via LaTeX `\tag{}` / `\label{}` / `equation` environment.** Use the caption + anchor pattern instead — gives you the same cross-ref reach and matches the figure / table convention.
-- **Editing an existing equation in the docx.** Locators target paragraphs, not OMML subtrees. To change an equation, `replace` the whole paragraph.
+- **n-ary operator structural bug.** `\sum_{i=1}^{n} i^2`,
+  `\int_0^1 x\,dx`, `\prod_{k=1}^{n} a_k` render with a dashed empty
+  box (`<m:e/>`) before the operand. Word's calculation is right but
+  visuals are wrong. Comes from `mathml2omml` (LGPL); fix waits on a
+  self-built MathML→OMML translator.
+- **LaTeX `\tag{}` / `\label{}` / `equation` environment.** Use the
+  `captionId` + `anchor` pattern instead.
+- **Editing an existing equation's LaTeX in place.** Locators target
+  paragraphs, not OMML subtrees. To change an equation, `replace` the
+  whole paragraph (or `delete` then `insert-after`).

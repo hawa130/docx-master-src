@@ -35,9 +35,10 @@ A well-formed Word document expresses structure through **styles + numbering + s
   - **Prose** (multi-paragraph body) → prose typography.
   - **Inline-value** (short phrase filling a labeled cell) → inherit the slot's existing format.
   - **Block enumeration** → `ListNumber` + single-level scheme; markers from the scheme.
-  - **Figure** → `FigureImage` (image paragraph; line height stays flexible so the drawing isn't clipped) + `FigureCaption` **below**.
-  - **Table** → `{ "type": "table", ... }` block + `TableCaption` **above** — see [references/tables.md](references/tables.md).
-  - **Equation** → `{ "type": "equation", "latex": "..." }` + a right-aligned numbered paragraph on the same line via a 3-column borderless `TableBlock`; inline math uses `{ "math": "..." }` in Paragraph.text — see [references/equations.md](references/equations.md).
+  - **Figure** → `FigureImage` (image paragraph; line height stays flexible so the drawing isn't clipped) + `CaptionBlock` with `captionId: "Figure"` **below** — declare the identifier in the top-level [`captions`](references/captions.md) table.
+  - **Table** → `{ "type": "table", ... }` block + `CaptionBlock` with `captionId: "Table"` **above** — see [references/tables.md](references/tables.md).
+  - **Equation** → `{ "type": "equation", "latex": "...", "captionId": "Equation" }` for a numbered equation (engine emits the 3-column borderless layout automatically); omit `captionId` for unnumbered. Inline math uses `{ "math": "..." }` in Paragraph.text — see [references/equations.md](references/equations.md).
+- **Caption mechanism.** Caption-class numbering (figure / table / equation / theorem / ...) goes through the top-level `captions` config — declare an entry per identifier with prefix / suffix / chapter prefix / styleId, then reference `captionId` on `CaptionBlock` / `EquationBlock`. Word emits SEQ + STYLEREF fields; cross-references use REF `\h`. Do NOT bind caption-class styleIds to `numbering[]` — see [references/captions.md](references/captions.md).
 - **Locale-specific typography.** CJK prose body and list items get a 2-char first-line indent — declare `firstLineIndent: "2char"` on `BodyText` / `ListNumber`. Chinese font-size names: [`references/chinese-font-sizes.md`](references/chinese-font-sizes.md).
 - **No spaces at CJK ↔ Latin / digit boundaries.** Applies at every boundary type — inside one `text` run, between adjacent runs, around `InlineRef`, around `{ math }`. Word's autoSpace inserts the gap automatically; a typed space stacks on top of it and renders as a visibly wide gap.
 

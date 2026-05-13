@@ -30,12 +30,14 @@ lib/                               every non-tool TypeScript module, grouped
   lib/apply/                         standardize sub-command engine
                                        (apply-styles orchestrator,
                                        style/numbering/para/list mutation,
-                                       template-import)
+                                       template-import, standardize-captions)
   lib/edit/                          edit sub-command engine (edit-engine,
                                        locator, text-search, blockers,
                                        fragment-emit, track-changes,
-                                       image-asset, bookmark, field-ref,
-                                       table-emit, math/)
+                                       image-asset, bookmark, table-emit,
+                                       math/, fields/ — REF/SEQ/STYLEREF
+                                       emitters + field-parse, caption-emit,
+                                       caption-counter, edit-caption-op)
   lib/shared/                        cross-engine helpers (cli-helpers,
                                        docx-validate, report)
                                      Two type files split by concern:
