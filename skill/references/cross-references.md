@@ -51,8 +51,8 @@ When an `edits[]` insert creates a paragraph later refs will cite, give it an `a
 ```jsonc
 {
   "captions": {
-    "Figure": { "prefix": "图 ", "chapterPrefix": ["Heading1"],
-                "bodySeparator": "  ", "styleId": "FigureCaption" }
+    "Figure": { "prefix": "图", "chapterPrefix": ["Heading1"],
+                "bodySeparator": " ", "styleId": "FigureCaption" }
   },
   "edits": [
     {

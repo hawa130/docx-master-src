@@ -22,6 +22,7 @@
 import { NS } from "@lib/parse/types.ts"
 import {
   buildPlainTextRun,
+  descendantsNS,
   firstChildNS,
   getChildren,
   paragraphRuns,
@@ -34,6 +35,7 @@ import type { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import type { ResolvedCaptionConfig } from "@lib/edit/caption-counter.ts"
 
 const w = NS.w
+const m = NS.m
 
 export type EditCaptionTarget = { anchor: string } | { captionId: string; index: number }
 
@@ -47,6 +49,7 @@ export interface EditCaptionInput {
 
 /** Resolve target to a caption paragraph element. Throws on miss. */
 export function resolveEditCaptionTarget(input: EditCaptionInput): Element {
+  let para: Element
   if ("anchor" in input.target) {
     const rec = input.bookmarkAllocator.resolveByName(input.target.anchor)
     if (!rec) {
@@ -55,30 +58,64 @@ export function resolveEditCaptionTarget(input: EditCaptionInput): Element {
           `Declare it on the caption block before editing, or pick a different target.`,
       )
     }
-    return rec.element
+    para = rec.element
+  } else {
+    const { captionId, index } = input.target
+    const config = input.captionsConfigs.get(captionId)
+    if (!config) {
+      throw new Error(`edit-caption: captionId "${captionId}" is not declared in captions table.`)
+    }
+    const matches: Element[] = []
+    const body = firstChildNS(input.documentDoc.documentElement, w, "body")
+    if (!body) {
+      throw new Error("edit-caption: document has no body")
+    }
+    for (const p of walkBodyParagraphs(body)) {
+      if (paragraphStyleId(p) !== config.paragraphStyleId) continue
+      if (!paragraphContainsSeq(p, captionId)) continue
+      matches.push(p)
+    }
+    if (index < 1 || index > matches.length) {
+      throw new Error(
+        `edit-caption: captionId "${captionId}" index ${index} out of range. ` +
+          `Document has ${matches.length} caption paragraph(s) of this identifier.`,
+      )
+    }
+    para = matches[index - 1]!
   }
-  const { captionId, index } = input.target
-  const config = input.captionsConfigs.get(captionId)
-  if (!config) {
-    throw new Error(`edit-caption: captionId "${captionId}" is not declared in captions table.`)
-  }
-  const matches: Element[] = []
-  const body = firstChildNS(input.documentDoc.documentElement, w, "body")
-  if (!body) {
-    throw new Error("edit-caption: document has no body")
-  }
-  for (const para of walkBodyParagraphs(body)) {
-    if (paragraphStyleId(para) !== config.paragraphStyleId) continue
-    if (!paragraphContainsSeq(para, captionId)) continue
-    matches.push(para)
-  }
-  if (index < 1 || index > matches.length) {
+  if (isEquationCaptionParagraph(para)) {
     throw new Error(
-      `edit-caption: captionId "${captionId}" index ${index} out of range. ` +
-        `Document has ${matches.length} caption paragraph(s) of this identifier.`,
+      "edit-caption: target paragraph is an EquationBlock's caption (number-only, no body text). " +
+        "To change the equation, delete the EquationBlock and re-emit with the updated LaTeX.",
     )
   }
-  return matches[index - 1]!
+  return para
+}
+
+/** Detect EquationBlock caption paragraphs. They live in a 3-col borderless
+ * table's right cell; the middle cell carries an `<m:oMath>` / `<m:oMathPara>`
+ * subtree. Walk up to the enclosing `<w:tc>`, then to `<w:tr>`, and scan the
+ * sibling cells for OMML content. */
+function isEquationCaptionParagraph(paragraph: Element): boolean {
+  // Find enclosing <w:tc>.
+  let cell: Element | null = paragraph.parentNode as Element | null
+  while (cell && !(cell.namespaceURI === w && cell.localName === "tc")) {
+    cell = cell.parentNode as Element | null
+  }
+  if (!cell) return false
+  const row = cell.parentNode as Element | null
+  if (!row || row.namespaceURI !== w || row.localName !== "tr") return false
+  for (const sibling of getChildren(row)) {
+    if (sibling === cell) continue
+    if (sibling.namespaceURI !== w || sibling.localName !== "tc") continue
+    if (
+      descendantsNS(sibling, m, "oMath").length > 0 ||
+      descendantsNS(sibling, m, "oMathPara").length > 0
+    ) {
+      return true
+    }
+  }
+  return false
 }
 
 /** Replace the caption paragraph's body text — runs after the primary

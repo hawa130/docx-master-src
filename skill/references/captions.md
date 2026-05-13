@@ -18,15 +18,15 @@ references.
       "styleId": "EquationNumber"
     },
     "Figure": {
-      "prefix": "图 ",
+      "prefix": "图",
       "chapterPrefix": ["Heading1"],
-      "bodySeparator": "  ",
+      "bodySeparator": " ",
       "styleId": "FigureCaption"
     },
     "Table": {
-      "prefix": "表 ",
+      "prefix": "表",
       "chapterPrefix": ["Heading1"],
-      "bodySeparator": "  ",
+      "bodySeparator": " ",
       "styleId": "TableCaption"
     }
   },
@@ -122,12 +122,12 @@ rendering:
     ]
   },
   "captions": {
-    "Figure":   { "prefix": "图 ",
+    "Figure":   { "prefix": "图",
                   "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
-                  "bodySeparator": "  ", "styleId": "FigureCaption" },
-    "Table":    { "prefix": "表 ",
+                  "bodySeparator": " ", "styleId": "FigureCaption" },
+    "Table":    { "prefix": "表",
                   "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
-                  "bodySeparator": "  ", "styleId": "TableCaption" },
+                  "bodySeparator": " ", "styleId": "TableCaption" },
     "Equation": { "prefix": "(", "suffix": ")",
                   "chapterPrefix": [{ "styleId": "Heading1", "format": "arabic" }],
                   "styleId": "EquationNumber" }
@@ -138,10 +138,10 @@ rendering:
 Predicted Word output for captions emitted under H1 = `第一章` / `第二章`:
 
 ```
-图 1.1  系统架构
-表 1.1  评估指标
-(1.1)        ← inline equation number
-图 2.1  实验流程
+图 1.1 系统架构          ← gap between 图 and 1 is autoSpace
+表 1.1 评估指标
+(1.1)                  ← inline equation number
+图 2.1 实验流程
 (2.1)
 ```
 
@@ -178,8 +178,9 @@ Identifier reservation: `_chap_` prefixed names are engine-reserved;
 schema rejects agent use as a captionId.
 
 For English academic: same shape, drop the format override, replace
-`"图 "` / `"表 "` with `"Figure "` / `"Table "` and `bodySeparator: "  "`
-with `": "`.
+`"图"` / `"表"` with `"Figure "` / `"Table "` (ASCII prefixes need a
+literal trailing space — `autoSpace` only fires at CJK boundaries) and
+`bodySeparator: " "` with `": "`.
 
 For short papers / no chapters: drop `chapterPrefix` (global counter).
 
@@ -205,17 +206,21 @@ On EquationBlock: omit `subGroup` for standalone `(1)` / `(2)` / `(3)`;
 
 ## How rendering works (under the hood)
 
+Diagrammed: the bare-string `chapterPrefix` path. For the
+`{styleId, format}` override variant, replace the STYLEREF run with
+`SEQ _chap_<styleId> \c \* <FORMAT>` — see "How `format` works" above.
+
 For a caption like `图 2.3` with `Figure` identifier + `chapterPrefix:
 ["Heading1"]`:
 
 ```
 [bookmarkStart name="fig-arch"]
-  "图 "                                 ← prefix
+  "图"                                  ← prefix (no trailing space; autoSpace gaps 图↔2 at render)
   { STYLEREF "Heading1" \n }            ← chapter prefix → "2"
   "."                                   ← chapterSeparator
   { SEQ Figure \* ARABIC \s 1 }         ← counter → "3"
 [bookmarkEnd]
-"  "                                    ← bodySeparator
+" "                                     ← bodySeparator
 "系统架构示意图"                          ← body text
 ```
 
@@ -232,11 +237,14 @@ chapter prefix (`["Heading1", "Heading2"]`), `\s 2` instead.
 { "refTo": { "type": "anchor", "name": "fig-arch" }, "display": "label" }
 ```
 
-For caption-class targets, `display: "label"` / `"number"` / `"full"`
-all return the SEQ-rendered text with full decoration (prefix +
-chapter + counter + suffix). The variants collapse on this target
-class — the bookmark wraps just the number range, so REF `\h` returns
-that whether you ask for label / number / full. Full routing rules in
+For caption-class targets, `display: "label"` and `display: "number"`
+both return the SEQ-rendered text with full decoration (prefix +
+chapter + counter + suffix) — they collapse because the bookmark
+wraps just the number range, so REF `\h` returns the same text either
+way. `display: "full"` throws: caption-class anchors have no
+paragraph-wide secondary bookmark to source body text from, so the
+pre-F9 placeholder would diverge from Word's post-F9 render. Use
+`"label"` to cite captions. Full routing rules in
 [`cross-references.md`](cross-references.md).
 
 ## Editing existing captions
@@ -295,6 +303,16 @@ on prefix / chapter-prefix shape across runs. Bookmark + identifier +
 body text preserved. Identifier mismatch (SEQ exists for an
 unconfigured identifier) → pass through + warn.
 
+## CJK prefix / separator spacing
+
+**Don't pre-bake Pangu spacing in `prefix` / `suffix` / `bodySeparator` for CJK
+contexts.** Word's `autoSpace` automatically inserts the visual gap at
+CJK ↔ Latin/digit boundaries at render time; a typed ASCII space stacks
+on top and renders too wide. Use `"图"` / `"表"` / `"("` without trailing
+spaces and `" "` (single space) for `bodySeparator`; let Word do the
+CJK↔digit gap. ASCII-only prefixes (`"Figure "`, `"Table "`) keep their
+literal spaces — `autoSpace` only fires at CJK boundaries.
+
 ## Discovering existing captions
 
 - `overview` shows a Captions section listing SEQ identifiers found in
@@ -302,6 +320,8 @@ unconfigured identifier) → pass through + warn.
 - `inspect_caption <doc>` lists all identifiers with occurrence counts +
   referencing-REF counts.
 - `inspect_caption <doc> <identifier>` dumps per-paragraph details.
-- `migrate_captions <doc>` detects manually-numbered caption-shaped
-  paragraphs (e.g. "图 2.1: ..." typed by hand, no SEQ field) and
-  suggests identifiers — agent builds the apply config to convert.
+- `migrate_captions <doc> [--style <styleId>]` detects manually-numbered
+  caption-shaped paragraphs (e.g. "图 2.1: ..." typed by hand, no SEQ
+  field) and suggests identifiers — agent builds the apply config to
+  convert. `--style` filters candidates to that paragraph styleId; omit
+  to scan the whole body.

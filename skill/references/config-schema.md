@@ -21,6 +21,12 @@ config; SKILL.md only carries a top-level summary.
   numbering: { levels: [...] }       // optional. Single scheme, OR array of
             | [ {levels:[...]}, ... ], // schemes for parallel installations
                                      // (e.g. multi-level heading + single-level list).
+  captions: { "<id>": { ... } },     // optional. Caption-class numbering (figure /
+                                     // table / equation / theorem / ...). See
+                                     // references/captions.md.
+  edits:    [ { op: "...", ... } ],  // optional. Location-based surgical edits
+                                     // (replace / insert / delete / image / caption /
+                                     // equation). See references/edit.md.
   requirements: { id: "..." },       // optional. Annotation only — see § "Requirements" below.
 
   // Paragraph-to-style mapping, in resolution order:
