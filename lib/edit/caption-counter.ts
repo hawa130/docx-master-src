@@ -166,8 +166,12 @@ export function simulateCaptions(
 
     const reset = resetByPara.get(para)
     if (reset) {
+      // newValue is "the value the next caption renders" (agent
+      // intent). Pre-decrement state so the next caption's parent++
+      // lands on newValue. Mirrors the `\r (newValue - 1)` convention
+      // emitCaptionReset uses for Word's runtime SEQ resolution.
       const state = stateFor(states, reset.identifier)
-      state.parent = reset.newValue
+      state.parent = reset.newValue - 1
       state.sub = 0
       state.openSubGroup = false
       continue

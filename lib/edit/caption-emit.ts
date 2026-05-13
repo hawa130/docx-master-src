@@ -160,7 +160,11 @@ export interface CaptionResetOptions {
 }
 
 /** Emit a hidden SEQ marker paragraph that resets the identifier's
- * counter. Paragraph carries Normal style; SEQ field uses `\r N \h`. */
+ * counter so the NEXT caption emits the agent's specified `newValue`.
+ * Word's `SEQ \r N` resets the counter to N AND the marker field itself
+ * emits N (hidden); the next visible SEQ increments to N+1. To match
+ * the agent's intent ("the next caption is newValue"), emit `\r
+ * (newValue - 1)`. Counter sim mirrors the same convention. */
 export function emitCaptionReset(
   ownerDoc: Document,
   opts: CaptionResetOptions,
@@ -175,7 +179,7 @@ export function emitCaptionReset(
   const { runs } = emitSeqField(ownerDoc, {
     identifier: opts.identifier,
     format: "arabic",
-    resetTo: opts.newValue,
+    resetTo: opts.newValue - 1,
     hidden: true,
   })
   for (const r of runs) p.appendChild(r)

@@ -194,8 +194,8 @@ on caption paragraphs are blocked by the field scan.
 { "type": "caption-counter-reset", "captionId": "Equation", "newValue": 1 }
 ```
 
-Standalone marker. Emits an invisible SEQ `\r N \h`; counter sim resets
-the identifier to `newValue` (default 1). Useful for appendix sequences
+Standalone marker — the **next** caption of `captionId` renders with
+its counter at `newValue` (default 1). Useful for appendix sequences
 that don't align with outline-level restart, or multi-section docs
 where each major section gets its own caption counter.
 
