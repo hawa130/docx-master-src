@@ -38,6 +38,7 @@ import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numb
 import { resolveCaptions } from "@lib/parse/caption-resolver.ts"
 import { simulateCaptions } from "@lib/edit/caption-counter.ts"
 import { standardizeCaptions } from "@lib/apply/standardize-captions.ts"
+import { injectChapterCounters } from "@lib/apply/inject-chapter-counters.ts"
 import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
 import type {
   ApplyConfig,
@@ -529,6 +530,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // pairs so REF can resolve. (4) Flip settings.xml's updateFields flag.
       const { bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
         result.crossRefs
+
+      // Inject hidden auto-chapter SEQ fields into paragraphs whose
+      // style is referenced under any captions.chapterPrefix with a
+      // `format` override. Idempotent; runs after edits so freshly
+      // inserted H1s get counters too.
+      injectChapterCounters(documentDoc, resolvedCaptions.byIdentifier)
 
       // Standardize re-emit: any caption paragraph already in the doc
       // (source-doc captions, or output from a prior apply) gets its

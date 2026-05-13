@@ -194,10 +194,20 @@ export const CaptionEntrySchema = z.strictObject({
   subCounter: z.optional(CaptionSubCounterSchema),
 })
 
+/** Caption identifier — free string EXCEPT the `_chap_` prefix, which
+ * the engine reserves for the hidden auto-chapter SEQ counter paired
+ * with chapterPrefix `format` overrides. */
+const CaptionIdentifierSchema = z.string().check(
+  z.refine((s) => s.length > 0 && !s.startsWith("_chap_"), {
+    error:
+      'caption identifier must be a non-empty string and must not start with "_chap_" (engine-reserved for hidden auto-chapter counters paired with chapterPrefix format overrides).',
+  }),
+)
+
 /** Map of identifier → caption entry. Identifier is a free string;
  * conventional values "Equation" / "Figure" / "Table" / "Theorem" live
  * in ref docs, not the schema. */
-export const CaptionsSchema = z.record(NonEmptyString, CaptionEntrySchema)
+export const CaptionsSchema = z.record(CaptionIdentifierSchema, CaptionEntrySchema)
 
 /* ------------- template ------------- */
 

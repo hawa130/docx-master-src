@@ -43,6 +43,14 @@ const m = NS.m
 export type { BookmarkRange }
 export type MathSource = { latex: string } | { omml: string }
 
+/** SEQ identifier for the hidden chapter counter paired with a heading
+ * style under chapterPrefix `format` override. Engine reserves the
+ * `_chap_` prefix; agent-declared captionIds matching this pattern
+ * throw at schema validation. */
+export function chapterCounterIdentifier(styleId: string): string {
+  return `_chap_${styleId}`
+}
+
 /* ============================ EquationBlock ============================ */
 
 export interface NumberedEquationOptions {
@@ -250,20 +258,25 @@ export function buildCaptionRunSequence(
   for (const entry of config.chapterPrefix) {
     let resultTextEl: Element
     if (entry.format !== undefined) {
-      // Format override: emit a plain text run that the counter sim
-      // backfills with the re-formatted integer (e.g. "1" instead of
-      // the heading's native "一"). Word's STYLEREF + `\* <FORMAT>`
-      // can't reliably re-format non-Arabic source numFmts — `\n`
-      // returns the heading's full rendered lvlText ("第一章"), and
-      // `\* ARABIC` doesn't extract the numeric portion. Plain text
-      // means F9 won't refresh the chapter number on H1 edits — agents
-      // regenerate via the pipeline rather than F9-driven Word edits,
-      // so this trade-off is acceptable.
-      const r = ownerDoc.createElementNS(w, "w:r")
-      const t = ownerDoc.createElementNS(w, "w:t")
-      t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve")
-      r.appendChild(t)
-      runs.push(r)
+      // Format override path: reference a hidden auto-chapter SEQ
+      // counter that the apply pipeline injects into each heading
+      // paragraph of the cited style. `\c` repeats the counter's
+      // current value (no increment), so the caption reads whatever
+      // the most recent heading set. Identifier convention:
+      // `_chap_<styleId>` — engine-reserved, schema rejects agent use.
+      //
+      // Word `STYLEREF "Heading 1" \n \* ARABIC` does NOT reliably
+      // re-format chineseCounting (or other non-Arabic) source numFmts
+      // — `\n` returns the heading's full rendered lvlText ("第一章")
+      // and `\* ARABIC` doesn't extract the numeric portion. The
+      // hidden-SEQ approach sidesteps that by maintaining a parallel
+      // Arabic counter in the chosen format.
+      const { runs: seqRuns, resultTextEl: t } = emitSeqField(ownerDoc, {
+        identifier: chapterCounterIdentifier(entry.styleId),
+        format: entry.format,
+        repeat: true,
+      })
+      for (const r of seqRuns) runs.push(r)
       resultTextEl = t
     } else {
       // No override: STYLEREF \n returns the heading's native paragraph
