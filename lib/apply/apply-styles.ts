@@ -37,6 +37,7 @@ import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
 import { resolveCaptions } from "@lib/parse/caption-resolver.ts"
 import { simulateCaptions } from "@lib/edit/caption-counter.ts"
+import { standardizeCaptions } from "@lib/apply/standardize-captions.ts"
 import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
 import type {
   ApplyConfig,
@@ -506,6 +507,21 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       const { bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
         result.crossRefs
 
+      // Standardize re-emit: any caption paragraph already in the doc
+      // (source-doc captions, or output from a prior apply) gets its
+      // pre-body run sequence rebuilt against the current captions
+      // config. Skip paragraphs freshly emitted in this pass — their
+      // emit already used the current config.
+      const freshlyEmitted = new Set<Element>(pendingCaptionFills.map((f) => f.paragraph))
+      const standardizeResult = standardizeCaptions(
+        documentDoc,
+        resolvedCaptions.byIdentifier,
+        bookmarkAllocator,
+        freshlyEmitted,
+      )
+      for (const w of standardizeResult.warnings) console.warn(w)
+      const allCaptionFills = [...pendingCaptionFills, ...standardizeResult.fills]
+
       // Caption counter simulator: walks the body, advances per-identifier
       // counters, resolves STYLEREF chapter prefixes, returns fieldValues
       // (per result text element) + fullCaptionText (per caption
@@ -513,9 +529,9 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // REF targets; outline-numbered targets fall through to the
       // numbering counter sim's lvlText.
       const captionSimOutput =
-        pendingCaptionFills.length > 0 || pendingCaptionResets.length > 0
+        allCaptionFills.length > 0 || pendingCaptionResets.length > 0
           ? simulateCaptions(documentDoc, {
-              fills: pendingCaptionFills,
+              fills: allCaptionFills,
               resets: pendingCaptionResets,
               configs: resolvedCaptions.byIdentifier,
               outlineParagraphs: buildOutlineParagraphsMap(
