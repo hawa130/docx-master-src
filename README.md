@@ -126,23 +126,31 @@ The skill ships its own scripts as bundled Node CJS. Any harness that can run `n
 
 ## Usage
 
-Once the skill is installed, talk to the agent in your harness:
+The skill auto-triggers from the prompt. Some everyday shapes:
 
-```
-> 把这份《xxx 报告》格式化成标准学位论文格式
+> Fill in this empty proposal template — headings auto-numbered, body in
+> 11pt, figure and table cites as live fields. Body text is mixed Chinese
+> and English; Songti for CJK, Times New Roman for Latin runs.
 
-> Restyle this Word doc — Heading1 to Times New Roman 16pt centered,
-  body 12pt with 2-character first-line indent, convert "第N章" prefixes
-  to auto-numbering
+> Audit this draft. What fights the style system, what headings aren't
+> tagged, which captions won't renumber on reorder.
 
-> Audit report.docx and tell me which paragraphs violate the document
-  conventions
+> Convert every "Figure 2.1" / "Table 1.3" in this manuscript from typed
+> numbers to live fields, and rewire the body references.
 
-> Insert these three figures with captions after paragraph 42, with
-  cross-references in the existing prose
-```
+> Insert these three clauses after paragraph 42 with tracked changes on.
 
-The skill auto-triggers from the prompt — no slash command needed. For surgical edits, the agent will surface the proposed `apply` config and dry-run output before writing.
+> This form has labeled blanks like "Name: ____". Fill the blank after
+> "Project Title" with "Q3 Marketing Plan" without disturbing the label
+> or the underline run.
+
+> Render these LaTeX equations as numbered display blocks, with cross-refs
+> in the prose pointing at the equation numbers.
+
+> Lift the heading and caption styles from reference.docx, apply them here
+> without touching my numbering.
+
+Every write produces a fresh, schema-validated copy — the input file is never modified. Numbering, captions, and cross-references land as live fields, so reordering a section keeps everything consistent on the next "Update Fields".
 
 ## Repo layout
 
