@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to (re)build (e.g. v0.1.0). Required when triggering manually."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # Resolve the tag once via env vars so downstream steps can reference it
+      # without inlining workflow-input expressions into shell strings.
+      - name: Resolve tag
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            RESOLVED="$DISPATCH_TAG"
+          else
+            RESOLVED="$PUSH_TAG"
+          fi
+          # Reject anything that isn't a plain tag-shaped string.
+          case "$RESOLVED" in
+            v[0-9]*) ;;
+            *) echo "::error::invalid tag: $RESOLVED"; exit 1 ;;
+          esac
+          echo "tag=$RESOLVED" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Cache Bun's global install cache. The key is bun.lock-derived so a
+      # lockfile change invalidates; the restore-keys fallback lets unrelated
+      # runs share the cache when bun.lock hasn't moved.
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Build skill bundle + per-harness fan-out
+        run: bun run build:skill
+
+      # Each per-harness directory (dist/<harness>/<configDir>/...) is zipped
+      # from its root so `unzip <asset>.zip` at the install target reproduces
+      # the config-directory tree directly — no extra `mv` step for users.
+      - name: Package per-harness zips
+        run: |
+          set -euo pipefail
+          cd dist
+          for key in claude-code cursor codex gemini opencode github; do
+            if [ ! -d "$key" ]; then
+              echo "::error::missing dist/$key — did build:skill complete?"
+              exit 1
+            fi
+            (cd "$key" && zip -qr "../docx-master-${key}.zip" .)
+            echo "  ✓ docx-master-${key}.zip"
+          done
+
+      - name: List release assets
+        run: ls -lh dist/*.zip
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/docx-master.zip
+            dist/docx-master-claude-code.zip
+            dist/docx-master-cursor.zip
+            dist/docx-master-codex.zip
+            dist/docx-master-gemini.zip
+            dist/docx-master-opencode.zip
+            dist/docx-master-github.zip
