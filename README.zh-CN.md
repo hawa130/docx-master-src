@@ -7,22 +7,48 @@
 
 > 快速上手：从 [Releases](https://github.com/hawa130/docx-master/releases) 下载对应 harness 的 zip，丢进 skills 目录即可。
 
-## 为什么不能直接转 Markdown
+## 同类 Word skill
 
-现在很多 LLM 处理 Word 是这样做的：把 `.docx` 转 Markdown 编辑，再回写文档。这条路上，样式、编号、修订、字段、分节、主题全部丢了，而这些恰恰是 Word 文档之所以是 Word 文档的根本。
+其他 Word skill 大多是某个底层库（python-docx / docx-js / OpenXML SDK 等）的 LLM 使用文档：交给 agent 一组操作原语，「合格的 Word 文档该长什么样」是 agent 自己想清楚的事。
 
-另一种做法是给用户一段 `python-docx` 代码，让用户自己跑。这种代码通常逐段直接打格式，没有 `styles.xml` 的概念，编号靠手打 `"1."` 凑出来，一插新章节就全部错位。
+docx-master 自带一套 Word 文档的写法约定：
 
-docx-master 想做的事情其实简单很多：把文档当 OOXML 处理，按 ECMA-376 / WebAIM / Microsoft 的共识，用样式 + 编号 + 分节去改。只动你想动的，剩下的不碰。
+- 每个段落都绑命名样式（标题、正文、列表等），格式跟着样式走
+- 章节、图、表、公式都走 Word 内置的自动编号
+- 「见图 1.2」这类引用是活的，章节顺序变了所有编号一起更新
+- 中英混排时中文字号和英文字号互不干扰
 
-几个具体的设计选择：
+每条约定都有配套工具：`pattern_rules` / `bulk_rules` 按规则一次改整篇，`migrate_captions` / `migrate_numbering` 把旧稿里手打的编号迁移到自动方案，`audit` 提前扫违规，18 个 inspect / find 工具让 agent 改之前先看清楚。
 
-- `apply` 是写入器，`audit` 是只读检查。一个 config 里就能同时装样式、装编号、改主题、引模板、按模式重排、按 `edits` 插内容，不用分几次调用。
-- 18 个 inspect / find / migrate / validate 工具，每个只看文档的一小块。Agent 先看清楚再下手，默认输出可扫读，要深挖再追加工具调用。
-- 配置只声明要改的部分，没声明的保持原样。整张样式表被无声重生这种事不会发生。
-- 每次写入都走 schema 校验，原文件不动。tracked changes / fields / SDT 这种区域识别后会拒绝改写；模板导入时 `numId` 用全新 ID 避免冲突。
-- 图表和交叉引用是内置的。`captions` 表里声明一次，正文用 `InlineRef` 引用，Word 渲染 SEQ / STYLEREF / REF 字段，章节顺序变了编号也不会和正文脱节。
-- 默认值对中文友好：中文字号别名（小四、五号、三号）、首行缩进 2 字符、CJK ↔ Latin 边界 autoSpace、GB/T 15834 弯引号。
+下面对比的几个同类 skill：
+
+- [**anthropics/docx**](https://skills.sh/anthropics/skills/docx) — Anthropic 官方。unpack + 改 XML + docx-js 创建，通用 Word 编辑。
+- [**qodex-ai/word-document-processor**](https://skills.sh/qodex-ai/ai-agent-skills/word-document-processor) — pandoc + docx-js + python-docx + 直接 XML 的组合工具箱，侧重 redlining 工作流。
+- [**minimax-ai/minimax-docx**](https://skills.sh/minimax-ai/skills/minimax-docx) — C# + OpenXML SDK（.NET），侧重结构化编辑。
+- [**claude-office-skills/docx-manipulation**](https://skills.sh/claude-office-skills/skills/docx-manipulation) — python-docx 封装，侧重模板占位符替换。
+
+具体能力对比：
+
+| 场景 | anthropics | qodex-ai | minimax-ai | claude-office | docx-master |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 把内容填进已有的空模板 | ~ | ~ | ~ | ✓ | ✓ |
+| 章节标题自动编号（不用手打 1.1.1） | — | — | — | — | ✓ |
+| 中英文混排时字体互不覆盖 | — | — | — | — | ✓ |
+| 图、表、公式按「章号.内号」编号 | — | — | — | — | ✓ |
+| 正文「见图 1.1」是活字段，重排自动更新 | — | — | — | — | ✓ |
+| LaTeX 公式渲染为编号居中独立块 | ~ pandoc | ~ pandoc | — | — | ✓ |
+| 审阅意见用 tracked changes 来回传 | ✓ | ✓ | ~ | ~ | ✓ |
+| 旧稿手打的「图 2.1」转成活字段 | — | — | — | — | ✓ |
+| 表单空白填值，不破坏底线 | — | — | — | — | ✓ |
+| 改表格里某个单元格的内容 | — | — | ✓ | ✓ | ✓ |
+| 格式合规检查 | — | — | — | — | ✓ |
+| 借其他文档的样式套到当前稿子 | — | — | — | — | ✓ |
+
+> ✓ 内置 helper，声明即用 · ~ 能做，但 agent 需要自己拼 · — 没有专门支持
+
+日常创建和简单编辑，anthropics/docx 就够了。redlining 流程密集的场景 qodex-ai 更合手，.NET 项目走 minimax-ai 自然，单纯做模板占位符填充 claude-office-skills 最短平快。docx-master 真正的位置在长文档（特别是中文）的结构化重排。
+
+docx-master 完整的子命令、Block 类型、reference 文档清单见下面的「包含什么」。
 
 ## 包含什么
 
@@ -50,9 +76,9 @@ docx-master 想做的事情其实简单很多：把文档当 OOXML 处理，按 
 | 工具 | 何时使用 |
 |------|----------|
 | `overview` | 任何任务的第一次调用。元数据、页面设置、主题、样式定义、编号方案、指纹统计、文档骨架 |
-| `inspect_range` | 一段段落范围的完整文本 + 计算后样式 |
+| `inspect_range` | 指定范围段落的完整文本 + 计算后样式 |
 | `inspect_runs` | 单段逐 run 的 rPr dump，用在混合格式段落或表单空白段 |
-| `inspect_neighbors` | 看某一段周围有什么，用来判断是不是图表标题、是不是紧跟在标题后 |
+| `inspect_neighbors` | 看某一段周围有什么，用来判断它的角色（图表标题 / 紧跟标题后 / 等等） |
 | `inspect_style` | 某个指纹在整篇里扮演什么角色 |
 | `inspect_style_def` | `styles.xml` 里预定义的样式 + `basedOn` 链路 |
 | `inspect_section` | 各分节之间页面设置的差异 |
@@ -85,13 +111,11 @@ docx-master 想做的事情其实简单很多：把文档当 OOXML 处理，按 
 
 工具只暴露可见事实，分类和判断交给 agent。默认输出不做预分类，agent 看到的是人类读者也能看到的属性，做完初步判断后再按需读隐藏元数据。
 
-机械层面的正确性由脚本兜底。段落遍历、XML 命名空间、跨 run 格式保留、`numId` 冲突避免、blocker 检测、校验这些事，不交给 agent，也不会因为代码重构而松动。
+机械层面的正确性由脚本兜底。段落遍历、XML 命名空间、跨 run 格式保留、`numId` 冲突避免、blocker 检测、校验，全部不交给 agent，也不会因为代码重构而松动。
 
-校验校的是意图，不是系统自己对输入的解读。拿系统的解读去判定系统的输出，等于没校验。真正的校验要么是人能读的对照（原文对解析后字段），要么是把输出用独立的不变量重新解析。
+要校验的是意图，不是系统自己对输入的解读。拿系统的解读去判定系统的输出，等于没校验。真正的校验要么是人能读的对照（原文对解析后字段），要么是把输出用独立的不变量重新解析。
 
 原文件不动。每次写入产出新文件，校验通过才保留；失败就丢弃、上报，不做静默重试。
-
-完整原则见 [CLAUDE.md](CLAUDE.md)。
 
 ## 安装
 

@@ -7,23 +7,48 @@ The Word document automation agents have been waiting for. One skill, 18 tools, 
 
 > **Quick start:** `cp -r dist/docx-master ~/.claude/skills/` (or grab the [latest release](https://github.com/hawa130/docx-master/releases) and drop it into your harness of choice).
 
-## Why docx-master?
+## Peer Word skills
 
-Every LLM that touches a `.docx` does one of two things, and both are wrong:
+Most Word skills are LLM-facing documentation for an underlying library — python-docx, docx-js, OpenXML SDK. They hand the agent a set of primitives; what a good Word document looks like is left for the agent to figure out.
 
-- **Convert to Markdown, regenerate the document.** Loses styles, numbering, tracked changes, fields, sections, theme — everything that makes a Word document *a Word document*.
-- **Hand the user a `python-docx` snippet.** Direct paragraph formatting on every line; no `styles.xml` discipline; auto-numbering replaced by typed `"1."` prefixes that desync the moment someone inserts a section.
+docx-master comes with its own convention for writing Word documents:
 
-docx-master takes a different stance: **the document is OOXML; mutate it in place, sparsely, through styles + numbering + sections** — the same way Microsoft Word, WebAIM, and ECMA-376 say it should be done.
+- Every paragraph binds to a named style (Heading, Body Text, List, etc.); formatting follows the style.
+- Chapters, figures, tables, and equations all use Word's built-in auto-numbering.
+- References like "see Figure 1.2" stay live; every number updates together when sections move.
+- CJK and Latin runs in the same paragraph keep their own font sizes.
 
-docx-master adds:
+Each convention comes with its own tooling: `pattern_rules` / `bulk_rules` apply rules across the document in one pass, `migrate_captions` / `migrate_numbering` move typed numbers from legacy drafts to auto-numbering, `audit` flags violations, and 18 inspect / find tools let the agent survey the document before mutating.
 
-- **Two CLIs, one mental model.** `apply` is the unified writer (install styles + numbering + theme + template, restyle by pattern or fingerprint, insert content via edits — all one config). `audit` is the read-only conformance check.
-- **18 inspect / find / migrate / validate tools.** Each surfaces one slice of the document so the agent can classify before it writes. Default outputs are scannable; deep info is one tool call away.
-- **A sparse config language.** Declare only what's wrong, missing, or what the user asked to change. Untouched styles, numbering, paragraphs, and theme stay as they are. No "regenerate the whole stylesheet" footguns.
-- **Real OOXML safety.** Schema-aware validation runs on every write. The original file is never modified. Tracked-change / field / SDT regions are detected and refused for ad-hoc rewriting. Fresh `numId`s on template import to prevent collision. Cross-namespace XML correctness for `styles.xml`, `numbering.xml`, `document.xml`.
-- **Caption + cross-reference primitives.** Figures, tables, equations, theorems — declared once in a `captions` table, referenced via `InlineRef` nodes in body text. Word emits the SEQ + STYLEREF fields and REF links automatically. Counters never go stale.
-- **Locale-aware defaults.** Chinese font-size names (小四, 五号, …), 2-character first-line indent for CJK prose, autoSpace-respecting whitespace rules at CJK ↔ Latin boundaries, GB/T 15834 curly quotes. Out of the box.
+Side-by-side with peer skills:
+
+- [**anthropics/docx**](https://skills.sh/anthropics/skills/docx) — Anthropic's official skill. Unpack + edit XML + docx-js for creation, general-purpose Word work.
+- [**qodex-ai/word-document-processor**](https://skills.sh/qodex-ai/ai-agent-skills/word-document-processor) — A toolbox of pandoc + docx-js + python-docx + raw XML, focused on redlining workflows.
+- [**minimax-ai/minimax-docx**](https://skills.sh/minimax-ai/skills/minimax-docx) — C# + OpenXML SDK (.NET), focused on structured editing.
+- [**claude-office-skills/docx-manipulation**](https://skills.sh/claude-office-skills/skills/docx-manipulation) — python-docx wrapper, focused on template placeholder replacement.
+
+Capability comparison:
+
+| Scenario | anthropics | qodex-ai | minimax-ai | claude-office | docx-master |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Fill an existing blank template with content | ~ | ~ | ~ | ✓ | ✓ |
+| Auto-numbered chapter / section headings (no typed "1.1.1") | — | — | — | — | ✓ |
+| CJK and Latin fonts don't override each other in mixed paragraphs | — | — | — | — | ✓ |
+| Figures, tables, equations numbered as `chapter.n` | — | — | — | — | ✓ |
+| "See Figure 1.1" as a live field that updates on reorder | — | — | — | — | ✓ |
+| LaTeX equations as centered display blocks + number | ~ pandoc | ~ pandoc | — | — | ✓ |
+| Reviewer feedback flows back as tracked changes | ✓ | ✓ | ~ | ~ | ✓ |
+| Convert typed "Figure 2.1" from a legacy draft to live fields | — | — | — | — | ✓ |
+| Fill form blanks without breaking the underline | — | — | — | — | ✓ |
+| Edit a specific cell in a table | — | — | ✓ | ✓ | ✓ |
+| Format conformance check | — | — | — | — | ✓ |
+| Borrow styles from another document | — | — | — | — | ✓ |
+
+> ✓ built-in helper, declare-and-use · ~ doable but the agent assembles pieces · — no specific support
+
+anthropics/docx covers everyday creation and one-off edits. qodex-ai fits more naturally when redlining workflows dominate, .NET projects tend toward minimax-ai, and claude-office-skills is the shortest route for template placeholder fills. docx-master sits in the long-form structural reshape space, especially for CJK documents.
+
+The full sub-command surface, Block types, and reference docs are listed in the "What's Included" section below.
 
 ## What's Included
 
@@ -84,12 +109,13 @@ Sparse by design — only declared blocks apply.
 
 ## Design principles
 
-- **Tools expose visible facts; the agent makes role judgments.** No pre-classification baked into default output; the agent classifies from what a human reader would see, then optionally consults hidden metadata on demand.
-- **Mechanical correctness is the script's job.** Paragraph walks, namespace-correct XML mutation, cross-run formatting preservation, `numId` collision avoidance, blocker detection, validation — never the agent's responsibility, never bent under refactoring pressure.
-- **Verification checks intent, not interpretation.** A check that grades the system against its own interpretation of the input is a tautology. Real verification is human-readable side-by-side or output re-parsed against an independent invariant.
-- **The original is never modified.** Every write produces a fresh file + validates before keeping it. Validation failure discards and surfaces — no silent retry.
+Tools expose visible facts; classification and judgment are the agent's. Default output carries no pre-classification — the agent sees what a human reader would see, then consults hidden metadata on demand.
 
-See [CLAUDE.md](CLAUDE.md) for the full set.
+Mechanical correctness sits with the scripts. Paragraph walks, namespace-correct XML mutation, cross-run formatting preservation, `numId` collision avoidance, blocker detection, validation: all kept out of the agent's hands, and not loosened under refactoring pressure either.
+
+What gets verified is intent, not the system's own reading of its input. A check that grades the system against its own interpretation is a tautology. Real verification is a human-readable side-by-side, or the output reparsed against an independent invariant.
+
+The original file is never modified. Every write produces a fresh file; if validation fails, that file is discarded and surfaced. No silent retry.
 
 ## Installation
 
