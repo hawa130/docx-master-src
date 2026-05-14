@@ -4,18 +4,25 @@ import { formatComputedPPrParts, formatComputedRPrParts, pad, truncate } from "@
 
 async function main() {
   const file = process.argv[2]
-  const label = process.argv[3]
-  if (!file || !label) {
-    console.error("Usage: node scripts/inspect_style.js <docx-path> <fingerprint-label>")
+  const handle = process.argv[3]
+  if (!file || !handle) {
+    console.error("Usage: node scripts/inspect_style.js <docx-path> <fingerprint-label-or-hash>")
     process.exit(1)
   }
   try {
     const doc = await loadDocx(file)
-    const sum = doc.summary.find((s) => s.label === label)
+    const sum = doc.summary.find((s) => s.label === handle || s.hash === handle)
     if (!sum) {
-      console.error(`Fingerprint "${label}" not found`)
+      const letters = doc.summary.map((s) => s.label).join(", ")
+      const hashes = doc.summary.map((s) => s.hash).join(", ")
+      console.error(
+        `Fingerprint "${handle}" not found.\n` +
+          `  Available letters: [${letters}]\n` +
+          `  Available hashes:  [${hashes}]`,
+      )
       process.exit(1)
     }
+    const label = sum.label
     const matches = doc.paragraphs.filter((p) => p.fingerprint === label)
     const styleIds = Array.from(new Set(matches.map((p) => p.styleId)))
 

@@ -210,6 +210,17 @@ function renderNumbering(doc: LoadedDoc): string[] {
     return lines
   }
 
+  // Consumption count per numId: tally the effective numId on every
+  // paragraph (already includes style-cascade resolution, so style-bound
+  // numbering is counted too). Zero counts surface orphan schemes —
+  // numbering defined but never wired to any style or paragraph.
+  const usageByNumId = new Map<string, number>()
+  for (const p of doc.paragraphs) {
+    if (p.pPr.numId !== undefined) {
+      usageByNumId.set(p.pPr.numId, (usageByNumId.get(p.pPr.numId) ?? 0) + 1)
+    }
+  }
+
   // Cluster numIds whose abstractNum has identical lvlText pattern across all
   // levels — Word frequently emits N near-identical abstractNums (one per
   // list region, varying only by start values). Showing them collapsed beats
@@ -233,11 +244,15 @@ function renderNumbering(doc: LoadedDoc): string[] {
       starts.size === 1
         ? `start=${[...starts][0]}`
         : `starts: {${[...starts].sort((a, b) => a - b).join(", ")}}`
+    const usedBy = group.reduce((sum, d) => sum + (usageByNumId.get(d.numId) ?? 0), 0)
+    const usedStr = `used by ${usedBy} paragraph${usedBy === 1 ? "" : "s"}`
 
     if (group.length === 1) {
-      lines.push(`  numId=${sample.numId} (abstract=${sample.abstractNumId})`)
+      lines.push(`  numId=${sample.numId} (abstract=${sample.abstractNumId})  ${usedStr}`)
     } else {
-      lines.push(`  Scheme ${clusterIdx} × ${group.length} numIds: [${ids}]  ${startsStr}`)
+      lines.push(
+        `  Scheme ${clusterIdx} × ${group.length} numIds: [${ids}]  ${startsStr}  ${usedStr}`,
+      )
     }
     // Only show non-empty levels; trailing decimal-with-empty-text levels are
     // Word's default filler that distract from the actual scheme
