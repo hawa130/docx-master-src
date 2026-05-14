@@ -104,10 +104,57 @@ cpSync(join(temmlSrc, "package.json"), join(temmlDst, "package.json"))
 // 3. Zip the staged dir
 await zipDir(STAGE_DIR, ZIP_PATH, SKILL_NAME)
 
-// 4. Report
+// 4. Fan out to per-harness directories.
+//
+// docx-master's SKILL.md frontmatter (name + description) is universal across
+// every harness that loads Markdown skills. The only thing that differs is
+// where each harness expects skills to live. We stage one identical copy of
+// the bundle into each provider's config directory so users can `cp -r` the
+// matching tree into their project without learning the layout themselves.
+//
+// Layout produced under dist/:
+//   claude-code/.claude/skills/docx-master/
+//   cursor/.cursor/skills/docx-master/
+//   codex/.agents/skills/docx-master/      (Codex repo skills, also used user-wide)
+//   gemini/.gemini/skills/docx-master/
+//   opencode/.opencode/skills/docx-master/
+//   github/.github/skills/docx-master/
+//
+// `plugin/skills/docx-master/` at the repo root mirrors the bundle for Claude
+// Code's marketplace install path (see .claude-plugin/marketplace.json).
+const PROVIDERS = [
+  { dir: "claude-code", config: ".claude", display: "Claude Code" },
+  { dir: "cursor", config: ".cursor", display: "Cursor" },
+  { dir: "codex", config: ".agents", display: "Codex CLI" },
+  { dir: "gemini", config: ".gemini", display: "Gemini CLI" },
+  { dir: "opencode", config: ".opencode", display: "OpenCode" },
+  { dir: "github", config: ".github", display: "GitHub Copilot" },
+]
+
+for (const p of PROVIDERS) {
+  const dest = join(ROOT, "dist", p.dir, p.config, "skills", SKILL_NAME)
+  rmSync(dest, { recursive: true, force: true })
+  mkdirSync(dest, { recursive: true })
+  cpSync(STAGE_DIR, dest, { recursive: true })
+}
+
+// dist/plugin/ mirror, used by .claude-plugin/marketplace.json's
+// `source: "./dist/plugin"` reference. Lives under dist/ alongside every
+// other build artifact so a single gitignore line covers them all.
+const PLUGIN_DIR = join(ROOT, "dist", "plugin", "skills", SKILL_NAME)
+rmSync(PLUGIN_DIR, { recursive: true, force: true })
+mkdirSync(PLUGIN_DIR, { recursive: true })
+cpSync(STAGE_DIR, PLUGIN_DIR, { recursive: true })
+
+// 5. Report
 const zipSize = statSync(ZIP_PATH).size
 console.log(`✓ Skill bundle:  ${relative(ROOT, STAGE_DIR)}/`)
 console.log(`✓ Skill archive: ${relative(ROOT, ZIP_PATH)} (${formatBytes(zipSize)})`)
+for (const p of PROVIDERS) {
+  const dest = join("dist", p.dir, p.config, "skills", SKILL_NAME)
+  console.log(`✓ ${p.display.padEnd(16)} ${dest}/`)
+}
+console.log(`✓ Plugin mirror   ${relative(ROOT, PLUGIN_DIR)}/`)
 console.log("")
 console.log("Contents:")
 listTree(STAGE_DIR, "  ")
