@@ -98,3 +98,86 @@ export function parseToggle(el: Element | null): boolean | undefined {
   if (v === "0" || v === "false") return false
   return true
 }
+
+/** Depth-first walk yielding every `<w:p>` reachable from `root`,
+ * descending through `<w:tbl>` / `<w:tr>` / `<w:tc>` containers. Used
+ * by the caption pipeline (counter sim, standardize re-emit,
+ * edit-caption resolver) and the inspection / migration tools — they
+ * all need the same shape of traversal. Distinct from the
+ * `walkIndexedParagraphs` in `lib/edit/locator.ts` which is layout-
+ * table aware and returns indexed pairs. */
+export function* walkBodyParagraphs(root: Element): Generator<Element> {
+  for (const child of getChildren(root)) {
+    if (child.namespaceURI !== NS.w) continue
+    if (child.localName === "p") {
+      yield child
+    } else if (child.localName === "tbl" || child.localName === "tr" || child.localName === "tc") {
+      yield* walkBodyParagraphs(child)
+    }
+  }
+}
+
+/** Read the styleId of a paragraph element. Returns `undefined` when no
+ * explicit `<w:pStyle>` is set — callers decide whether to apply a
+ * fallback (Word's effective style is "Normal" when omitted, but tools
+ * surfacing what the XML literally declares should treat absence as
+ * `undefined`). */
+export function paragraphStyleId(paragraph: Element): string | undefined {
+  const pPr = firstChildNS(paragraph, NS.w, "pPr")
+  if (!pPr) return undefined
+  const pStyle = firstChildNS(pPr, NS.w, "pStyle")
+  if (!pStyle) return undefined
+  return wAttr(pStyle, "val") ?? undefined
+}
+
+/** Direct `<w:r>` children of a paragraph (not descendants). The caption
+ * / SEQ / migration pipelines all parse paragraphs as a run sequence —
+ * `parseFieldRuns` expects exactly this shape. Recursive collection
+ * would pull runs out of nested SDTs / drawing fallbacks and confuse
+ * the field-state machine. */
+export function paragraphRuns(paragraph: Element): Element[] {
+  const out: Element[] = []
+  for (const c of getChildren(paragraph)) {
+    if (c.namespaceURI === NS.w && c.localName === "r") out.push(c)
+  }
+  return out
+}
+
+/** Build a `<w:r>` containing a single `<w:t xml:space="preserve">text</w:t>`.
+ * Idiom shared by caption emit, edit-caption op, and standardize re-emit
+ * for literal decoration runs (prefix / suffix / separators / body
+ * text). Preserve-space ensures leading / trailing whitespace survives
+ * XML serialization. */
+export function buildPlainTextRun(ownerDoc: Document, text: string): Element {
+  const r = ownerDoc.createElementNS(NS.w, "w:r")
+  const t = ownerDoc.createElementNS(NS.w, "w:t")
+  t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve")
+  t.textContent = text
+  r.appendChild(t)
+  return r
+}
+
+/** Prepend `<w:vanish/>` to a run's rPr (creating rPr if absent). The
+ * run's text becomes hidden via character-level formatting — preferred
+ * over Word's SEQ `\h` switch, which is silently overridden by a `\*`
+ * format switch in the same field. Used by the caption pipeline to
+ * hide counter-advance fields injected into headings or reset markers
+ * without affecting the field's counter side-effect. rPr must be the
+ * first child of the run per CT_R schema order. */
+export function addVanishRPr(run: Element, ownerDoc: Document): void {
+  let rPr: Element | null = null
+  for (const c of getChildren(run)) {
+    if (c.namespaceURI === NS.w && c.localName === "rPr") {
+      rPr = c
+      break
+    }
+  }
+  if (!rPr) {
+    rPr = ownerDoc.createElementNS(NS.w, "w:rPr")
+    run.insertBefore(rPr, run.firstChild)
+  }
+  for (const c of getChildren(rPr)) {
+    if (c.namespaceURI === NS.w && c.localName === "vanish") return
+  }
+  rPr.insertBefore(ownerDoc.createElementNS(NS.w, "w:vanish"), rPr.firstChild)
+}

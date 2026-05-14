@@ -30,12 +30,14 @@ lib/                               every non-tool TypeScript module, grouped
   lib/apply/                         standardize sub-command engine
                                        (apply-styles orchestrator,
                                        style/numbering/para/list mutation,
-                                       template-import)
+                                       template-import, standardize-captions)
   lib/edit/                          edit sub-command engine (edit-engine,
                                        locator, text-search, blockers,
                                        fragment-emit, track-changes,
-                                       image-asset, bookmark, field-ref,
-                                       table-emit, math/)
+                                       image-asset, bookmark, table-emit,
+                                       math/, fields/ — REF/SEQ/STYLEREF
+                                       emitters + field-parse, caption-emit,
+                                       caption-counter, edit-caption-op)
   lib/shared/                        cross-engine helpers (cli-helpers,
                                        docx-validate, report)
                                      Two type files split by concern:
@@ -122,6 +124,7 @@ Each tool has one focused job. Default outputs stay scannable; deep info is one 
 
 LLMs are bad at byte-level work; scripts must guarantee these and never bend them under refactoring pressure:
 
+- Paragraph walks go through one of two canonical helpers — `walkBodyParagraphs` (body + tbl/tr/tc; used by the cross-ref pipeline and inspection tools) or `walkIndexedParagraphs` (matches DocumentParser scope: body + layout-table cells, skips data/form). Reimplementing the walk inline is a bug factory — divergent scope between passes was the cause of multiple Phase 1 dogfood failures (chapter SEQ injected against a different set of paragraphs than the counter sim saw)
 - XML-namespace-correct mutation of `styles.xml` / `numbering.xml` / `document.xml`
 - Cross-run formatting preservation (smart-strip's uniform-vs-mixed rule)
 - Character-indent semantics — `firstLineChars` round-trips as `"Nchar"`, fixed twips as `"Npt"`

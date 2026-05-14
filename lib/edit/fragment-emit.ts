@@ -27,10 +27,17 @@ import {
   type RichText,
   type RunFormat,
 } from "@lib/config/edit-types.ts"
-import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
+import { parseIndent, parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
 import { emitEquationBlock, emitInlineEquation } from "@lib/edit/math/equation-emit.ts"
+import { emitCaptionBlock, emitCaptionReset } from "@lib/edit/caption-emit.ts"
+import type { BookmarkRange } from "@lib/edit/bookmark.ts"
+import type {
+  PendingCaptionFill,
+  PendingCaptionReset,
+  ResolvedCaptionConfig,
+} from "@lib/edit/caption-counter.ts"
 
 export type InlineRef = z.infer<typeof InlineRefSchema>
 
@@ -142,22 +149,6 @@ export const RPR_MANAGED_LOCAL_NAMES: ReadonlySet<string> = new Set([
 ])
 
 /* ------------- paragraph-level format ------------- */
-
-interface IndentParts {
-  kind: "twip" | "char"
-  value: number
-}
-
-function parseIndent(v: string | number | null): IndentParts | null {
-  if (v === null) return null
-  if (typeof v === "number") return { kind: "twip", value: Math.round(v * 20) }
-  const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*(char|chars|pt)?$/i)
-  if (!m) return null
-  const n = parseFloat(m[1]!)
-  const unit = (m[2] || "").toLowerCase()
-  if (unit.startsWith("char")) return { kind: "char", value: Math.round(n * 100) }
-  return { kind: "twip", value: Math.round(n * 20) }
-}
 
 export function buildPPrChildren(fmt: ParagraphFormat, ownerDoc: Document): Element[] {
   const out: Element[] = []
@@ -321,6 +312,30 @@ export interface EmitContext {
    * container or when the document's sectPr lacks pgSz/pgMar — emitters
    * fall back to a conservative constant in that case. */
   usableWidthTwips?: number
+  /** Caption pipeline callbacks (spec §4.5-§4.7). Grouped as one
+   * sub-object so all five callbacks travel together — caption blocks
+   * dispatch behind a single presence check rather than five. Absent
+   * `captions` → caption blocks throw at emit. */
+  captions?: CaptionEmitCallbacks
+}
+
+export interface CaptionEmitCallbacks {
+  /** Resolve an identifier (CaptionBlock.captionId / EquationBlock.captionId)
+   * to its resolved config. Engine populates from apply config's
+   * `captions` table at apply start. Returns undefined when the
+   * identifier isn't declared. */
+  resolve: (identifier: string) => ResolvedCaptionConfig | undefined
+  /** Reserve a bookmark id+name. Caption emit writes bookmarkStart/End
+   * inline around number runs; `bindBookmark` records the paragraph
+   * binding so REF \h can resolve cross-references. */
+  allocateBookmark: (name: string) => BookmarkRange
+  /** Post-emit binding for `allocateBookmark`. */
+  bindBookmark: (name: string, pEl: Element) => void
+  /** Register a caption fill record so the counter sim can compute
+   * rendered values post-emit. */
+  registerFill: (fill: PendingCaptionFill) => void
+  /** Register a caption counter reset marker. */
+  registerReset: (reset: PendingCaptionReset) => void
 }
 
 function ensurePPr(p: Element, ownerDoc: Document): Element {
@@ -446,9 +461,66 @@ export function emitBlock(block: Block, ownerDoc: Document, ctx: EmitContext): E
       return emitTableBlock(block, ownerDoc, ctx)
     case "equation":
       return emitEquationBlock(block, ownerDoc, ctx)
+    case "caption":
+      return dispatchCaption(block, ownerDoc, ctx)
+    case "caption-counter-reset":
+      return dispatchCaptionReset(block, ownerDoc, ctx)
     default:
       return assertNever(block)
   }
+}
+
+function dispatchCaption(
+  block: Extract<Block, { type: "caption" }>,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  if (!ctx.captions) {
+    throw new Error(
+      "CaptionBlock: ctx.captions callbacks not provided by the engine. " +
+        "Caption blocks require the captions table to be declared in the apply config.",
+    )
+  }
+  const config = ctx.captions.resolve(block.captionId)
+  if (!config) {
+    throw new Error(
+      `CaptionBlock: captionId "${block.captionId}" is not declared in captions table.`,
+    )
+  }
+  const bookmark =
+    block.anchor !== undefined ? ctx.captions.allocateBookmark(block.anchor) : undefined
+  const { paragraph, fill } = emitCaptionBlock(ownerDoc, {
+    captionConfig: config,
+    text: block.text,
+    bookmark,
+  })
+  if (block.anchor !== undefined) {
+    ctx.captions.bindBookmark(block.anchor, paragraph)
+  }
+  ctx.captions.registerFill(fill)
+  return paragraph
+}
+
+function dispatchCaptionReset(
+  block: Extract<Block, { type: "caption-counter-reset" }>,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  if (!ctx.captions) {
+    throw new Error("CaptionCounterReset: ctx.captions callbacks not provided by the engine.")
+  }
+  const config = ctx.captions.resolve(block.captionId)
+  if (!config) {
+    throw new Error(
+      `CaptionCounterReset: captionId "${block.captionId}" is not declared in captions table.`,
+    )
+  }
+  const { paragraph, reset } = emitCaptionReset(ownerDoc, {
+    identifier: block.captionId,
+    newValue: block.newValue ?? 1,
+  })
+  ctx.captions.registerReset(reset)
+  return paragraph
 }
 
 export function emitFragment(fragment: Fragment, ownerDoc: Document, ctx: EmitContext): Element[] {

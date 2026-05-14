@@ -147,6 +147,68 @@ export const NumberingSchema = z.strictObject({
   levels: z.array(NumLevelSchema).check(z.minLength(1)),
 })
 
+/* ------------- captions ------------- */
+
+/** Numeric format for SEQ counters. Maps to Word's `\*` switches —
+ * see lib/edit/fields/seq-field.ts. */
+export const CaptionFormatSchema = z.enum([
+  "arabic",
+  "alphabetic",
+  "ALPHABETIC",
+  "roman",
+  "ROMAN",
+  "chinese",
+  "chinese-formal",
+])
+
+export const CaptionSubCounterSchema = z.strictObject({
+  format: z.optional(CaptionFormatSchema),
+  prefix: z.optional(z.string()),
+  suffix: z.optional(z.string()),
+})
+
+/** A chapterPrefix entry. Bare string = use heading's native rendering
+ * (e.g. H1 with chineseCounting numFmt renders "一"). Object form with
+ * `format` forces the chapter number to render in that format — useful
+ * for the common Chinese academic style where H1 displays "第一章" but
+ * captions need Arabic "1.1". */
+export const ChapterPrefixEntrySchema = z.union([
+  NonEmptyString,
+  z.strictObject({
+    styleId: NonEmptyString,
+    format: z.optional(CaptionFormatSchema),
+  }),
+])
+
+/** Per-identifier caption configuration. Block-level `captionId`
+ * references the key. `styleId` is required — every caption identifier
+ * must declare what paragraph style to use; no implicit fallback. */
+export const CaptionEntrySchema = z.strictObject({
+  prefix: z.optional(z.string()),
+  suffix: z.optional(z.string()),
+  format: z.optional(CaptionFormatSchema),
+  chapterPrefix: z.optional(z.array(ChapterPrefixEntrySchema)),
+  chapterSeparator: z.optional(z.string()),
+  bodySeparator: z.optional(z.string()),
+  styleId: NonEmptyString,
+  subCounter: z.optional(CaptionSubCounterSchema),
+})
+
+/** Caption identifier — free string EXCEPT the `_chap_` prefix, which
+ * the engine reserves for the hidden auto-chapter SEQ counter paired
+ * with chapterPrefix `format` overrides. */
+const CaptionIdentifierSchema = z.string().check(
+  z.refine((s) => s.length > 0 && !s.startsWith("_chap_"), {
+    error:
+      'caption identifier must be a non-empty string and must not start with "_chap_" (engine-reserved for hidden auto-chapter counters paired with chapterPrefix format overrides).',
+  }),
+)
+
+/** Map of identifier → caption entry. Identifier is a free string;
+ * conventional values "Equation" / "Figure" / "Table" / "Theorem" live
+ * in ref docs, not the schema. */
+export const CaptionsSchema = z.record(CaptionIdentifierSchema, CaptionEntrySchema)
+
 /* ------------- template ------------- */
 
 export const TemplateSchema = z.strictObject({
@@ -211,6 +273,7 @@ export const ApplyConfigSchema = z.strictObject({
   // a multi-level heading scheme + a single-level list-bound scheme). The
   // engine processes them in array order, allocating fresh numIds for each.
   numbering: z.optional(z.union([NumberingSchema, z.array(NumberingSchema)])),
+  captions: z.optional(CaptionsSchema),
   assignments: z.optional(z.array(AssignmentSchema)),
   bulk_rules: z.optional(z.array(BulkRuleSchema)),
   pattern_rules: z.optional(z.array(PatternRuleSchema)),
@@ -230,7 +293,38 @@ import { formatZodError, valueAtPath, type HintFn } from "@lib/config/zod-format
  * particular issue shapes. Returning null means "use the default zod
  * message". The hints replicate the agent-friendly guidance the hand-written
  * checks used to emit. */
+/** Walk up the issue path to the parent op entry and return its `op` literal,
+ * or undefined when the path doesn't pass through an edit op. Shared by the
+ * set-run hint with `edit-config-schema.ts` — same logic, same lookup. */
+function lookupOpLiteral(raw: unknown, issuePath: readonly PropertyKey[]): unknown {
+  // Path shape inside ApplyConfig: edits[N].at.type → ["edits", N, "at", "type"]
+  // Truncate the last two segments (".at.type") and read .op on the parent.
+  if (issuePath.length < 2) return undefined
+  const opPath = issuePath.slice(0, -2)
+  let cursor: unknown = raw
+  for (const seg of opPath) {
+    if (cursor && typeof cursor === "object") {
+      cursor = (cursor as Record<PropertyKey, unknown>)[seg]
+    } else {
+      return undefined
+    }
+  }
+  if (cursor && typeof cursor === "object" && "op" in cursor) {
+    return (cursor as { op?: unknown }).op
+  }
+  return undefined
+}
+
 const customHint: HintFn = (issue, pathStr, raw) => {
+  // set-run requires at.type === "run". The discriminated union dispatches
+  // on `op` first, so the resulting error is an at.type mismatch — explain
+  // the constraint inline instead of leaving the agent to read the schema.
+  if (issue.code === "invalid_value" && pathStr.endsWith(".at.type")) {
+    const opLiteral = lookupOpLiteral(raw, issue.path)
+    if (opLiteral === "set-run") {
+      return `set-run requires at.type === "run" (use a RunLocator: { type: "run", paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
+    }
+  }
   // Top-of-numbering misplacement: stripPrefixPatterns naturally feels like
   // it should broadcast across all levels, but it lives per-level. The old
   // hand-written validator surfaced this; preserve the message verbatim.

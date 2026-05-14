@@ -33,10 +33,12 @@ export function resolveStyleDef(
   def: StyleConfigEntry,
   paragraphs: ParsedParagraph[],
 ): StyleConfigEntry {
-  // Mode B (no fromParagraph): the schema accepts an `overrides` block on
-  // every style entry, but downstream emission reads top-level fields only —
-  // un-merged overrides drop silently. Spreading them up keeps Mode A and
-  // Mode B symmetric so agents can place fields in either location.
+  // Top-level fields and `overrides` are spread into the same merged shape
+  // in both modes. Mode B (no fromParagraph): top-level + overrides on top
+  // of nothing. Mode A (fromParagraph): extracted typography from the donor
+  // paragraph, then top-level, then overrides (each layer wins over the
+  // previous). Keeps the schema symmetric — an agent placing `outlineLevel`
+  // at top level in Mode A used to silently drop; now it merges.
   if (def.fromParagraph === undefined) {
     return def.overrides ? { ...def, ...def.overrides } : def
   }
@@ -60,9 +62,24 @@ export function resolveStyleDef(
     )
   }
   const extracted = paragraphToStyleEntry(para)
+  // Top-level keys that aren't typography fields (id / name / fromParagraph /
+  // basedOn / overrides) are skipped from the spread — they're handled
+  // explicitly below or are non-mergeable. Everything else (outlineLevel,
+  // size, alignment, ...) layers on top of extracted.
+  // Underscore-prefixed names tell tsc + oxlint these destructured fields
+  // are intentionally discarded; only `topLevel` is read below.
+  const {
+    id: _id,
+    name: _name,
+    fromParagraph: _fp,
+    basedOn: _bo,
+    overrides: _ov,
+    ...topLevel
+  } = def
   return {
     basedOn: "Normal",
     ...extracted,
+    ...topLevel,
     ...(def.overrides ?? {}),
     id: def.id,
     name: def.name,
@@ -338,18 +355,22 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     const ind = stylesDoc.createElementNS(w, "w:ind")
     if (def.firstLineIndent != null && def.firstLineIndent !== 0) {
       const r = parseIndent(def.firstLineIndent)
-      if (r.kind === "char") {
-        ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
-      } else {
-        ind.setAttributeNS(w, "w:firstLine", String(r.value))
+      if (r) {
+        if (r.kind === "char") {
+          ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
+        } else {
+          ind.setAttributeNS(w, "w:firstLine", String(r.value))
+        }
       }
     }
     if (def.hangingIndent != null && def.hangingIndent !== 0) {
       const r = parseIndent(def.hangingIndent)
-      if (r.kind === "char") {
-        ind.setAttributeNS(w, "w:hangingChars", String(r.value))
-      } else {
-        ind.setAttributeNS(w, "w:hanging", String(r.value))
+      if (r) {
+        if (r.kind === "char") {
+          ind.setAttributeNS(w, "w:hangingChars", String(r.value))
+        } else {
+          ind.setAttributeNS(w, "w:hanging", String(r.value))
+        }
       }
     }
     pPrAdditions.push(ind)
@@ -437,10 +458,16 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
  * 240 twips/char (12pt assumption), which silently broke "首行缩进 2 字符"
  * for any non-12pt body and disabled font-size tracking on round-trip.
  */
-function parseIndent(v: string | number): { kind: "twip" | "char"; value: number } {
+/** Returns `null` on unparseable strings — callers fall back to "don't
+ * emit the attribute" (semantically equivalent to a 0-twip indent for
+ * Word, but more conservative than blindly writing `w:firstLine="0"`). */
+export function parseIndent(
+  v: string | number | null,
+): { kind: "twip" | "char"; value: number } | null {
+  if (v === null) return null
   if (typeof v === "number") return { kind: "twip", value: Math.round(v * 20) }
   const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*(char|chars|pt)?$/i)
-  if (!m) return { kind: "twip", value: 0 }
+  if (!m) return null
   const n = parseFloat(m[1]!)
   const unit = (m[2] || "").toLowerCase()
   if (unit.startsWith("char")) return { kind: "char", value: Math.round(n * 100) }

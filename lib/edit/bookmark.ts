@@ -47,6 +47,12 @@ export interface BookmarkAssignment {
   name: string
 }
 
+/** Same shape as BookmarkAssignment — exists as a named alias for the
+ * caption pipeline's contract clarity. Caption emit allocates these
+ * via `allocateRangeBookmark` and emits bookmarkStart/End inline,
+ * distinct from the commit-phase whole-paragraph wrap. */
+export type BookmarkRange = BookmarkAssignment
+
 /** A name bound to a paragraph element. `origin` is informational only —
  * affects nothing at the API surface; `commit` decides what to wrap based
  * on the `byElement` map. */
@@ -62,6 +68,15 @@ export interface BoundRecord {
 export interface Reservation {
   styleId?: string
   directlyNumbered?: boolean
+  /** True when the reservation is for a caption-class anchor
+   * (CaptionBlock or EquationBlock with captionId). InlineRef's emit-
+   * time switch selection uses this to route caption-class targets
+   * through REF `\h` only — `\n` would fail since captions are SEQ-
+   * numbered, not numPr-bound. Backward refs (allocation happens
+   * before the REF) consult `isRangeBookmark`; forward refs (REF
+   * emitted before the caption) consult this flag via
+   * `predictedNumberingFor`. */
+  isCaption?: boolean
 }
 
 export class BookmarkAllocator {
@@ -74,6 +89,12 @@ export class BookmarkAllocator {
   private byElement = new Map<Element, BookmarkAssignment>()
   private nameIndex = new Map<string, BoundRecord>()
   private reservations = new Map<string, Reservation>()
+  /** Names allocated via `allocateRangeBookmark`. Caption emit uses
+   * these (the bookmark wraps prefix..suffix runs inline rather than
+   * the commit-phase whole-paragraph wrap). InlineRef's numbering
+   * check fast-paths via `isRangeBookmark` so caption-class targets
+   * don't need a numPr binding. */
+  private rangeBookmarks = new Set<string>()
 
   constructor(documentDoc: Document) {
     this.nextId = 0
@@ -141,6 +162,7 @@ export class BookmarkAllocator {
     this.reservations.set(name, {
       styleId: ctx?.styleId,
       directlyNumbered: ctx?.directlyNumbered,
+      isCaption: ctx?.isCaption,
     })
   }
 
@@ -200,6 +222,56 @@ export class BookmarkAllocator {
    * caller branches via `isReserved` for the latter). */
   resolveByName(name: string): BoundRecord | undefined {
     return this.nameIndex.get(name)
+  }
+
+  /** Reserve a name + id for an inline (caption-emitter) bookmark
+   * without binding to any element yet. Caption-emit needs the id+name
+   * upfront to emit the bookmarkStart/End XML, but the paragraph
+   * doesn't exist yet — it's about to be built around the bookmark.
+   *
+   * Same collision semantics as adoptName: source / prior-adopted name
+   * → throw; reserved name → consume the reservation. The returned
+   * assignment is NOT yet in nameIndex; call `bindRangeBookmark` after
+   * the caption paragraph is constructed to record the binding so
+   * `resolveByName` works for REF cross-references. */
+  allocateRangeBookmark(name: string): BookmarkAssignment {
+    // Reservations are the expected upgrade path (forward-ref pre-scan
+    // reserves the name before caption emit allocates it). All other
+    // usedNames hits are collisions: bound paragraphs in `nameIndex`,
+    // or body-level source bookmarks in `usedNames` but not
+    // `nameIndex` (spans multiple paragraphs, no surface for REF
+    // resolution but still occupies the name).
+    if (this.nameIndex.has(name)) {
+      throw new Error(
+        `anchor "${name}" ${this.describeCollision(name)}. Pick a unique anchor name.`,
+      )
+    }
+    if (this.usedNames.has(name) && !this.reservations.has(name)) {
+      throw new Error(
+        `anchor "${name}" ${this.describeCollision(name)}. Pick a unique anchor name.`,
+      )
+    }
+    this.reservations.delete(name)
+    const id = this.nextId++
+    this.usedNames.add(name)
+    this.rangeBookmarks.add(name)
+    return { id, name }
+  }
+
+  /** Post-allocation binding for `allocateRangeBookmark`. Records the
+   * name → paragraph mapping in `nameIndex` so REF backfill can resolve
+   * the target. Does NOT touch `byElement` — caption-emit already
+   * emitted bookmarkStart/End inline, so commit() must NOT wrap the
+   * paragraph again. */
+  bindRangeBookmark(name: string, pEl: Element): void {
+    this.nameIndex.set(name, { element: pEl, origin: "adopted" })
+  }
+
+  /** True iff `name` was allocated as a caption range bookmark. Used by
+   * InlineRef's emit-time numbering check to fast-path caption-class
+   * targets (they're SEQ-numbered, not numPr-bound). */
+  isRangeBookmark(name: string): boolean {
+    return this.rangeBookmarks.has(name)
   }
 
   /** True iff at least one bookmark will be wrapped at commit. Source

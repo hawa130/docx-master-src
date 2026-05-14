@@ -24,18 +24,25 @@ Fields:
   - `{ "type": "paragraph", "index": N }` — pre-edit 1-based paragraph index, same as every other `edits[]` locator. Target must exist in the source document.
   - `{ "type": "anchor", "name": "fig-arch" }` — named bookmark. Resolves against (a) any `ParagraphBlock.anchor` / `EquationBlock.anchor` declared anywhere in this `edits[]` — the engine pre-scans names before emit so refs can address anchors declared later in the array or later in the same op's Block list — or (b) bookmarks already in the source document that wrap a single paragraph. Name must match `^[A-Za-z_][A-Za-z0-9_-]{0,39}$`.
 - `display` — what Word renders. `\h` is always added so the rendered text is clickable:
-  - `"label"` (default) — full numbered paragraph text from `lvlText`: `图 1` / `1.2` / `第二章`. Switch: `\n \h`.
-  - `"number"` — paragraph number in relative context via `\r \h`. **Reliable only for single-level schemes** (figure captions, `[%1]` reference lists), where it equals the counter. For multi-level schemes prefer `"label"`.
-  - `"full"` — target paragraph's text content (caption title without auto-num prefix). Switch: `\h`. **Does not require an auto-numbered target.**
+  - `"label"` (default) — for outline targets (Headings, lists) renders `lvlText` via REF `\n \h` (e.g. `第二章` / `1.2`); for caption-class targets (CaptionBlock + EquationBlock with `captionId`) renders the SEQ result with full decoration via REF `\h` (e.g. `图 2.1` / `(2.3)`).
+  - `"number"` — for outline targets, paragraph number via `\r \h`. For caption-class targets **collapses to `"label"` semantics** (same bookmark wraps just the number range).
+  - `"full"` — paragraph text content via REF `\h`. Works on outline targets and on non-caption paragraphs. **Throws on caption-class targets** — captions are cited by their decorated number, not body text. Use `"label"` instead.
 - `format` — optional `RunFormat` (color, italic, size, …) applied to the rendered text. Format-bearing refs require Word round-trip to verify — see below.
 
 ## Target requirements
 
-`label` / `number` require an auto-numbered target (bound to a `numbering[]` level — either pre-existing in the source's `pStyle → numId` binding or freshly bound by this run). Word's `\n` / `\r` switches render from the numbering binding; an unbound target produces nothing.
+`label` / `number` require an auto-numbered target:
+- Outline / list paragraph bound to a `numbering[]` level (REF `\n` /
+  `\r` reads the numbering binding), or
+- Caption-class target — `CaptionBlock` or `EquationBlock` with
+  `captionId` (bookmark wraps the SEQ-decorated number range).
 
-`full` works on any paragraph — the bookmark resolves to text content directly.
+`full` works on any paragraph with text content. Caption-class
+targets throw — use `"label"` to cite captions by their number.
 
-When `label` / `number` hits an unbound target, apply refuses with a message naming the fix (bind a `numbering[]` level, or switch to `display: "full"`).
+When `label` / `number` hits an unbound target, apply refuses with a
+message naming the fix (bind via `numbering[]`, add `captionId`, or
+switch to `display: "full"` for a plain-text quote).
 
 ## Named anchors — ref paragraphs created in the same apply
 
@@ -43,6 +50,10 @@ When an `edits[]` insert creates a paragraph later refs will cite, give it an `a
 
 ```jsonc
 {
+  "captions": {
+    "Figure": { "prefix": "图", "chapterPrefix": ["Heading1"],
+                "bodySeparator": " ", "styleId": "FigureCaption" }
+  },
   "edits": [
     {
       "op": "insert-after",
@@ -50,8 +61,8 @@ When an `edits[]` insert creates a paragraph later refs will cite, give it an `a
       "content": [
         { "type": "image", "src": "diagrams/arch.png", "widthPt": 360, "heightPt": 240 },
         {
-          "type": "paragraph",
-          "styleId": "FigureCaption",
+          "type": "caption",
+          "captionId": "Figure",
           "anchor": "fig-architecture",
           "text": "系统总体架构"
         }

@@ -1,7 +1,7 @@
 import type { EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import type { ImportResult } from "@lib/apply/template-import.ts"
-import type { VsDirectReport } from "@lib/shared/vs-direct.ts"
+import { sameValue, type VsDirectReport } from "@lib/shared/vs-direct.ts"
 import type {
   FlagRecord,
   RestyleSample,
@@ -127,13 +127,6 @@ function renderVsDirect(r: VsDirectReport, lines: string[]): void {
   }
 }
 
-function sameValue(a: unknown, b: unknown): boolean {
-  if (typeof a === "number" && typeof b === "number") {
-    return Math.abs(a - b) < 1e-6
-  }
-  return String(a) === String(b)
-}
-
 /* ------------- change report ------------- */
 
 export function printReport(args: {
@@ -177,6 +170,20 @@ export function printReport(args: {
   templateImport: ImportResult | null
   /** dry-run only: per-op preview of edits[] (locator-resolved, not mutated). */
   editsPreview: EditsPreviewEntry[]
+  /** dry-run only: summary of the cross-reference post-pass (chapter SEQ
+   * injection, caption standardize re-emit, predicted caption text). Null
+   * when the run had no captions config or no captions/refs in edits. */
+  captionsPreview: {
+    chapterSeqsInjected: number
+    standardizeReemitted: number
+    freshlyEmitted: number
+    samples: Array<{ identifier: string; text: string }>
+  } | null
+  /** dry-run only: heuristic flags for likely Pangu (CJK ↔ Latin/digit
+   * literal-space) gaps in edits[] inserted text. Word's `autoSpace`
+   * already inserts the visual gap between CJK and Latin glyphs;
+   * stacking a manual ASCII space on top renders too wide. */
+  panguWarnings?: Array<{ editIndex: number; snippet: string; hit: string }>
 }) {
   const lines: string[] = []
   lines.push(
@@ -417,7 +424,9 @@ export function printReport(args: {
     lines.push("")
   }
   if (args.editsPreview.length > 0) {
-    lines.push("=== Edits Preview (locator-resolved; not yet applied in dry-run) ===")
+    lines.push(
+      "=== Edits Preview (locator-resolved; applied in memory, not written to disk in dry-run) ===",
+    )
     let totalReplaceDelete = 0
     let totalInsert = 0
     for (const e of args.editsPreview) {
@@ -445,6 +454,41 @@ export function printReport(args: {
     lines.push(
       "  Note: implicit-keep counts above already exclude paragraphs the edits[] pass will replace/delete.",
     )
+    lines.push("")
+  }
+  if (args.captionsPreview) {
+    const cp = args.captionsPreview
+    lines.push("=== Captions / Cross-Refs Preview (dry-run) ===")
+    lines.push(
+      `  Chapter SEQs injected: ${cp.chapterSeqsInjected}  (hidden auto-counters on outline paragraphs)`,
+    )
+    lines.push(
+      `  Caption paragraphs re-emitted: ${cp.standardizeReemitted}  (existing captions rebuilt against current config)`,
+    )
+    lines.push(
+      `  Caption paragraphs freshly emitted: ${cp.freshlyEmitted}  (new captions inserted by edits[])`,
+    )
+    if (cp.samples.length > 0) {
+      lines.push(`  Predicted text (first ${cp.samples.length}):`)
+      for (const s of cp.samples) lines.push(`    [${s.identifier}] "${s.text}"`)
+    } else {
+      lines.push(`  Predicted text: (no caption samples — config has captions but body emits none)`)
+    }
+    lines.push("")
+  }
+  if (args.panguWarnings && args.panguWarnings.length > 0) {
+    const w = args.panguWarnings
+    lines.push("=== Possible Pangu spacing in inserted text ===")
+    lines.push(
+      "  Word's autoSpace handles CJK ↔ Latin/digit gaps; typed ASCII spaces stack on top and render too wide.",
+    )
+    const shown = w.slice(0, 5)
+    for (const entry of shown) {
+      lines.push(`  edits[${entry.editIndex}]  ...${entry.snippet}...   (matched "${entry.hit}")`)
+    }
+    if (w.length > shown.length) {
+      lines.push(`  (... ${w.length - shown.length} more not shown)`)
+    }
     lines.push("")
   }
   if (args.samples.size > 0) {

@@ -3,11 +3,9 @@ import type { ParsedParagraph } from "@lib/parse/types.ts"
 import type {
   ApplyConfigSchema,
   AssignmentSchema,
-  BulkRuleSchema,
+  CaptionsSchema,
   NumberingSchema,
-  PatternRuleSchema,
   StyleEntrySchema,
-  TemplateSchema,
   ThemeFontsSchema,
 } from "@lib/config/config-schema.ts"
 import type { VsDirectReport } from "@lib/shared/vs-direct.ts"
@@ -25,11 +23,9 @@ import type { VsDirectReport } from "@lib/shared/vs-direct.ts"
 
 export type StyleConfigEntry = z.infer<typeof StyleEntrySchema>
 export type NumberingConfig = z.infer<typeof NumberingSchema>
+export type CaptionsConfig = z.infer<typeof CaptionsSchema>
 export type AssignmentEntry = z.infer<typeof AssignmentSchema>
-export type BulkRule = z.infer<typeof BulkRuleSchema>
-export type PatternRule = z.infer<typeof PatternRuleSchema>
 export type ThemeFontsSpec = z.infer<typeof ThemeFontsSchema>
-export type TemplateImportConfig = z.infer<typeof TemplateSchema>
 export type ApplyConfig = z.infer<typeof ApplyConfigSchema>
 
 /* ------------- internal data shapes (cross-module passes) ------------- */

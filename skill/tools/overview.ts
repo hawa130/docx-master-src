@@ -22,9 +22,17 @@ import { loadDocx, parseNumbering } from "@lib/xml/load.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { NS, type DocumentElement, type ParsedParagraph } from "@lib/parse/types.ts"
 import type { LoadedDoc } from "@lib/xml/load.ts"
-import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
+import {
+  firstChildNS,
+  getChildren,
+  paragraphStyleId,
+  walkBodyParagraphs,
+} from "@lib/xml/xml-utils.ts"
 import { pad, paperName, truncate, tw2mm } from "@lib/parse/format.ts"
 import { sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
+import { seqFields } from "@lib/edit/fields/field-parse.ts"
+
+const NS_W = NS.w
 
 type ParasMode = "full" | "none" | { from: number; to: number }
 
@@ -92,6 +100,11 @@ async function main() {
     out.push("")
     out.push(...renderNumbering(doc))
     out.push("")
+    const captionLines = renderCaptions(doc)
+    if (captionLines.length > 0) {
+      out.push(...captionLines)
+      out.push("")
+    }
     out.push(...renderVisualSummary(doc))
     out.push("")
     out.push(...renderDirectFormatPerFingerprint(doc))
@@ -455,6 +468,68 @@ function formatSize(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(2)} MB`
+}
+
+function renderCaptions(doc: LoadedDoc): string[] {
+  const documentDoc = doc.documentDoc
+  if (!documentDoc) return []
+  const body = firstChildNS(documentDoc.documentElement, NS_W, "body")
+  if (!body) return []
+
+  interface Summary {
+    identifier: string
+    format: string | undefined
+    restartAtOutlineLevel: number | undefined
+    paragraphStyleIds: Set<string>
+    occurrences: number
+  }
+  const byId = new Map<string, Summary>()
+
+  for (const para of walkBodyParagraphs(body)) {
+    // Count every advancing SEQ in the paragraph. `seqFields(...,
+    // skipRepeat: true)` drops `\c` (repeat) SEQs — those are
+    // prefix-readers that reuse the current counter value (engine-
+    // injected chapter prefixes use them), so they neither advance
+    // their own identifier nor shadow the real caption identifier that
+    // follows in the same paragraph. Each non-`\c` identifier gets a
+    // separate occurrence; sub-counters (e.g. Equation + EquationSub in
+    // a sub-numbered equation paragraph) both register.
+    const advancingSeqs = seqFields(para, { skipRepeat: true })
+    if (advancingSeqs.length === 0) continue
+    const styleId = paragraphStyleId(para)
+    for (const details of advancingSeqs) {
+      const id = details.identifier
+      if (!id) continue
+      let summary = byId.get(id)
+      if (!summary) {
+        summary = {
+          identifier: id,
+          format: details.format,
+          restartAtOutlineLevel: details.restartAtOutlineLevel,
+          paragraphStyleIds: new Set(),
+          occurrences: 0,
+        }
+        byId.set(id, summary)
+      }
+      summary.occurrences++
+      if (styleId) summary.paragraphStyleIds.add(styleId)
+    }
+  }
+
+  if (byId.size === 0) return []
+
+  const lines = ["=== Captions detected (SEQ identifiers in body) ==="]
+  for (const s of byId.values()) {
+    const styleNote =
+      s.paragraphStyleIds.size === 0 ? "(unstyled)" : [...s.paragraphStyleIds].join(", ")
+    const fmt = s.format ?? "(unknown)"
+    const restart = s.restartAtOutlineLevel ? `restart@H${s.restartAtOutlineLevel}` : "global"
+    lines.push(
+      `  ${s.identifier.padEnd(20)} format=${fmt.padEnd(10)} ${restart.padEnd(14)} occurrences=${s.occurrences}  style=${styleNote}`,
+    )
+  }
+  lines.push(`  (run \`inspect_caption <doc> <identifier>\` for per-occurrence details)`)
+  return lines
 }
 
 main()

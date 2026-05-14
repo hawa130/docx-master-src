@@ -12,28 +12,71 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
-import { parseXml } from "@lib/xml/reader.ts"
 import type { Block } from "@lib/config/edit-types.ts"
 import type { EmitContext } from "@lib/edit/fragment-emit.ts"
 import { buildPPrChildren } from "@lib/edit/fragment-emit.ts"
-import { getOmmlSync } from "@lib/edit/math/latex-to-omml.ts"
+import { buildOMath } from "@lib/edit/math/omml-build.ts"
+import { emitNumberedEquation } from "@lib/edit/caption-emit.ts"
 
 const w = NS.w
 const m = NS.m
 
-/** Import the cached `<m:oMath>` element into `ownerDoc`. The latex was
- * resolved up-front by the engine's prepareLatex pre-walk; this just parses
- * and adopts the string. */
-function buildOMath(latex: string, displayMode: boolean, ownerDoc: Document): Element {
-  const ommlString = getOmmlSync(latex, displayMode)
-  const parsed = parseXml(ommlString)
-  const root = parsed.documentElement
-  if (!root)
-    throw new Error(`LaTeX-to-OMML produced no root element. latex=${JSON.stringify(latex)}`)
-  return ownerDoc.importNode(root, true) as Element
+export function emitEquationBlock(
+  block: Extract<Block, { type: "equation" }>,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  // When captionId is set, route to the caption pipeline — emits a 3-col
+  // borderless table with the equation in the middle cell and the
+  // SEQ-based caption in the right cell.
+  if (block.captionId !== undefined) {
+    return emitNumberedEquationDispatch(block, block.captionId, ownerDoc, ctx)
+  }
+  return emitUnnumberedEquationLegacy(block, ownerDoc, ctx)
 }
 
-export function emitEquationBlock(
+function emitNumberedEquationDispatch(
+  block: Extract<Block, { type: "equation" }>,
+  captionId: string,
+  ownerDoc: Document,
+  ctx: EmitContext,
+): Element {
+  if (!ctx.captions) {
+    throw new Error(
+      "EquationBlock.captionId: ctx.captions callbacks not provided by the engine. " +
+        "Numbered equations require the captions table to be declared in the apply config.",
+    )
+  }
+  const config = ctx.captions.resolve(captionId)
+  if (!config) {
+    throw new Error(`EquationBlock: captionId "${captionId}" is not declared in captions table.`)
+  }
+  if (block.subGroup !== undefined && config.subCounter === undefined) {
+    throw new Error(
+      `EquationBlock: subGroup="${block.subGroup}" requires captions["${captionId}"].subCounter to be declared.`,
+    )
+  }
+  const mathSource: { latex: string } | { omml: string } =
+    block.latex !== undefined ? { latex: block.latex } : { omml: block.omml! }
+
+  const bookmark =
+    block.anchor !== undefined ? ctx.captions.allocateBookmark(block.anchor) : undefined
+  const { table, fill } = emitNumberedEquation(ownerDoc, {
+    mathSource,
+    equationStyleId: block.styleId ?? "Equation",
+    captionConfig: config,
+    subGroup: block.subGroup,
+    bookmark,
+    usableWidthTwips: ctx.usableWidthTwips,
+  })
+  if (block.anchor !== undefined) {
+    ctx.captions.bindBookmark(block.anchor, fill.paragraph)
+  }
+  ctx.captions.registerFill(fill)
+  return table
+}
+
+function emitUnnumberedEquationLegacy(
   block: Extract<Block, { type: "equation" }>,
   ownerDoc: Document,
   ctx: EmitContext,
@@ -51,7 +94,21 @@ export function emitEquationBlock(
     }
     p.appendChild(pPr)
   }
-  const oMath = buildOMath(block.latex, true, ownerDoc)
+  // Schema requires exactly one of `latex` / `omml` on every equation block;
+  // the throw is an engine invariant guard (validation should have rejected
+  // a malformed block before reaching emit).
+  const mathSource =
+    block.latex !== undefined
+      ? { latex: block.latex }
+      : block.omml !== undefined
+        ? { omml: block.omml }
+        : (() => {
+            throw new Error(
+              "EquationBlock: no math source — schema validation should have caught this. " +
+                "This is an engine invariant violation.",
+            )
+          })()
+  const oMath = buildOMath(mathSource, ownerDoc, true)
   const oMathPara = ownerDoc.createElementNS(m, "m:oMathPara")
   oMathPara.appendChild(oMath)
   p.appendChild(oMathPara)
@@ -69,5 +126,5 @@ export function emitEquationBlock(
 /** Build the `<m:oMath>` element for an inline equation. Caller splices it
  * between `<w:r>` siblings inside the paragraph. */
 export function emitInlineEquation(latex: string, ownerDoc: Document): Element {
-  return buildOMath(latex, false, ownerDoc)
+  return buildOMath({ latex }, ownerDoc, false)
 }

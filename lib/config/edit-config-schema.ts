@@ -188,12 +188,75 @@ const HorizontalRuleBlockSchema = z.strictObject({
  * (centered by Word's default OMML rendering, or override via styleId /
  * paraFormat). Caption + numbering follow the same caption-paragraph
  * pattern as figures and tables — see references/equations.md. */
-const EquationBlockSchema = z.strictObject({
-  type: z.literal("equation"),
-  latex: NonEmptyString,
-  styleId: z.optional(NonEmptyString),
-  paraFormat: z.optional(ParagraphFormatSchema),
+const EquationBlockSchema = z
+  .strictObject({
+    type: z.literal("equation"),
+    latex: z.optional(NonEmptyString),
+    omml: z.optional(NonEmptyString),
+    styleId: z.optional(NonEmptyString),
+    paraFormat: z.optional(ParagraphFormatSchema),
+    captionId: z.optional(NonEmptyString),
+    subGroup: z.optional(z.enum(["start", "continue"])),
+    anchor: z.optional(AnchorNameSchema),
+  })
+  .check(
+    z.refine(
+      (eq) => {
+        const hasLatex = eq.latex !== undefined
+        const hasOmml = eq.omml !== undefined
+        if (hasLatex === hasOmml) return false // both or neither
+        if (eq.subGroup !== undefined && eq.captionId === undefined) return false
+        if (eq.anchor !== undefined && eq.captionId === undefined) return false
+        return true
+      },
+      {
+        error: (issue) => {
+          const eq = issue.input as {
+            latex?: string
+            omml?: string
+            subGroup?: string
+            captionId?: string
+            anchor?: string
+          }
+          const hasLatex = eq.latex !== undefined
+          const hasOmml = eq.omml !== undefined
+          if (hasLatex && hasOmml) {
+            return "EquationBlock: latex and omml are mutually exclusive — set exactly one."
+          }
+          if (!hasLatex && !hasOmml) {
+            return "EquationBlock: must set one of latex or omml. Use latex for standard LaTeX input; omml is the escape hatch when temml fails on the expression."
+          }
+          if (eq.subGroup !== undefined && eq.captionId === undefined) {
+            return `EquationBlock: subGroup="${eq.subGroup}" requires captionId. Set captionId to opt into caption numbering, or remove subGroup for a standalone equation.`
+          }
+          if (eq.anchor !== undefined && eq.captionId === undefined) {
+            return `EquationBlock: anchor="${eq.anchor}" requires captionId — without numbering the bookmark has no resolved target for REF cross-references. Set captionId, or remove anchor.`
+          }
+          return "EquationBlock: invalid field combination"
+        },
+      },
+    ),
+  )
+
+/** A caption paragraph (figure title, table title, theorem statement,
+ * etc.). Replaces the older pattern of `{ type: "paragraph", styleId:
+ * "FigureCaption", ... }` paired with `numbering[]` binding — captions
+ * config carries the numbering shape; this block carries the text. */
+const CaptionBlockSchema = z.strictObject({
+  type: z.literal("caption"),
+  captionId: NonEmptyString,
+  text: z.string(),
   anchor: z.optional(AnchorNameSchema),
+})
+
+/** Counter reset marker for a caption identifier. Emits a hidden SEQ
+ * field at this position; counter sim resets accordingly. Use for
+ * appendix sequences or multi-section docs where the default
+ * outline-level restart isn't enough. */
+const CaptionCounterResetSchema = z.strictObject({
+  type: z.literal("caption-counter-reset"),
+  captionId: NonEmptyString,
+  newValue: z.optional(z.number().check(z.gte(0))),
 })
 
 /** Subset of blocks that may appear INSIDE a table cell. Excludes
@@ -207,6 +270,8 @@ const CellBlockSchema = z.union([
   PageBreakBlockSchema,
   HorizontalRuleBlockSchema,
   EquationBlockSchema,
+  CaptionBlockSchema,
+  CaptionCounterResetSchema,
 ])
 
 /* ------------- table block ------------- */
@@ -352,6 +417,8 @@ export const BlockSchema = z.union([
   HorizontalRuleBlockSchema,
   TableBlockSchema,
   EquationBlockSchema,
+  CaptionBlockSchema,
+  CaptionCounterResetSchema,
 ])
 
 export const FragmentSchema = z.array(BlockSchema)
@@ -458,6 +525,12 @@ const FormatOpSchema = z
     }),
   )
 
+// set-run takes a paragraph + run identification, not a paragraph-range
+// locator. Schema is restricted to RunLocatorSchema (at.type === "run").
+// Picking the wrong `at` form with op:"set-run" surfaces as a
+// discriminator mismatch via the dispatch in EditOpSchema, so the agent
+// sees "set-run requires at.type === 'run'" instead of a confusing
+// "with: expected string" from a union fallback path.
 const SetRunOpSchema = z.strictObject({
   op: z.literal("set-run"),
   at: RunLocatorSchema,
@@ -465,13 +538,42 @@ const SetRunOpSchema = z.strictObject({
   format: z.optional(RunFormatSchema),
 })
 
-export const EditOpSchema = z.union([
+/** Caption body-text edit. Targets an existing caption paragraph by
+ * anchor name or by (captionId, 1-based index in body order). Replaces
+ * the runs after the primary bookmarkEnd; the SEQ / STYLEREF fields and
+ * bookmark itself stay intact so cross-references continue to resolve.
+ *
+ * Throws when target is EquationBlock (no body to edit) — agents
+ * needing to change an equation use delete + re-emit instead. */
+const EditCaptionTargetSchema = z.union([
+  z.strictObject({ anchor: AnchorNameSchema }),
+  z.strictObject({
+    captionId: NonEmptyString,
+    index: z.number().check(z.gte(1)),
+  }),
+])
+
+const EditCaptionOpSchema = z.strictObject({
+  op: z.literal("edit-caption"),
+  target: EditCaptionTargetSchema,
+  text: z.string(),
+})
+
+// Discriminate on `op` so a wrong-shape variant points at the right field.
+// Without this, zod's plain union tries each option and reports the lowest-
+// cost mismatch — which for `{ op: "set-run", at: { type: "paragraph", ... } }`
+// surfaces as "with: expected string, got [...]" against ReplaceOpSchema,
+// not "set-run requires at.type === 'run'". Discriminated dispatch picks the
+// schema by op literal first, then validates the chosen schema's other
+// fields, so all error messages reference the right op contract.
+export const EditOpSchema = z.discriminatedUnion("op", [
   ReplaceOpSchema,
   InsertBeforeOpSchema,
   InsertAfterOpSchema,
   DeleteOpSchema,
   FormatOpSchema,
   SetRunOpSchema,
+  EditCaptionOpSchema,
 ])
 
 /* ------------- top-level edit config ------------- */
@@ -489,10 +591,31 @@ import { formatZodError, type HintFn } from "@lib/config/zod-format.ts"
 
 /** Domain hints that augment zod's defaults for known issue shapes. Returning
  * null falls back to the generic formatter. */
-const customHint: HintFn = (issue, pathStr, _raw) => {
+const customHint: HintFn = (issue, pathStr, raw) => {
   // Color hex regex — explain what's accepted.
   if (issue.code === "invalid_format" && pathStr.endsWith(".color")) {
     return `color must be 6 hex digits without leading "#" (e.g. "1F4E79"). Use "auto" via styleId for theme-aware colors.`
+  }
+  // set-run requires at.type === "run" — discriminated union surfaces the
+  // type mismatch on the `at.type` path; explain the constraint inline so
+  // the agent doesn't have to read the schema to fix the call site. Detect
+  // the case by walking up the issue path to the parent op and reading its
+  // `op` field.
+  if (issue.code === "invalid_value" && pathStr.endsWith(".at.type")) {
+    const opPath = issue.path.slice(0, -2)
+    let cursor: unknown = raw
+    for (const seg of opPath) {
+      if (cursor && typeof cursor === "object") {
+        cursor = (cursor as Record<string | number, unknown>)[seg as string | number]
+      }
+    }
+    const opLiteral =
+      cursor && typeof cursor === "object" && "op" in cursor
+        ? (cursor as { op?: unknown }).op
+        : undefined
+    if (opLiteral === "set-run") {
+      return `set-run requires at.type === "run" (use a RunLocator: { type: "run", paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
+    }
   }
   return null
 }

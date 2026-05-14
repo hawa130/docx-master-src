@@ -204,7 +204,11 @@ function canonicalize(field: string, val: unknown): unknown {
   return val
 }
 
-function sameValue(a: unknown, b: unknown): boolean {
+/** Shallow value equality for restyle / report comparisons. Numbers
+ * compare with a 1e-6 tolerance to absorb twip round-trip noise; other
+ * types stringify and compare. Exported so `report.ts` and other
+ * comparators stay aligned on what "same" means. */
+export function sameValue(a: unknown, b: unknown): boolean {
   if (typeof a === "number" && typeof b === "number") {
     return Math.abs(a - b) < 1e-6
   }

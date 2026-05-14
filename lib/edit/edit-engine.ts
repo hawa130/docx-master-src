@@ -62,7 +62,17 @@ import {
 } from "@lib/edit/track-changes.ts"
 import { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
-import { emitRefField, switchesForDisplay, type PendingRefBackfill } from "@lib/edit/field-ref.ts"
+import {
+  emitRefField,
+  switchesForDisplay,
+  type PendingRefBackfill,
+} from "@lib/edit/fields/ref-field.ts"
+import type {
+  PendingCaptionFill,
+  PendingCaptionReset,
+  ResolvedCaptionConfig,
+} from "@lib/edit/caption-counter.ts"
+import { applyEditCaption, resolveEditCaptionTarget } from "@lib/edit/edit-caption-op.ts"
 
 const w = NS.w
 
@@ -189,6 +199,11 @@ export interface RunEditOpsInput {
    * setups. Optional: when absent, table emit falls back to a conservative
    * A4-tight constant. */
   sections?: SectionInfo[]
+  /** Resolved captions config from apply config. Engine wires this into
+   * EmitContext.resolveCaption so caption-bearing blocks (EquationBlock
+   * with captionId, CaptionBlock, CaptionCounterReset) can resolve their
+   * identifier at emit time. Absent → caption blocks throw at emit. */
+  captions?: Map<string, ResolvedCaptionConfig>
 }
 
 export interface RunEditOpsOutput {
@@ -203,6 +218,8 @@ export interface RunEditOpsOutput {
   crossRefs: {
     bookmarkAllocator: BookmarkAllocator
     pendingBackfills: PendingRefBackfill[]
+    pendingCaptionFills: PendingCaptionFill[]
+    pendingCaptionResets: PendingCaptionReset[]
   }
 }
 
@@ -263,8 +280,21 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   }
 
   // Pre-resolve every LaTeX expression to OMML before the synchronous emit
-  // chain runs. Single batch keeps temml warm; emit reads from the cache.
-  await prepareLatex(collectLatexFromEdits(edits))
+  // chain runs. Per-edit dispatch keeps the rethrown error pointing at the
+  // offending `edits[N]` index — without this the temml / mml2omml stack
+  // bubbles up with the latex source but no caller context.
+  for (const [i, op] of edits.entries()) {
+    const frag = fragmentOf(op)
+    if (!frag) continue
+    const items: LatexItem[] = []
+    for (const b of frag) items.push(...collectLatexFromBlock(b))
+    if (items.length === 0) continue
+    try {
+      await prepareLatex(items)
+    } catch (err) {
+      throw new Error(`edits[${i}] (${op.op}): ${(err as Error).message}`, { cause: err })
+    }
+  }
 
   const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
@@ -285,16 +315,29 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       bookmarkAllocator.reserveName(hint.anchor, {
         styleId: hint.styleId,
         directlyNumbered: hint.directlyNumbered,
+        isCaption: hint.isCaption,
       })
     })
   }
 
   const pendingBackfills: PendingRefBackfill[] = []
+  const pendingCaptionFills: PendingCaptionFill[] = []
+  const pendingCaptionResets: PendingCaptionReset[] = []
+  const captionsMap = input.captions
   const emitCtx: EmitContext = {
     emitImage: (src, widthPt, heightPt, alt, ownerDoc) => {
       const { rId } = imageRegistry.registerImage(src)
       return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
     },
+    captions: captionsMap
+      ? {
+          resolve: (identifier: string) => captionsMap.get(identifier),
+          allocateBookmark: (name) => bookmarkAllocator.allocateRangeBookmark(name),
+          bindBookmark: (name, pEl) => bookmarkAllocator.bindRangeBookmark(name, pEl),
+          registerFill: (fill) => pendingCaptionFills.push(fill),
+          registerReset: (reset) => pendingCaptionResets.push(reset),
+        }
+      : undefined,
     emitRef: (ref, ownerDoc, defaultFormat) => {
       // Resolve target → (paragraph element OR forward-ref name, bookmark
       // name). Two locator forms:
@@ -336,7 +379,34 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // (REF \n and \r switches render the lvlText / counter). The "full"
       // display resolves to the bookmark's text content, which any
       // non-empty paragraph supports — so we relax the check there.
-      if (display !== "full") {
+      //
+      // Caption-class anchors are SEQ-numbered (not numPr) and pass
+      // unconditionally: forward refs match via reserveName's
+      // `directlyNumbered: !!b.captionId` hint; backward refs match via
+      // the `captionAnchorNames` set populated at caption emit time.
+      // Backward refs: caption emit already called allocateRangeBookmark
+      // → bookmarkAllocator.isRangeBookmark catches it.
+      // Forward refs: bookmark not yet allocated; pre-scan reservation
+      // carries `isCaption` from the block's captionId presence.
+      const isCaptionAnchor =
+        ref.refTo.type === "anchor" &&
+        (bookmarkAllocator.isRangeBookmark(ref.refTo.name) ||
+          bookmarkAllocator.predictedNumberingFor(ref.refTo.name)?.isCaption === true)
+      // Caption-class targets: display:"full" would need a paragraph-wide
+      // secondary bookmark for REF \h to return body text. The pipeline
+      // only emits the primary bookmark (number + decoration), so
+      // display:"full" diverges between pre-F9 placeholder and Word's
+      // post-F9 render. Throw rather than ship divergent output. Agents
+      // citing a caption use display:"label" (the rendered "(2.1)" or
+      // "图 2.1" is the canonical citation form anyway).
+      if (display === "full" && isCaptionAnchor) {
+        throw new Error(
+          `InlineRef: display="full" is not supported on caption-class anchors ` +
+            `(anchor "${(ref.refTo as { name: string }).name}"). Caption refs use the SEQ-rendered ` +
+            `text (prefix + chapter + counter + suffix); switch to display: "label".`,
+        )
+      }
+      if (display !== "full" && !isCaptionAnchor) {
         const predicted =
           ref.refTo.type === "anchor"
             ? bookmarkAllocator.predictedNumberingFor(ref.refTo.name)
@@ -366,24 +436,22 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       // updateFields=true also ensures Word resolves on open, so users who
       // skip the backfill (e.g. parser called outside the apply pipeline)
       // still see correct text after their first F9.
-      const runs = emitRefField(ownerDoc, {
+      // Caption-class anchors are SEQ-numbered, not numPr-bound — `\n`
+      // would fail to resolve (no numbering binding). Use `\h` only so
+      // REF reads the bookmark contents directly (which is the number
+      // + decoration range that caption emit wrapped).
+      const switches = isCaptionAnchor ? ["\\h"] : switchesForDisplay(display)
+      const { runs, resultTextEl } = emitRefField(ownerDoc, {
         bookmarkName,
-        switches: switchesForDisplay(display),
+        switches,
         placeholder: "",
         format: ref.format ?? defaultFormat,
       })
-      // The 4th run is the placeholder run; its <w:t> is the textContent we
-      // backfill. Locate it explicitly rather than indexing by position so
-      // refactors to emitRefField's run layout don't silently break this.
-      const placeholderRun = runs[3]!
-      const placeholderT = firstChildNS(placeholderRun, w, "t")
-      if (placeholderT) {
-        pendingBackfills.push({
-          placeholderTextEl: placeholderT,
-          targetName: bookmarkName,
-          display,
-        })
-      }
+      pendingBackfills.push({
+        placeholderTextEl: resultTextEl,
+        targetName: bookmarkName,
+        display,
+      })
       return runs
     },
     adoptAnchor: (name, pEl) => {
@@ -404,7 +472,24 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       ...emitCtx,
       usableWidthTwips: usableWidthForTarget(edit.target, input.sections, resolverCtx),
     }
-    const touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx)
+    // Wrap with edits[N] context so emit-side throws (caption-not-declared,
+    // adoptAnchor invariants, image emitter wiring, equation conversion)
+    // surface with the locator the agent wrote. Without this the message
+    // bubbles up bare ("captionId X is not declared") and the agent has no
+    // way to locate the offending op in a multi-edit config.
+    let touched: number
+    try {
+      touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx, {
+        bookmarkAllocator,
+        captionsMap: input.captions,
+      })
+    } catch (err) {
+      const msg = (err as Error).message
+      // Don't double-wrap when applyOne (or resolveOneEdit upstream) already
+      // emitted an `edits[N]` prefix.
+      if (msg.startsWith(`edits[${i}]`)) throw err
+      throw new Error(`edits[${i}] (${edit.op.op}): ${msg}`, { cause: err })
+    }
     perOp.push({ index: i, op: edit.op.op, touched })
   }
 
@@ -418,6 +503,8 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
     },
     crossRefs: {
       bookmarkAllocator,
+      pendingCaptionFills,
+      pendingCaptionResets,
       pendingBackfills,
     },
   }
@@ -485,6 +572,16 @@ function resolveOneEdit(op: EditOp, resolverCtx: ResolverContext, _opIndex: numb
       op,
       target: { paragraphs: [r.paragraph], container: resolverCtx.body },
       runRef: r.run,
+    }
+  }
+  if (op.op === "edit-caption") {
+    // Target resolution happens at apply time (needs the live doc to
+    // walk SEQ-bearing paragraphs). Synthesize a resolved target with
+    // the body element as a placeholder; applyOne re-resolves against
+    // the post-emit state.
+    return {
+      op,
+      target: { paragraphs: [], container: resolverCtx.body },
     }
   }
   return { op, target: resolveLocator(op.at, resolverCtx) }
@@ -574,7 +671,10 @@ interface LatexItem {
 function collectLatexFromBlock(b: Fragment[number]): LatexItem[] {
   const out: LatexItem[] = []
   if (b.type === "equation") {
-    out.push({ latex: b.latex, displayMode: true })
+    if (b.latex !== undefined) {
+      out.push({ latex: b.latex, displayMode: true })
+    }
+    // omml escape hatch: no LaTeX to prewarm
   } else if (b.type === "paragraph") {
     if (Array.isArray(b.text)) {
       for (const piece of b.text) {
@@ -607,16 +707,6 @@ function collectLatexFromBlock(b: Fragment[number]): LatexItem[] {
   return out
 }
 
-function collectLatexFromEdits(edits: ReadonlyArray<EditOp>): LatexItem[] {
-  const out: LatexItem[] = []
-  for (const op of edits) {
-    const frag = fragmentOf(op)
-    if (!frag) continue
-    for (const b of frag) out.push(...collectLatexFromBlock(b))
-  }
-  return out
-}
-
 /** Return the inserted/replaced Block[] for an op, or null when the op has
  * no fragment (delete / format / set-run). Centralizes the
  * `with` / `content` discriminant used by the latex collector and the
@@ -640,6 +730,7 @@ interface AnchorHint {
   anchor: string
   styleId: string | undefined
   directlyNumbered: boolean
+  isCaption: boolean
 }
 
 function walkBlocksForAnchors(fragment: Fragment, visit: (hint: AnchorHint) => void): void {
@@ -650,13 +741,19 @@ function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) 
   const b = block as Partial<{
     anchor: string
     styleId: string
+    captionId: string
     numbering: { numId: string; level: number }
   }>
   if (typeof b.anchor === "string" && b.anchor) {
+    const isCaption = !!b.captionId
     visit({
       anchor: b.anchor,
       styleId: b.styleId,
-      directlyNumbered: !!b.numbering,
+      // Caption blocks (CaptionBlock + EquationBlock with captionId) are
+      // SEQ-numbered, not numPr-numbered. They satisfy InlineRef's
+      // numbering check without participating in the numPr cascade.
+      directlyNumbered: !!b.numbering || isCaption,
+      isCaption,
     })
   }
   if (block.type === "table") {
@@ -681,6 +778,58 @@ function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) 
 
 /* ------------- per-op apply ------------- */
 
+interface ApplyDeps {
+  bookmarkAllocator: BookmarkAllocator
+  captionsMap: Map<string, ResolvedCaptionConfig> | undefined
+}
+
+function applyEditCaptionOp(
+  op: Extract<EditOp, { op: "edit-caption" }>,
+  documentDoc: Document,
+  deps: ApplyDeps,
+): number {
+  if (!deps.captionsMap) {
+    throw new Error(
+      "edit-caption: captions table not declared in apply config. Add the identifier to `captions`.",
+    )
+  }
+  const para = resolveEditCaptionTarget({
+    documentDoc,
+    target: op.target,
+    text: op.text,
+    bookmarkAllocator: deps.bookmarkAllocator,
+    captionsConfigs: deps.captionsMap,
+  })
+  // Find the caption's identifier so we can fetch bodySeparator.
+  // The target paragraph's pStyle maps back via the configs index.
+  let config: ResolvedCaptionConfig | undefined
+  if ("captionId" in op.target) {
+    config = deps.captionsMap.get(op.target.captionId)
+  } else {
+    // Anchor target — walk captions configs and pick the one whose
+    // paragraphStyleId matches this paragraph's pStyle.
+    const pPr = firstChildNS(para, w, "pPr")
+    const pStyle = pPr ? firstChildNS(pPr, w, "pStyle") : null
+    const styleId = pStyle ? (pStyle.getAttributeNS(w, "val") ?? null) : null
+    if (styleId) {
+      for (const c of deps.captionsMap.values()) {
+        if (c.paragraphStyleId === styleId) {
+          config = c
+          break
+        }
+      }
+    }
+  }
+  if (!config) {
+    throw new Error(
+      "edit-caption: could not resolve caption config for the target paragraph. " +
+        "The paragraph's pStyle doesn't match any captions[<id>].styleId.",
+    )
+  }
+  applyEditCaption(para, op.text, config, documentDoc)
+  return 1
+}
+
 function applyOne(
   edit: ResolvedEdit,
   documentDoc: Document,
@@ -688,6 +837,7 @@ function applyOne(
   emitCtx: EmitContext,
   stale: Set<Element>,
   resolverCtx: ResolverContext,
+  deps: ApplyDeps,
 ): number {
   switch (edit.op.op) {
     case "replace":
@@ -719,6 +869,8 @@ function applyOne(
         throw new Error("set-run: missing resolved run reference (internal)")
       }
       return applySetRun(edit.runRef, edit.op, documentDoc, trackContext)
+    case "edit-caption":
+      return applyEditCaptionOp(edit.op, documentDoc, deps)
     default:
       return assertNever(edit.op)
   }

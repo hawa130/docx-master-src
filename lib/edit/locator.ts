@@ -15,7 +15,13 @@
 
 import type { ParsedParagraph } from "@lib/parse/types.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, textContent, wVal } from "@lib/xml/xml-utils.ts"
+import {
+  firstChildNS,
+  getChildren,
+  getChildrenNS,
+  paragraphStyleId as paragraphStyleIdOrUndefined,
+  textContent,
+} from "@lib/xml/xml-utils.ts"
 import { summarizeTable } from "@lib/parse/table-classifier.ts"
 import { assertNever, type Locator, type ResolvedTarget } from "@lib/config/edit-types.ts"
 
@@ -237,10 +243,13 @@ function resolveHeading(
 }
 
 function resolveWholeBody(ctx: ResolverContext): ResolvedTarget {
-  const paragraphs: Element[] = []
-  for (const child of getChildren(ctx.body)) {
-    if (child.namespaceURI === NS.w && child.localName === "p") paragraphs.push(child)
-  }
+  // Iterate ctx.indexed so the resolved set matches DocumentParser's scope —
+  // body + layout-table cells. A naive `getChildren(ctx.body)` would only
+  // see body-level paragraphs and silently drop everything inside layout
+  // tables (the half of the doc that form-style templates put text into).
+  // Data/form table paragraphs stay out of scope here by design — they
+  // require an explicit `cell` locator.
+  const paragraphs = ctx.indexed.map((p) => p.element)
   return { paragraphs, container: ctx.body }
 }
 
@@ -312,12 +321,14 @@ function isBlankRun(r: Element): boolean {
 
 /* ------------- helpers usable downstream ------------- */
 
-/** Read the styleId of a paragraph element (for blocker logging / heading
- * disambiguation). Returns "Normal" when no explicit pStyle is set. */
+/** Read the styleId of a paragraph element for blocker logging /
+ * heading disambiguation. Returns "Normal" when no explicit `<w:pStyle>`
+ * is set — Word's effective style at that absence, applied here because
+ * downstream blockers compare against concrete styleIds and want the
+ * effective value, not "unset". Tools that need to distinguish "absent"
+ * from "= Normal" call `paragraphStyleIdOrUndefined` directly. */
 export function paragraphStyleId(pEl: Element): string {
-  const pPr = firstChildNS(pEl, NS.w, "pPr")
-  const pStyle = pPr ? firstChildNS(pPr, NS.w, "pStyle") : null
-  return (pStyle && wVal(pStyle)) || "Normal"
+  return paragraphStyleIdOrUndefined(pEl) ?? "Normal"
 }
 
 /** Plain-text content of a paragraph (concatenates <w:t> textContent across

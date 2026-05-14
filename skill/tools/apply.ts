@@ -16,13 +16,7 @@ import { runCli } from "@lib/shared/cli-helpers.ts"
  *     format ops
  *   - `trackChanges` — emit edits as Word revision markup
  *
- * The orchestrator runs them in the correct order in one pipeline:
- *   install styles + numbering + theme + template
- *     → apply edits (insert content, referencing the now-installed styles)
- *     → re-fingerprint
- *     → apply rules (pattern_rules / bulk_rules / assignments match BOTH
- *       pre-existing chrome AND newly-inserted content uniformly)
- *     → validate, write
+ * Pipeline order: see SKILL.md §Commands.
  *
  * Sparse by design: only declared blocks are applied. Untouched styles,
  * numbering schemes, paragraphs, and theme stay as they are.
@@ -50,9 +44,17 @@ void runCli({
       !!config.theme?.fonts &&
       Object.values(config.theme.fonts).some((v) => typeof v === "string" && v)
     const hasEdits = (config.edits?.length ?? 0) > 0
-    if (!hasStyles && !hasNumbering && !hasTemplate && !hasThemeOverride && !hasEdits) {
+    const hasCaptions = !!config.captions && Object.keys(config.captions).length > 0
+    if (
+      !hasStyles &&
+      !hasNumbering &&
+      !hasTemplate &&
+      !hasThemeOverride &&
+      !hasEdits &&
+      !hasCaptions
+    ) {
       throw new Error(
-        "config has no operation: provide at least one of styles[] (non-empty), numbering, template, theme.fonts, or edits[]",
+        "config has no operation: provide at least one of styles[] (non-empty), numbering, template, theme.fonts, edits[], or captions",
       )
     }
   },
