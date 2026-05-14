@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "docx-master",
+  "metadata": {
+    "description": "Word (.docx) automation for AI agents. Sparse OOXML mutation — restyle, renumber, edit, audit."
+  },
+  "owner": {
+    "name": "hawa130"
+  },
+  "plugins": [
+    {
+      "name": "docx-master",
+      "description": "One skill, 18 tools, sparse-by-design config. Direct OOXML mutation for Word documents — restyle by pattern, install styles and numbering, insert content with captions and cross-references, audit conformance.",
+      "version": "0.1.0",
+      "author": {
+        "name": "hawa130"
+      },
+      "source": "./dist/plugin",
+      "category": "productivity",
+      "homepage": "https://github.com/hawa130/docx-master",
+      "tags": ["docx", "word", "ooxml", "office", "skills", "automation"]
+    }
+  ]
+}
