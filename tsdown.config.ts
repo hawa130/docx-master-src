@@ -29,10 +29,7 @@ const tools: Record<string, string> = {
   validate: "validate.ts",
   // standardize sub-command
   apply: "apply.ts",
-  restyle: "restyle.ts",
-  migrate_numbering: "migrate-numbering.ts",
   migrate_captions: "migrate-captions.ts",
-  import_template: "import-template.ts",
 }
 
 export default defineConfig({

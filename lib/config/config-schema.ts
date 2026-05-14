@@ -1,7 +1,7 @@
 /**
- * Zod-mini schema for the apply_styles family CLIs (apply_styles, restyle,
- * migrate_numbering, import_template). Replaces the hand-written `typeof` /
- * `Set.has()` validation that previously lived inline in apply-styles.ts.
+ * Zod-mini schema for the `apply` CLI's config. Replaces the hand-written
+ * `typeof` / `Set.has()` validation that previously lived inline in
+ * apply-styles.ts.
  *
  * What lives here:
  *   - shape (required vs optional, types, enums)
@@ -16,9 +16,6 @@
  *     stylesDoc, paragraph-index validity, fingerprint resolution, name
  *     collision detection). Those stay in apply-styles.ts where the runtime
  *     context is available.
- *   - tool-narrowing rules ("restyle rejects template / numbering"). Those
- *     stay in each CLI's `validate` callback because the message format is
- *     tool-aware ("use import_template instead").
  *   - regex compilation for pattern_rules. The compiled RegExp is consumed
  *     downstream, so compile-once-and-store stays in apply-styles.ts.
  *

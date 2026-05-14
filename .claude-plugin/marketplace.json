@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "docx-master",
-      "description": "One skill, 18 tools, sparse-by-design config. Direct OOXML mutation for Word documents — restyle by pattern, install styles and numbering, insert content with captions and cross-references, audit conformance.",
+      "description": "One skill, 15 tools, sparse-by-design config. Direct OOXML mutation for Word documents — restyle by pattern, install styles and numbering, insert content with captions and cross-references, audit conformance.",
       "version": "0.1.0",
       "author": {
         "name": "hawa130"

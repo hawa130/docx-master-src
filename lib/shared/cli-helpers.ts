@@ -4,8 +4,8 @@ import { applyStyles } from "@lib/apply/apply-styles.ts"
 import { parseConfig, type ApplyConfig } from "@lib/config/config-schema.ts"
 
 /**
- * Shared scaffolding for the four apply-style-family CLIs (apply_styles,
- * restyle, migrate_numbering, import_template). Each one parses the same
+ * Shared scaffolding for the apply-family CLIs (`apply` and the narrow
+ * variants that share its config schema). Each one parses the same
  * `[--dry-run] <config.json>` argv shape, validates the same source/output
  * fields, and runs `applyStyles` with the same error-cleanup behavior. The
  * differences are which config blocks are required vs forbidden — handled
@@ -17,9 +17,9 @@ import { parseConfig, type ApplyConfig } from "@lib/config/config-schema.ts"
  */
 
 export interface CliSpec {
-  /** CLI name as it appears in usage strings, e.g. "apply_styles". */
+  /** CLI name as it appears in usage strings, e.g. "apply". */
   command: string
-  /** Script filename for the usage line, e.g. "apply_styles.js". */
+  /** Script filename for the usage line, e.g. "apply.js". */
   script: string
   /** Validates the parsed config beyond the universal source/output checks.
    * Throw an Error with a CLI-friendly message on failure. May mutate

@@ -225,7 +225,7 @@ export interface RunEditOpsOutput {
 
 /**
  * In-memory edit-ops application — for callers that already have the docx
- * open and parsed (e.g. `apply_styles` integrating edits into its single
+ * open and parsed (e.g. `apply` integrating edits into its single
  * pipeline). The caller owns file I/O, validation, and writing.
  *
  * Mutates `documentDoc` in place. Returns the image registry (caller

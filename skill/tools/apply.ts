@@ -21,11 +21,6 @@ import { runCli } from "@lib/shared/cli-helpers.ts"
  * Sparse by design: only declared blocks are applied. Untouched styles,
  * numbering schemes, paragraphs, and theme stay as they are.
  *
- * For narrower changes, dedicated CLIs accept smaller configs:
- *   `restyle` — paragraph restyle only
- *   `migrate_numbering` — numbering only
- *   `import_template` — template-style import only
- *
  * Pure content-only edits (no style/numbering install) still go through
  * `apply` with `edits[]` as the only populated block.
  */

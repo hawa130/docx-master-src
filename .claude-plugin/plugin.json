@@ -1,6 +1,6 @@
 {
   "name": "docx-master",
-  "description": "Word (.docx) automation for AI agents. One skill, 18 tools, sparse-by-design config. Restyle, renumber, edit, audit — direct OOXML mutation, no Markdown round-trip.",
+  "description": "Word (.docx) automation for AI agents. One skill, 15 tools, sparse-by-design config. Restyle, renumber, edit, audit — direct OOXML mutation, no Markdown round-trip.",
   "version": "0.1.0",
   "author": {
     "name": "hawa130"

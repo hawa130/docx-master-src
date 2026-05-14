@@ -3,7 +3,7 @@
 
 # docx-master
 
-The Word document automation agents have been waiting for. One skill, 18 tools, and a sparse-by-design config language that mutates `.docx` OOXML directly — restyle, renumber, edit, audit — without the fragile round-trip through Markdown or HTML.
+The Word document automation agents have been waiting for. One skill, 15 tools, and a sparse-by-design config language that mutates `.docx` OOXML directly — restyle, renumber, edit, audit — without the fragile round-trip through Markdown or HTML.
 
 > **Quick start:** `cp -r dist/docx-master ~/.claude/skills/` (or grab the [latest release](https://github.com/hawa130/docx-master/releases) and drop it into your harness of choice).
 
@@ -18,7 +18,7 @@ docx-master comes with its own convention for writing Word documents:
 - References like "see Figure 1.2" stay live; every number updates together when sections move.
 - CJK and Latin runs in the same paragraph keep their own font sizes.
 
-Each convention comes with its own tooling: `pattern_rules` / `bulk_rules` apply rules across the document in one pass, `migrate_captions` / `migrate_numbering` move typed numbers from legacy drafts to auto-numbering, `audit` flags violations, and 18 inspect / find tools let the agent survey the document before mutating.
+Each convention comes with its own tooling: `pattern_rules` / `bulk_rules` apply rules across the document in one pass, `migrate_captions` detects manually-numbered captions to convert, `audit` flags violations, and 12 inspect / find tools let the agent survey the document before mutating.
 
 Side-by-side with peer skills:
 
@@ -69,7 +69,7 @@ A focused Word-automation skill with 10 on-demand reference files ([view skill](
 | [chinese-font-sizes.md](skill/references/chinese-font-sizes.md) | 小四 / 五号 / 三号 / … → half-points |
 | [audit.md](skill/references/audit.md) | Read-only conformance workflow + scanning axes |
 
-### 18 Tools
+### 15 Tools
 
 All tools invoke via `node scripts/<name>.js <args>` and write to stdout. The skill's prompt routes the agent to the right one.
 
@@ -86,11 +86,8 @@ All tools invoke via `node scripts/<name>.js <args>` and write to stdout. The sk
 | `inspect_blockers` | Paragraphs the edit phase will refuse (tracked changes, fields, SDT) |
 | `inspect_caption` | SEQ-based captions — list identifiers, per-occurrence dump |
 | `migrate_captions` | Read-only detector for manually-numbered caption paragraphs |
-| `migrate_numbering` | Surveys legacy `numId`s for consolidation into one multi-level scheme |
 | `find_paragraphs` | Cross-document regex search to validate `pattern_rules` coverage |
 | `find_text` | Character-level locator — paragraph index, run index, char offset, context |
-| `import_template` | Pull styles + numbering from a reference docx |
-| `restyle` | Standalone restyle entry (legacy; `apply` is the unified writer) |
 | `validate` | Schema-aware OOXML check on any `.docx` |
 | `apply` | The unified writer. `--dry-run` for iteration, no flag to write |
 
