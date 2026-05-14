@@ -1,60 +1,27 @@
 # Working in this repo
 
-This repo builds **one** Word (.docx) automation skill, `docx-master`. Two writing sub-commands ship today — `standardize` (role-based whole-doc reshape: paragraph classification, named-style injection, numbering migration, template import) and `edit` (location-based surgical edits: replace/insert/delete paragraphs, table-cell content, image embedding, optional Word tracked changes) — plus the read-only `audit`. Future sub-commands (content authoring adapters, batch fragment imports) will add to the same SKILL.md as routed entries. The agent-facing contract is `skill/SKILL.md`; this file is for working *on* the project.
+This repo builds **one** Word (.docx) automation skill, `docx-master`. The agent-facing contract is `skill/SKILL.md`; this file is for working *on* the project.
+
+Surfaces today:
+
+- **`apply`** — the unified writer. Single CLI, one config combining two shapes:
+  - **standardize-shape** — role-based whole-doc reshape (paragraph classification, named-style injection, numbering migration, template import)
+  - **edit-shape** — location-based surgical changes (replace / insert / delete paragraphs, table-cell content, image embedding, optional tracked changes)
+- **`audit`** — read-only workflow producing a violation report
+
+Future extensions add new config blocks inside `apply`, not new sub-commands.
 
 **Keep this file in sync.** Tool names, build commands, file paths, and the lessons below are referenced concretely. When any of them changes, update here in the same commit — stale references mislead future maintainers and the next agent reviewing the design.
 
 ## Layout
 
-```
-skill/                             the publishable skill bundle source.
-skill/SKILL.md                       agent-facing contract (router + invariants)
-skill/references/                    on-demand reference docs (progressive disclosure)
-skill/tools/                         TS source for CLIs the agent invokes directly
-                                       (each file = one entry in tsdown.config.ts)
-lib/                               every non-tool TypeScript module, grouped
-                                     by concern. Reachable via the `@lib/*`
-                                     alias. Imported by tools, never built as
-                                     a script entry.
-  lib/xml/                           OOXML/zip primitives (xml-utils,
-                                       xml-order, reader, load, docx-plumbing)
-  lib/parse/                         read-side parsing (document-parser,
-                                       style-resolver, fingerprint,
-                                       table-classifier, format,
-                                       manual-numbering-detect,
-                                       section-metrics, types)
-  lib/config/                        zod schemas + derived types for both
-                                       sub-commands (config-schema,
-                                       config-types, edit-config-schema,
-                                       edit-types)
-  lib/apply/                         standardize sub-command engine
-                                       (apply-styles orchestrator,
-                                       style/numbering/para/list mutation,
-                                       template-import, standardize-captions)
-  lib/edit/                          edit sub-command engine (edit-engine,
-                                       locator, text-search, blockers,
-                                       fragment-emit, track-changes,
-                                       image-asset, bookmark, table-emit,
-                                       math/, fields/ — REF/SEQ/STYLEREF
-                                       emitters + field-parse, caption-emit,
-                                       caption-counter, edit-caption-op)
-  lib/shared/                        cross-engine helpers (cli-helpers,
-                                       docx-validate, report)
-                                     Two type files split by concern:
-                                       - `lib/parse/types.ts` for OOXML /
-                                         parser types (NS, ParsedParagraph,
-                                         ...)
-                                       - `lib/config/config-types.ts` for
-                                         config-derived + internal data
-                                         shapes (ApplyConfig, ApplyContext,
-                                         ...)
-test/fixtures/                     sample .docx files for manual testing
-dist/docx-master/                  staged skill bundle (SKILL.md + references/ + scripts/)
-dist/docx-master.zip               zipped bundle ready to publish
-build-skill.ts                     packages staged dir into the .skill zip
-```
+- `skill/` — publishable skill bundle source: `SKILL.md` (agent-facing contract), `references/` (on-demand detail), `tools/` (TS source for agent-callable CLIs; one file = one `tsdown.config.ts` entry)
+- `lib/` — non-tool TS modules grouped by concern (xml / parse / config / apply / edit / shared). Reachable via `@lib/*` alias. Imported by tools, never built as a script entry. `ls lib/` for the current breakdown.
+- `test/fixtures/` — sample .docx files for manual testing
+- `dist/` — build output (gitignored): `docx-master/` staged bundle + `docx-master.zip`
+- `build-skill.ts` — packages the staged dir into the .skill zip
 
-Tools and `lib/` modules import internal code via the `@lib/*` alias (declared in `tsconfig.json` paths and `tsdown.config.ts` alias) — including lib-to-lib imports. Don't use relative paths (`./foo.ts`, `../xml/foo.ts`); keep imports group-prefixed (`@lib/xml/foo.ts`) so moving a file between groups only touches the import-site path, not its style. The `skill/tools/` directory is exclusively for files built as agent-callable CLIs; anything imported but never invoked goes in `lib/`.
+All `lib/` and `skill/tools/` imports go through `@lib/*` (declared in `tsconfig.json` paths + `tsdown.config.ts`), including lib-to-lib. No relative paths — group-prefixed imports survive moves between groups. `skill/tools/` is CLI entry-points only; anything imported but never invoked goes in `lib/`.
 
 ## Commands
 
@@ -80,7 +47,16 @@ No automated tests — run scripts against `test/fixtures/*.docx` manually after
 
 ## Periodic audits via `skill-creator`
 
-After a multi-commit feature push or before a release, spawn a subagent that invokes the `skill-creator` skill to audit the bundle. Pattern: `Agent` tool with `general-purpose` subagent; prompt asks it to invoke `skill-creator` and audit `skill/` + `dist/docx-master/`, **read-only** (no file edits). The framework's checklists (Anatomy of a Skill / Progressive Disclosure / Writing Patterns / Description Optimization) catch stale `references/` content, anti-pattern leakage in docs, and checklist items that human review skims past — especially in directories that get edited rarely and accumulate wrong-tooling examples or outdated regex catalogs. Evaluate findings critically (skill-creator can over-suggest); act on real ones, defer or decline the rest.
+After a multi-commit feature push or before a release, spawn a `general-purpose` subagent that invokes the `skill-creator` skill in **read-only** mode (no file edits), pointed at `skill/` + `dist/docx-master/`.
+
+skill-creator's checklists (Anatomy of a Skill / Progressive Disclosure / Writing Patterns / Description Optimization) catch:
+
+- Stale `references/` content
+- Anti-pattern leakage in docs
+- Outdated regex catalogs in rarely-edited directories
+- Checklist items that human review skims past
+
+Evaluate findings critically — skill-creator over-suggests. Act on the real ones, defer or decline the rest.
 
 ## Design principles
 
@@ -143,4 +119,6 @@ When changing any of these, verify against `test/fixtures/` and inspect the outp
 
 ## Commit style
 
-Title: what changed. Body: why, in 1–3 short paragraphs max — enough that the next maintainer wouldn't accidentally revert the decision. The diff already shows what; don't restate it. No "Net: X → Y lines" stats, no per-bullet narration of each change, no recap of content already in CLAUDE.md / SKILL.md. Don't include `co-authored-by` tags.
+- One line, title only (what changed). No body.
+- Keep commits atomic — one logical change per commit; split unrelated work into separate commits.
+- No `co-authored-by` tags.
