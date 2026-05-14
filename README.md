@@ -1,3 +1,6 @@
+<!-- prettier-ignore -->
+**English** · [简体中文](README.zh-CN.md)
+
 # docx-master
 
 The Word document automation agents have been waiting for. One skill, 18 tools, and a sparse-by-design config language that mutates `.docx` OOXML directly — restyle, renumber, edit, audit — without the fragile round-trip through Markdown or HTML.
