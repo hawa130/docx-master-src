@@ -105,25 +105,37 @@ Round-trip to verify:
 
 Schema validation and emit-time inspection both pass the broken case; only a real Word round-trip catches the regression.
 
-## Example — reference list citations
+## Reference list citations
 
 Declare the bracket form **once** in `lvlText` and use `display: "label"` at the cite site. Never type literal `[` / `]` around an InlineRef whose target's lvlText already contains them — the brackets stack visibly.
 
+Cite-render shape depends on the citation standard the doc follows. Read it from user spec, existing chrome in the doc, or ask. Two numeric shapes the InlineRef path covers:
+
+- **Inline bracket** `[1]` — IEEE numeric, ACM, most CS journals, GB/T 7714 行内括注变体. Plain `InlineRef`, no `format`.
+- **Superscript** `⁽¹⁾` — GB/T 7714 顺序编码制 (简中学术主流), Vancouver, Nature. `InlineRef` with `format: { "vertAlign": "superscript" }`. **Reference-list cites only** — caption-class refs (figure / table / equation) stay inline normal regardless of standard.
+
 ```jsonc
-// numbering scheme for the reference list:
+// numbering scheme for the reference list (shared by both shapes):
 { "levels": [
   { "level": 0, "numFmt": "decimal", "lvlText": "[%1]", "suff": "space",
     "styleId": "Reference" }
 ]}
 
-// body-text cite:
+// inline-bracket cite:
 { "type": "paragraph", "text": [
-  { "text": "本文方法借鉴了 " },
+  { "text": "本文方法借鉴了" },                     // no Pangu space — autoSpace handles CJK↔[
   { "refTo": { "type": "anchor", "name": "ref-smith2024" }, "display": "label" },
-  { "text": " 中的思路。" }
+  { "text": "中的思路。" }
 ]}
-// → 本文方法借鉴了 [3] 中的思路。
+// → 本文方法借鉴了[3]中的思路。
+
+// superscript cite (same anchor, same display, only format differs):
+{ "refTo": { "type": "anchor", "name": "ref-smith2024" }, "display": "label",
+  "format": { "vertAlign": "superscript" } }
+// → same [3] text, rendered as a raised run via vertAlign — no character substitution
 ```
+
+Author-year shapes (`(Smith, 2024)` — APA / MLA / GB/T 7714 著者-出版年制) aren't numeric and don't fit this path; out of scope for the auto-numbered InlineRef. Surface to the user when the doc requires this style.
 
 Asymmetric variant (rare — list uses `1.`, cites use `[1]`): leave `lvlText: "%1"`, use `display: "number"`, wrap literal `[` / `]` at the cite site. Don't mix the two — either the brackets live in `lvlText` and nowhere else, or in the cite and nowhere else.
 

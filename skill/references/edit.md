@@ -92,7 +92,16 @@ Same applies to images in styled documents: bind `styleId` (typically `FigureIma
 
 ### Quote handling
 
-`text` is emitted verbatim. Default to smart quotes in prose; ASCII `"` `'` only inside literal tokens (code, URLs, shell).
+`text` is emitted verbatim. Default to smart quotes in prose; ASCII `"` `'` only inside literal tokens (code, URLs, shell). Smart-quote shape is locale-dependent — read it from the document's prevailing language (existing chrome / user prompt / overview metadata), not from agent habit:
+
+| Locale | Outer | Inner |
+|---|---|---|
+| Simplified Chinese (GB/T 15834) | `“”` | `‘’` |
+| Traditional Chinese (台 / 港) | `「」` | `『』` |
+| Japanese | `「」` | `『』` |
+| English / Western | `“”` | `‘’` |
+
+Picking the wrong locale's shape (e.g. `「」` in mainland 简中正文, or straight `"` anywhere in prose) is a real defect — agent must commit to one locale up front when starting the doc, not flip per paragraph.
 
 ### Format fields
 
