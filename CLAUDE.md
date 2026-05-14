@@ -38,6 +38,12 @@ All `lib/` and `skill/tools/` imports go through `@lib/*` (declared in `tsconfig
 
 No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/docx-master/` reflects the change before claiming done.
 
+## Dependency policy
+
+`bunfig.toml` sets `minimumReleaseAge = 259200` (3 days). New or upgraded packages whose latest matching version was published in the last 3 days are refused at resolution time — quarantine window against a compromised release. Doesn't affect `bun install --frozen-lockfile`; only fires when resolving fresh versions (`bun add`, `bun update`, unlocked install).
+
+When `bun add` fails the age gate, check why the package was published so recently before reaching for an exclude. If you must take the version (security fix, blocking bug), add the specific package to `minimumReleaseAgeExcludes` in `bunfig.toml`, install, then remove the exclude. Don't let the exclude list grow as a default workaround.
+
 ## Adding a tool
 
 1. Create `skill/tools/<file>.ts`. Use `@lib/...` for everything — OOXML primitives, skill engine helpers, config schema, CLI scaffolding all live under one alias.

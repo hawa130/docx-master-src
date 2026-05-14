@@ -1,0 +1,15 @@
+[install]
+# Supply-chain hardening: refuse npm packages whose latest matching version
+# was published less than 3 days (259200 s) ago, so a freshly compromised
+# release has a quarantine window before it can land in this project.
+#
+# Mechanism: Bun translates this into a `before = now − minimumReleaseAge`
+# date filter at resolution time. The lockfile is unaffected; existing
+# pinned versions install regardless. The gate only fires when resolving
+# a new version (`bun add`, `bun update`, an unlocked install).
+#
+# To exempt a trusted package from the age gate, add it to
+# `minimumReleaseAgeExcludes` below. Keep the exclude list minimal —
+# every entry is an explicit "we trust this maintainer to ship safely".
+minimumReleaseAge = 259200
+minimumReleaseAgeExcludes = []
