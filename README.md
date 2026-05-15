@@ -31,18 +31,21 @@ Capability comparison:
 
 | Scenario | anthropics | qodex-ai | minimax-ai | claude-office | docx-master |
 |---|:---:|:---:|:---:|:---:|:---:|
-| Fill an existing blank template with content | ~ | ~ | ~ | ✓ | ✓ |
-| Auto-numbered chapter / section headings (no typed "1.1.1") | — | — | — | — | ✓ |
-| CJK and Latin fonts don't override each other in mixed paragraphs | — | — | — | — | ✓ |
+| Fill an existing blank template with content | ~ | ~ | ✓ | ✓ | ✓ |
+| Create a new Word document from scratch | ~ | ~ | ✓ | ~ | ✓ |
+| Auto-numbered chapter / section headings (no typed "1.1.1") | — | — | ~ | — | ✓ |
+| CJK and Latin fonts don't override each other in mixed paragraphs | — | — | ~ | — | ✓ |
 | Figures, tables, equations numbered as `chapter.n` | — | — | — | — | ✓ |
-| "See Figure 1.1" as a live field that updates on reorder | — | — | — | — | ✓ |
-| LaTeX equations as centered display blocks + number | ~ pandoc | ~ pandoc | — | — | ✓ |
-| Reviewer feedback flows back as tracked changes | ✓ | ✓ | ~ | ~ | ✓ |
+| "See Figure 1.1" as a live field that updates on reorder | — | — | ~ | — | ✓ |
+| LaTeX equations as centered display blocks + number | — | — | — | — | ✓ |
+| Reviewer feedback flows back as tracked changes | ✓ | ✓ | ~ | — | ✓ |
 | Convert typed "Figure 2.1" from a legacy draft to live fields | — | — | — | — | ✓ |
 | Fill form blanks without breaking the underline | — | — | — | — | ✓ |
-| Edit a specific cell in a table | — | — | ✓ | ✓ | ✓ |
+| Edit a specific cell in a table | — | — | ~ | ~ | ✓ |
+| Page headers / footers with page numbers | ~ | — | ~ | ~ | ✓ |
+| Different page layout per section (portrait / landscape, margins) | ~ | — | ~ | ~ | ✓ |
 | Format conformance check | — | — | — | — | ✓ |
-| Borrow styles from another document | — | — | — | — | ✓ |
+| Borrow styles from another document | — | — | ✓ | — | ✓ |
 
 > ✓ built-in helper, declare-and-use · ~ doable but the agent assembles pieces · — no specific support
 
@@ -54,7 +57,7 @@ The full sub-command surface, Block types, and reference docs are listed in the 
 
 ### The Skill: docx-master
 
-A focused Word-automation skill with 10 on-demand reference files ([view skill](skill/SKILL.md)):
+A focused Word-automation skill with 11 on-demand reference files ([view skill](skill/SKILL.md)):
 
 | Reference | Covers |
 |-----------|--------|
@@ -65,6 +68,7 @@ A focused Word-automation skill with 10 on-demand reference files ([view skill](
 | [cross-references.md](skill/references/cross-references.md) | `InlineRef` schema for figure / table / equation / section cites |
 | [numbering-formats.md](skill/references/numbering-formats.md) | Multi-level numbering shapes — decimal, parenthesized, CJK 序号, bullet |
 | [tables.md](skill/references/tables.md) | Table block schema for `edits[]` insertion |
+| [header-footer.md](skill/references/header-footer.md) | Page headers / footers — fixed text, page numbers, current chapter title |
 | [equations.md](skill/references/equations.md) | LaTeX → OMML inline + display math, numbered equation layout |
 | [chinese-font-sizes.md](skill/references/chinese-font-sizes.md) | 小四 / 五号 / 三号 / … → pt |
 | [audit.md](skill/references/audit.md) | Read-only conformance workflow + scanning axes |
@@ -184,7 +188,7 @@ Every write produces a fresh, schema-validated copy — the input file is never 
 |---|---|
 | `skill/SKILL.md` | Agent-facing contract (top-level routing) |
 | `skill/references/` | On-demand detail; loaded only when relevant |
-| `skill/tools/` | TS source for the 18 CLIs |
+| `skill/tools/` | TS source for the 15 CLIs |
 | `lib/` | Non-tool TS modules (xml / parse / config / apply / edit / shared) |
 | `test/fixtures/` | Sample `.docx` files for manual verification |
 | `build-skill.ts` | Stages `dist/docx-master/` + zip + per-provider fan-out |
