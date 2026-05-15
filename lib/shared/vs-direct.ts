@@ -29,9 +29,10 @@
  * and new still count, since cross-fingerprint paragraphs are informative).
  */
 
-import { computedStyleToEntry, parseLineSpacing } from "@lib/apply/style-mutation.ts"
+import { computedStyleToEntry } from "@lib/apply/style-mutation.ts"
 import type { StyleConfigEntry } from "@lib/config/config-types.ts"
 import type { ParsedParagraph } from "@lib/parse/types.ts"
+import { type LineSpacingInput, parseLineSpacing } from "@lib/shared/units.ts"
 
 export type VsDirectClass = "override" | "redundant" | "new"
 
@@ -70,7 +71,6 @@ const STRIPPABLE_FIELDS: ReadonlySet<string> = new Set([
   // pPr
   "alignment",
   "lineSpacing",
-  "lineRule",
   "spaceBefore",
   "spaceAfter",
   "firstLineIndent",
@@ -112,7 +112,6 @@ type FormatFieldKey = Extract<
   | "vertAlign"
   | "alignment"
   | "lineSpacing"
-  | "lineRule"
   | "spaceBefore"
   | "spaceAfter"
   | "firstLineIndent"
@@ -130,7 +129,6 @@ const FORMAT_FIELDS = [
   "vertAlign",
   "alignment",
   "lineSpacing",
-  "lineRule",
   "spaceBefore",
   "spaceAfter",
   "firstLineIndent",
@@ -195,12 +193,16 @@ export function analyzeVsDirect(
 }
 
 function canonicalize(field: string, val: unknown): unknown {
-  // lineSpacing accepts number | "Npt" string at the config surface; normalize
-  // to the numeric form so direct-extracted (number) and declared-string
-  // ("20pt") compare equally.
+  // lineSpacing accepts number (multiplier) | "Npt" (exact) | { atLeast }
+  // at the config surface. Normalize to the parsed mode+value tuple so the
+  // three forms compare structurally.
   if (field === "lineSpacing") {
-    return parseLineSpacing(val as string | number).value
+    const ls = parseLineSpacing(val as LineSpacingInput, "lineSpacing")
+    return `${ls.mode}:${ls.value}`
   }
+  // spaceBefore / spaceAfter / firstLineIndent / hangingIndent / size: any
+  // Length / Indent form compares by stringified form for now; the engine
+  // already normalizes to twips/half-pt at emit time.
   return val
 }
 

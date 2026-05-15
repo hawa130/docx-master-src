@@ -66,7 +66,7 @@ A focused Word-automation skill with 10 on-demand reference files ([view skill](
 | [numbering-formats.md](skill/references/numbering-formats.md) | Multi-level numbering shapes — decimal, parenthesized, CJK 序号, bullet |
 | [tables.md](skill/references/tables.md) | Table block schema for `edits[]` insertion |
 | [equations.md](skill/references/equations.md) | LaTeX → OMML inline + display math, numbered equation layout |
-| [chinese-font-sizes.md](skill/references/chinese-font-sizes.md) | 小四 / 五号 / 三号 / … → half-points |
+| [chinese-font-sizes.md](skill/references/chinese-font-sizes.md) | 小四 / 五号 / 三号 / … → pt |
 | [audit.md](skill/references/audit.md) | Read-only conformance workflow + scanning axes |
 
 ### 15 Tools

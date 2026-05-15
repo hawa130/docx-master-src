@@ -29,6 +29,7 @@
 
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
+import { toEighthPt, toTwips } from "@lib/shared/units.ts"
 import {
   TBL_PR_CHILD_ORDER,
   TC_PR_CHILD_ORDER,
@@ -276,7 +277,7 @@ function computeAutoShareTwips(
   let autoCount = 0
   for (const c of cols) {
     if (c.width === "auto") autoCount += 1
-    else explicitSum += Math.round(c.width * 20)
+    else explicitSum += toTwips(c.width, "table.cols.width")
   }
   if (autoCount === 0) return 0
   return Math.max(0, Math.round((usableWidth - explicitSum) / autoCount))
@@ -291,7 +292,7 @@ function computeFixedTotalTwips(
   let sum = 0
   for (const c of cols) {
     if (c.width === "auto") sum += autoShareTwips
-    else sum += Math.round(c.width * 20)
+    else sum += toTwips(c.width, "table.cols.width")
   }
   return sum
 }
@@ -389,23 +390,26 @@ function buildBorderElement(qname: string, edge: BorderEdge, ownerDoc: Document)
     return el
   }
   let style: string
-  let size: number // in pt
+  let sizeEighthPt: number
   let color = "auto"
   if (typeof edge === "string") {
     style = edge
-    size = edge === "thick" ? 1.5 : 0.5
-    if (edge === "double") size = 0.75
+    let defaultPt = edge === "thick" ? 1.5 : 0.5
+    if (edge === "double") defaultPt = 0.75
+    sizeEighthPt = toEighthPt(defaultPt, "border.size")
   } else {
     style = edge.style
-    // "thick" object form: default to 1.5pt unless agent overrides
-    size = edge.size ?? (edge.style === "thick" ? 1.5 : 0.5)
+    const defaultPt = edge.style === "thick" ? 1.5 : 0.5
+    sizeEighthPt = edge.size !== undefined
+      ? toEighthPt(edge.size, "border.size")
+      : toEighthPt(defaultPt, "border.size")
     color = edge.color ?? "auto"
   }
   // Map "thick" style to OOXML "single" with larger size — Word's val="thick"
   // is a deprecated alias for "single" with sz>=12.
   if (style === "thick") style = "single"
   el.setAttributeNS(w, "w:val", style)
-  el.setAttributeNS(w, "w:sz", String(Math.max(2, Math.round(size * 8))))
+  el.setAttributeNS(w, "w:sz", String(Math.max(2, sizeEighthPt)))
   el.setAttributeNS(w, "w:space", "0")
   el.setAttributeNS(w, "w:color", color)
   return el
@@ -437,7 +441,7 @@ function buildGridCol(width: ColWidth, autoTwips: number, ownerDoc: Document): E
   // seed only has to be non-zero and proportional. Emitting w:w="0" makes
   // Word render columns at minimum width (one character) regardless of
   // tblW, because tblGrid is the authoritative initial layout.
-  const twips = width === "auto" ? autoTwips : Math.round(width * 20)
+  const twips = width === "auto" ? autoTwips : toTwips(width, "table.cols.width")
   col.setAttributeNS(w, "w:w", String(twips))
   return col
 }

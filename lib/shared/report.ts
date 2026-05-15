@@ -1,6 +1,6 @@
 import type { EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
-import { parseLineSpacing } from "@lib/apply/style-mutation.ts"
 import type { ImportResult } from "@lib/apply/template-import.ts"
+import { type LineSpacingInput, parseLineSpacing } from "@lib/shared/units.ts"
 import { sameValue, type VsDirectReport } from "@lib/shared/vs-direct.ts"
 import type {
   FlagRecord,
@@ -33,7 +33,6 @@ export function extractDisplayFields(def: StyleConfigEntry): Record<string, unkn
     "vertAlign",
     "alignment",
     "lineSpacing",
-    "lineRule",
     "spaceBefore",
     "spaceAfter",
     "firstLineIndent",
@@ -42,11 +41,13 @@ export function extractDisplayFields(def: StyleConfigEntry): Record<string, unkn
   ]
   for (const k of interesting) {
     if (def[k] === undefined) continue
-    // lineSpacing accepts number OR "Npt" string at the config surface.
-    // Normalize to the numeric form for display + diff parity with source
-    // values (which always come back as numbers from cascade resolution).
+    // lineSpacing's three surface forms (number multiplier / "Npt" exact /
+    // { atLeast } at-least) flatten to a "mode:value" string for diff parity
+    // with cascade-resolved source values (which also flatten through
+    // parseLineSpacing).
     if (k === "lineSpacing") {
-      out[k] = parseLineSpacing(def[k] as string | number).value
+      const ls = parseLineSpacing(def[k] as LineSpacingInput, "lineSpacing")
+      out[k] = `${ls.mode}:${ls.value}`
     } else {
       out[k] = def[k]
     }

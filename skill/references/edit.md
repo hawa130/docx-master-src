@@ -59,7 +59,7 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 
 ```json
 { "type": "paragraph", "text": "...", "styleId"?, "paraFormat"?, "runFormat"?, "numbering"?, "anchor"? }
-{ "type": "image", "src": "path", "widthPt": N, "heightPt": N, "alt"?, "styleId"?, "paraFormat"? }
+{ "type": "image", "src": "path", "width": <length>, "height": <length>, "alt"?, "styleId"?, "paraFormat"? }
 { "type": "table", "rows": [[...]], "headerRows"?, "headerStyle"?, "cols"?, "borders"?, "alignment"?, "layout"? }
 { "type": "equation", "latex"?: "...", "omml"?: "...", "styleId"?, "paraFormat"?,
   "captionId"?: "<id>", "subGroup"?: "start"|"continue", "anchor"? }
@@ -105,11 +105,13 @@ Picking the wrong locale's shape (e.g. `「」` in mainland 简中正文, or str
 
 ### Format fields
 
-`runFormat`: `bold` / `italic` / `underline` / `strike` (boolean, tri-state — `false` emits explicit off-toggle to override inherited true), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (pt), `vertAlign` (`"superscript"` / `"subscript"` / `"baseline"` — three-state; omit to inherit, use `"baseline"` only to opt out of a super/sub inherited from a character style).
+`runFormat`: `bold` / `italic` / `underline` / `strike` (boolean, tri-state — `false` emits explicit off-toggle to override inherited true), `color` (`"RRGGBB"`), `fontLatin` / `fontCJK`, `size` (Length — see below), `vertAlign` (`"superscript"` / `"subscript"` / `"baseline"` — three-state; omit to inherit, use `"baseline"` only to opt out of a super/sub inherited from a character style).
 
 Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` runs, you can place `{ "refTo": ..., "display": ..., "format": ... }` cross-reference nodes. **Any cite to an auto-numbered target (figure / table / heading / equation / reference entry) must use these — never write the counter as literal text.** See [`cross-references.md`](cross-references.md) for the contract.
 
-`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (pt), `lineSpacing` + `lineRule` (same convention as a style definition), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (`"Nchar"` / `"Npt"` / number), `outlineLevel` (0–9).
+`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (Length), `lineSpacing` (number multiplier / `"Npt"` exact / `{ atLeast: <length> }`), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (Length, plus `"Nchar"` for font-scaled indent, or `null` for explicit zero), `outlineLevel` (0–9).
+
+**Length values** — anywhere a length is expected (`size`, `spaceBefore` / `spaceAfter`, `width` / `height`, border `size`, indent forms, table column widths) accept the same shape: a bare number (pt) or one of `"Npt"` / `"Ncm"` / `"Nmm"` / `"Nin"`. Use whatever matches the user's prompt — `"2.54cm"` is no extra cost over `"72pt"`. Indents additionally accept `"Nchar"` (Word's "首行缩进 N 字符" — auto-scales with font size; preferred for CJK body text where character-units survive size changes).
 
 ## Track-changes mode
 

@@ -25,7 +25,12 @@ import * as z from "zod/mini"
 
 /* ------------- atomic helpers ------------- */
 
-import { IndentValue, NonEmptyString } from "@lib/config/zod-primitives.ts"
+import {
+  IndentValue,
+  LengthValue,
+  LineSpacingValue,
+  NonEmptyString,
+} from "@lib/config/zod-primitives.ts"
 
 /** RGB hex without leading "#". Six-hex form, case-insensitive. Same shape
  * as styles in lib/config-schema.ts (which is laxer there for legacy
@@ -42,7 +47,7 @@ export const RunFormatSchema = z.strictObject({
   color: z.optional(ColorHex),
   fontLatin: z.optional(z.string()),
   fontCJK: z.optional(z.string()),
-  size: z.optional(z.number().check(z.gt(0))),
+  size: z.optional(LengthValue),
   // "baseline" is the explicit reset to normal baseline (use when a parent
   // character style declares super/sub and this run needs to opt out);
   // omitting the field inherits whatever the cascade resolves to.
@@ -53,10 +58,9 @@ export const RunFormatSchema = z.strictObject({
 
 export const ParagraphFormatSchema = z.strictObject({
   alignment: z.optional(z.enum(["left", "center", "right", "both"])),
-  spaceBefore: z.optional(z.number()),
-  spaceAfter: z.optional(z.number()),
-  lineSpacing: z.optional(z.union([z.number(), z.string()])),
-  lineRule: z.optional(z.enum(["auto", "exact", "atLeast"])),
+  spaceBefore: z.optional(LengthValue),
+  spaceAfter: z.optional(LengthValue),
+  lineSpacing: z.optional(LineSpacingValue),
   firstLineIndent: z.optional(IndentValue),
   hangingIndent: z.optional(IndentValue),
   indentLeft: z.optional(IndentValue),
@@ -161,8 +165,8 @@ const ParagraphBlockSchema = z.strictObject({
 const ImageBlockSchema = z.strictObject({
   type: z.literal("image"),
   src: NonEmptyString,
-  widthPt: z.number().check(z.gt(0)),
-  heightPt: z.number().check(z.gt(0)),
+  width: LengthValue,
+  height: LengthValue,
   alt: z.optional(z.string()),
   /** Optional paragraph-level style binding for the wrapping `<w:p>` —
    * lets a figure binding ("FigureImage" or similar) control centering /
@@ -281,9 +285,10 @@ const BorderEdgeStyle = z.enum(["single", "thick", "double", "dotted", "dashed"]
 
 const BorderEdgeObjectSchema = z.strictObject({
   style: BorderEdgeStyle,
-  /** Line size in pt. Engine multiplies by 8 to produce OOXML `w:sz` (1/8 pt
-   * units). Defaults: "single" → 0.5, "thick" → 1.5. */
-  size: z.optional(z.number().check(z.gt(0))),
+  /** Line size as a Length (`number` = pt, or `"Npt|Ncm|Nmm|Nin"`). Engine
+   *  converts to OOXML's 1/8-pt units. Defaults: "single" → 0.5pt,
+   *  "thick" → 1.5pt. */
+  size: z.optional(LengthValue),
   /** Hex RGB without leading "#", or "auto" to inherit document defaults. */
   color: z.optional(z.union([ColorHex, z.literal("auto")])),
 })
@@ -319,12 +324,12 @@ const BordersCustomSchema = z.strictObject({
 
 export const BordersSchema = z.union([BordersPresetSchema, BordersCustomSchema])
 
-/** Column width: `"auto"` (Word fits content) or a positive number in
- * pt. Percentage widths were considered but require coordinated tblW +
- * per-cell tcW emission with OOXML's fiftiethPercent units; deferred
- * out of v1 — use fixed pt widths with `layout: "fixed"` for predictable
- * sizing. */
-const TableWidthSchema = z.union([z.literal("auto"), z.number().check(z.gt(0))])
+/** Column width: `"auto"` (Word fits content) or a Length (pt by default,
+ * or `"Ncm" / "Nmm" / "Nin"`). Percentage widths were considered but require
+ * coordinated tblW + per-cell tcW emission with OOXML's fiftiethPercent
+ * units; deferred out of v1 — use fixed widths with `layout: "fixed"` for
+ * predictable sizing. */
+const TableWidthSchema = z.union([z.literal("auto"), LengthValue])
 
 const ColSpecSchema = z.strictObject({
   width: TableWidthSchema,

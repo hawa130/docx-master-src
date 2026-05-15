@@ -27,7 +27,14 @@ import {
   type RichText,
   type RunFormat,
 } from "@lib/config/edit-types.ts"
-import { parseIndent, parseLineSpacing } from "@lib/apply/style-mutation.ts"
+import {
+  type Length,
+  type LineSpacingInput,
+  parseIndent,
+  parseLineSpacing,
+  toHalfPt,
+  toTwips,
+} from "@lib/shared/units.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
 import { emitEquationBlock, emitInlineEquation } from "@lib/edit/math/equation-emit.ts"
@@ -76,11 +83,12 @@ export function buildRPrChildren(fmt: RunFormat, ownerDoc: Document): Element[] 
     out.push(rFonts)
   }
   if (fmt.size !== undefined) {
+    const halfPt = toHalfPt(fmt.size, "size")
     const sz = ownerDoc.createElementNS(w, "w:sz")
-    sz.setAttributeNS(w, "w:val", String(Math.round(fmt.size * 2)))
+    sz.setAttributeNS(w, "w:val", String(halfPt))
     out.push(sz)
     const szCs = ownerDoc.createElementNS(w, "w:szCs")
-    szCs.setAttributeNS(w, "w:val", String(Math.round(fmt.size * 2)))
+    szCs.setAttributeNS(w, "w:val", String(halfPt))
     out.push(szCs)
   }
   // Toggles emit both states: `true` adds the on-marker, `false` adds
@@ -162,21 +170,15 @@ export function buildPPrChildren(fmt: ParagraphFormat, ownerDoc: Document): Elem
   ) {
     const spacing = ownerDoc.createElementNS(w, "w:spacing")
     if (fmt.spaceBefore !== undefined) {
-      spacing.setAttributeNS(w, "w:before", String(Math.round(fmt.spaceBefore * 20)))
+      spacing.setAttributeNS(w, "w:before", String(toTwips(fmt.spaceBefore, "spaceBefore")))
     }
     if (fmt.spaceAfter !== undefined) {
-      spacing.setAttributeNS(w, "w:after", String(Math.round(fmt.spaceAfter * 20)))
+      spacing.setAttributeNS(w, "w:after", String(toTwips(fmt.spaceAfter, "spaceAfter")))
     }
     if (fmt.lineSpacing !== undefined) {
-      const ls = parseLineSpacing(fmt.lineSpacing)
-      const rule = fmt.lineRule ?? (ls.explicitPt || ls.value >= 10 ? "exact" : "auto")
-      if (rule === "auto") {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 240)))
-        spacing.setAttributeNS(w, "w:lineRule", "auto")
-      } else {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 20)))
-        spacing.setAttributeNS(w, "w:lineRule", rule)
-      }
+      const ls = parseLineSpacing(fmt.lineSpacing as LineSpacingInput, "lineSpacing")
+      spacing.setAttributeNS(w, "w:line", String(ls.value))
+      spacing.setAttributeNS(w, "w:lineRule", ls.mode)
     }
     out.push(spacing)
   }
@@ -289,8 +291,8 @@ export function emitRichText(
  */
 export type ImageEmitter = (
   src: string,
-  widthPt: number,
-  heightPt: number,
+  width: Length,
+  height: Length,
   alt: string | undefined,
   ownerDoc: Document,
 ) => Element
@@ -399,7 +401,7 @@ function emitImageBlock(
   if (!ctx.emitImage) {
     throw new Error("image block encountered but no ImageEmitter wired (image asset path inactive)")
   }
-  const drawing = ctx.emitImage(block.src, block.widthPt, block.heightPt, block.alt, ownerDoc)
+  const drawing = ctx.emitImage(block.src, block.width, block.height, block.alt, ownerDoc)
   const p = ownerDoc.createElementNS(w, "w:p")
   if (block.styleId !== undefined || block.paraFormat !== undefined) {
     const pPr = ensurePPr(p, ownerDoc)

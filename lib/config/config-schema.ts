@@ -30,7 +30,12 @@ import * as z from "zod/mini"
 
 /* ------------- atomic helpers ------------- */
 
-import { IndentValue, NonEmptyString } from "@lib/config/zod-primitives.ts"
+import {
+  IndentValue,
+  LengthValue,
+  LineSpacingValue,
+  NonEmptyString,
+} from "@lib/config/zod-primitives.ts"
 
 /** Fields shared between Mode B (`styles[i].*`) direct values and the
  * `styles[i].overrides` block. Kept as a plain object so it can be spread
@@ -39,15 +44,14 @@ const styleFormatFields = {
   basedOn: z.optional(z.string()),
   fontLatin: z.optional(z.string()),
   fontCJK: z.optional(z.string()),
-  size: z.optional(z.number()),
+  size: z.optional(LengthValue),
   bold: z.optional(z.boolean()),
   italic: z.optional(z.boolean()),
   color: z.optional(z.string()),
   alignment: z.optional(z.enum(["left", "center", "right", "both"])),
-  lineSpacing: z.optional(z.union([z.number(), z.string()])),
-  lineRule: z.optional(z.enum(["auto", "exact", "atLeast"])),
-  spaceBefore: z.optional(z.number()),
-  spaceAfter: z.optional(z.number()),
+  lineSpacing: z.optional(LineSpacingValue),
+  spaceBefore: z.optional(LengthValue),
+  spaceAfter: z.optional(LengthValue),
   firstLineIndent: z.optional(IndentValue),
   hangingIndent: z.optional(IndentValue),
   outlineLevel: z.optional(z.number().check(z.gte(0), z.lte(9))),
@@ -74,7 +78,7 @@ export const StyleEntrySchema = z.strictObject({
 export const NumRPrSchema = z.strictObject({
   fontLatin: z.optional(z.string()),
   fontCJK: z.optional(z.string()),
-  size: z.optional(z.number()),
+  size: z.optional(LengthValue),
   bold: z.optional(z.boolean()),
   italic: z.optional(z.boolean()),
   color: z.optional(z.string()),

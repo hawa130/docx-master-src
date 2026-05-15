@@ -4,6 +4,39 @@ Full field-by-field reference for the JSON config consumed by
 `apply [--dry-run] <config.json>`. Read this before composing your first
 config; SKILL.md only carries a top-level summary.
 
+## Length values
+
+Anywhere a length is expected — `size`, `spaceBefore` / `spaceAfter`,
+image `width` / `height`, border `size`, table column widths, paragraph
+indents — the accepted shape is uniform:
+
+| Form | Meaning | Example |
+|---|---|---|
+| `number` | pt (bare) | `12` = 12 pt |
+| `"Npt"` | pt explicit | `"12pt"` |
+| `"Ncm"` | centimeters | `"2.54cm"` |
+| `"Nmm"` | millimeters | `"5mm"` |
+| `"Nin"` | inches | `"1in"` |
+
+Pick whichever matches the user's prompt verbatim — `"2.54cm"` and
+`"72pt"` cost the agent the same to write; the engine converts to OOXML
+internal units.
+
+Indents (`firstLineIndent` / `hangingIndent` / `indentLeft` /
+`indentRight`) additionally accept `"Nchar"` — Word's "首行缩进 N 字符",
+emitted as `w:firstLineChars`, auto-scales with the run's font size.
+Prefer `"2char"` for CJK body indents so the indent stays correct when
+font size changes.
+
+`lineSpacing` has three modes determined by input type:
+
+- **`number`** → multiplier (auto rule). `1.5` = 1.5× line height.
+- **`"Npt"` / `"Ncm"` / ...** → exact line height (exact rule).
+- **`{ "atLeast": <Length> }`** → at-least line height (atLeast rule, rare).
+
+Bare numbers are always multipliers — no magnitude heuristic. Use the
+string form when you mean an exact line height.
+
 ## Top-level shape
 
 ```jsonc
@@ -73,7 +106,7 @@ config; SKILL.md only carries a top-level summary.
   fontLatin:       "Arial",    // optional. Latin / Western text font.
   fontCJK:         "黑体",     // optional. CJK font. Most common field in
                                //   Chinese-academic configs.
-  size:            10.5,       // optional. pt (not half-pt).
+  size:            10.5,       // optional. Length: bare = pt, or "Npt"/"Ncm"/"Nmm"/"Nin".
   bold:            false,      // optional. Default false.
   italic:          false,      // optional. Default false.
   color:           "auto",     // optional. Hex ("2E75B6") or "auto". Default "auto".
@@ -83,19 +116,19 @@ config; SKILL.md only carries a top-level summary.
                                //   "baseline" is the explicit reset — distinct from
                                //   omitting the field (= inherit cascade).
   alignment:       "center",   // optional. "left" | "center" | "right" | "both".
-  lineSpacing:     1.5,        // optional. Number or "Npt" string (e.g. 20 or "20pt").
-                               //   Number: <10 → multiplier (auto rule); ≥10 → pt (exact rule).
-                               //   "Npt" string: always pt (exact), regardless of magnitude.
-  lineRule:        "atLeast",  // optional. "auto" | "exact" | "atLeast". Overrides the
-                               //   default rule. Use "atLeast" to faithfully round-trip a
-                               //   source's atLeast rule.
-  spaceBefore:     12,         // optional. pt before paragraph.
-  spaceAfter:      6,          // optional. pt after paragraph.
-  firstLineIndent: "2char",    // optional. "Nchar" / "Npt" / pt number / null.
+  lineSpacing:     1.5,        // optional. Three forms, mode chosen by type:
+                               //   number       → multiplier (auto), e.g. 1.5, 2
+                               //   "Npt"/etc.   → exact line height
+                               //   { atLeast }  → at-least line height
+                               //   Bare numbers are ALWAYS multipliers — no magnitude
+                               //   heuristic. Use "20pt" for exact 20-pt line height.
+  spaceBefore:     12,         // optional. Length before paragraph.
+  spaceAfter:      6,          // optional. Length after paragraph.
+  firstLineIndent: "2char",    // optional. Length, "Nchar", or null.
                                //   "Nchar" → emitted as `w:firstLineChars` (1/100 char),
                                //     auto-scales with run font size — required for the
                                //     standard "首行缩进 2 字符" academic convention.
-                               //   "Npt" or number → emitted as `w:firstLine` (fixed
+                               //   Other Length → emitted as `w:firstLine` (fixed
                                //     twips), does NOT scale with font.
                                //   `null` (or omitted) → no indent emitted; for
                                //     existing paragraphs the cascade decides.
@@ -104,7 +137,7 @@ config; SKILL.md only carries a top-level summary.
                                //   Prefer "Nchar" for thesis/paper body text.
   hangingIndent:   null,       // optional. Same units as firstLineIndent. For
                                //   bibliography/reference entries use "2char" (or
-                               //   pt to match the leading "[N] " marker width).
+                               //   pt/cm to match the leading "[N] " marker width).
   outlineLevel:    0,          // optional. 0–9: 0–8 are heading levels
                                //   (0 = H1, 1 = H2, …); 9 = body text. Set on
                                //   heading styles to enable TOC / outline view /

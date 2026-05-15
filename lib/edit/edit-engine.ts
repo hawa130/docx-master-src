@@ -325,9 +325,9 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   const pendingCaptionResets: PendingCaptionReset[] = []
   const captionsMap = input.captions
   const emitCtx: EmitContext = {
-    emitImage: (src, widthPt, heightPt, alt, ownerDoc) => {
+    emitImage: (src, width, height, alt, ownerDoc) => {
       const { rId } = imageRegistry.registerImage(src)
-      return imageRegistry.buildDrawing(rId, widthPt, heightPt, alt, ownerDoc)
+      return imageRegistry.buildDrawing(rId, width, height, alt, ownerDoc)
     },
     captions: captionsMap
       ? {

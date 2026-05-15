@@ -31,7 +31,7 @@ TableBlock {
   layout?: "fixed" | "autofit"               // default "autofit"
 }
 
-TableWidth = "auto" | <number, pt>
+TableWidth = "auto" | Length
 
 TableCell = string                                  // plain text, single paragraph
           | InlineNode[]                            // formatted text / cross-refs, single paragraph
@@ -47,7 +47,7 @@ TableCell = string                                  // plain text, single paragr
 BordersPreset = "all" | "none" | "outer" | "three-line"
 BordersCustom = { top?, bottom?, left?, right?, insideH?, insideV?: BorderEdge }
 BorderEdge    = "none" | "single" | "thick" | "double" | "dotted" | "dashed"
-              | { style, size?: pt, color?: hex | "auto" }
+              | { style, size?: Length, color?: hex | "auto" }
 ```
 
 ## Cell content — four progressive forms
@@ -109,7 +109,7 @@ Each row must total: `declared cells + cells claimed by ongoing rowspans + colsp
 }
 ```
 
-Field `size` is in pt; engine converts to OOXML's 1/8 pt units (`w:sz`). Omitting a side defaults it to `"none"`. `"thick"` is a 1.5 pt shortcut.
+Field `size` is a Length (`number` = pt, or `"Npt"` / `"Ncm"` / `"Nmm"` / `"Nin"`); engine converts to OOXML's 1/8 pt units (`w:sz`). Omitting a side defaults it to `"none"`. `"thick"` is a 1.5 pt shortcut. Full Length syntax: see [config-schema.md](config-schema.md) §"Length values".
 
 ### Cell-level override (escape hatch)
 
@@ -140,10 +140,10 @@ Bind a paragraph style to all header-row cells with `headerStyle`:
 
 ## Column widths and layout
 
-`cols` declares per-column widths; length must match the effective column count (see Cell merging). Mixing explicit pt with `"auto"` works — auto columns split the remaining budget after explicit ones.
+`cols` declares per-column widths; length must match the effective column count (see Cell merging). Mixing explicit Length values with `"auto"` works — auto columns split the remaining budget after explicit ones.
 
 ```jsonc
-"cols": [{ "width": "auto" }, { "width": 100 }, { "width": 200 }]
+"cols": [{ "width": "auto" }, { "width": "3.5cm" }, { "width": "7cm" }]
 ```
 
 Omit `cols` for autofit: engine seeds even-split widths from the host section's content width; Word reflows on open. Inside a `cell` locator the cell's actual width isn't auto-detected — declare `cols` matching the cell when it's narrow, especially under `layout: "fixed"`.

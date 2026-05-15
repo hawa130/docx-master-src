@@ -19,8 +19,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { extname, resolve as resolvePath } from "node:path"
 import { type DocxReader, parseXml } from "@lib/xml/reader.ts"
 import { NS } from "@lib/parse/types.ts"
-
-const PT_TO_EMU = 12700
+import { type Length, toEmu } from "@lib/shared/units.ts"
 
 const REL_TYPE_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 
@@ -92,13 +91,13 @@ export class ImageAssetRegistry {
    * EMU-converts the dimensions; `alt` populates docPr name + descr. */
   buildDrawing(
     rId: string,
-    widthPt: number,
-    heightPt: number,
+    width: Length,
+    height: Length,
     alt: string | undefined,
     ownerDoc: Document,
   ): Element {
-    const cx = String(Math.round(widthPt * PT_TO_EMU))
-    const cy = String(Math.round(heightPt * PT_TO_EMU))
+    const cx = String(toEmu(width, "image.width"))
+    const cy = String(toEmu(height, "image.height"))
     const docPrId = String(this.nextDocPrId++)
     const altText = alt ?? `Image ${docPrId}`
 

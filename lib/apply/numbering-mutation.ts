@@ -2,6 +2,7 @@ import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 import type { NumberingConfig } from "@lib/config/config-types.ts"
 import { insertPPrIntoStyle } from "@lib/apply/style-mutation.ts"
+import { toHalfPt } from "@lib/shared/units.ts"
 import { RPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 
 /* ------------- numbering.xml manipulation ------------- */
@@ -125,7 +126,7 @@ function buildLvlRPr(
   }
   if (spec.size !== undefined) {
     const sz = doc.createElementNS(w, "w:sz")
-    sz.setAttributeNS(w, "w:val", String(Math.round(spec.size * 2)))
+    sz.setAttributeNS(w, "w:val", String(toHalfPt(spec.size, "numbering.rPr.size")))
     add(sz)
   }
   if (spec.bold !== undefined) {

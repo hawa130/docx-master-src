@@ -144,7 +144,7 @@ function renderPageSetup(doc: LoadedDoc): string[] {
   const usable = sectionUsableWidthTwips(s)
   if (usable > 0) {
     // Content-area width (pgSz − pgMar). mm + pt for direct use as
-    // ImageBlock.widthPt / TableBlock.cols widths.
+    // ImageBlock.width / TableBlock.cols widths (Length values).
     lines.push(`Text width:  ${tw2mm(usable)} mm / ${(usable / 20).toFixed(1)} pt`)
   }
   return lines

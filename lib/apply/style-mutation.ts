@@ -8,6 +8,17 @@ import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-ut
 import type { StyleConfigEntry } from "@lib/config/config-types.ts"
 import type { StyleResolver } from "@lib/parse/style-resolver.ts"
 import { PPR_CHILD_ORDER, RPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
+import {
+  charUnitsToString,
+  halfPtToPt,
+  type LineSpacingInput,
+  lineSpacingToConfig,
+  parseIndent,
+  parseLineSpacing,
+  toHalfPt,
+  toTwips,
+  twipsToPtString,
+} from "@lib/shared/units.ts"
 
 /**
  * Insert a freshly-created `<w:pPr>` into a `<w:style>` at the schema-correct
@@ -104,30 +115,35 @@ export function extractPriorDisplayFields(
   if (rPr.fontEastAsia) out.fontCJK = rPr.fontEastAsia
   const latin = rPr.fontAscii ?? rPr.fontHAnsi
   if (latin) out.fontLatin = latin
-  if (rPr.size !== undefined) out.size = rPr.size / 2
+  if (rPr.size !== undefined) out.size = halfPtToPt(rPr.size)
   if (rPr.bold !== undefined) out.bold = rPr.bold
   if (rPr.italic !== undefined) out.italic = rPr.italic
   if (rPr.color && rPr.color !== "auto") out.color = rPr.color
   if (rPr.vertAlign) out.vertAlign = rPr.vertAlign
   if (pPr.alignment) out.alignment = pPr.alignment
-  if (pPr.spaceBefore !== undefined) out.spaceBefore = pPr.spaceBefore / 20
-  if (pPr.spaceAfter !== undefined) out.spaceAfter = pPr.spaceAfter / 20
+  if (pPr.spaceBefore !== undefined) out.spaceBefore = twipsToPtString(pPr.spaceBefore)
+  if (pPr.spaceAfter !== undefined) out.spaceAfter = twipsToPtString(pPr.spaceAfter)
   if (pPr.lineSpacing !== undefined) {
-    const rule = pPr.lineRule || "auto"
-    if (rule === "auto") {
-      out.lineSpacing = pPr.lineSpacing / 240
-    } else {
-      out.lineSpacing = pPr.lineSpacing / 20
-      out.lineRule = rule
-    }
+    out.lineSpacing = lineSpacingToConfig({
+      mode: pPrLineRuleToMode(pPr.lineRule),
+      value: pPr.lineSpacing,
+    })
   }
   if (pPr.firstLineIndentChars !== undefined) {
-    out.firstLineIndent = `${pPr.firstLineIndentChars / 100}char`
+    out.firstLineIndent = charUnitsToString(pPr.firstLineIndentChars)
   } else if (pPr.firstLineIndent !== undefined) {
-    out.firstLineIndent = `${pPr.firstLineIndent / 20}pt`
+    out.firstLineIndent = twipsToPtString(pPr.firstLineIndent)
   }
   if (pPr.outlineLevel !== undefined) out.outlineLevel = pPr.outlineLevel
   return out
+}
+
+/** Resolve the OOXML `lineRule` attribute string (or missing) to the
+ *  units.ts LineSpacingParsed mode. Defaults to "auto" matching Word's
+ *  ECMA-376 default when the attribute is absent. */
+function pPrLineRuleToMode(lineRule: string | undefined): "auto" | "exact" | "atLeast" {
+  if (lineRule === "exact" || lineRule === "atLeast") return lineRule
+  return "auto"
 }
 
 function paragraphToStyleEntry(p: ParsedParagraph): Partial<StyleConfigEntry> {
@@ -147,35 +163,32 @@ export function computedStyleToEntry(
   const latin = r.fontAscii ?? r.fontHAnsi
   if (latin) out.fontLatin = latin
   if (r.fontEastAsia && r.fontEastAsia !== latin) out.fontCJK = r.fontEastAsia
-  if (r.size !== undefined) out.size = r.size / 2
+  if (r.size !== undefined) out.size = halfPtToPt(r.size)
   if (r.bold) out.bold = true
   if (r.italic) out.italic = true
   if (r.color && r.color !== "auto") out.color = r.color
   if (r.vertAlign) out.vertAlign = r.vertAlign
   if (pp.alignment) out.alignment = pp.alignment as StyleConfigEntry["alignment"]
-  if (pp.spaceBefore !== undefined) out.spaceBefore = pp.spaceBefore / 20
-  if (pp.spaceAfter !== undefined) out.spaceAfter = pp.spaceAfter / 20
+  if (pp.spaceBefore !== undefined) out.spaceBefore = twipsToPtString(pp.spaceBefore)
+  if (pp.spaceAfter !== undefined) out.spaceAfter = twipsToPtString(pp.spaceAfter)
   if (pp.lineSpacing !== undefined) {
-    const rule = (pp.lineRule || "auto") as "auto" | "exact" | "atLeast"
-    if (rule === "auto") {
-      out.lineSpacing = pp.lineSpacing / 240
-    } else {
-      out.lineSpacing = pp.lineSpacing / 20
-      out.lineRule = rule
-    }
+    out.lineSpacing = lineSpacingToConfig({
+      mode: pPrLineRuleToMode(pp.lineRule),
+      value: pp.lineSpacing,
+    }) as StyleConfigEntry["lineSpacing"]
   }
   // Preserve character-based indent semantics when the source paragraph used
   // `firstLineChars` / `hangingChars` (Word writes these for "首行缩进 N 字符").
   // Round-tripping through pt would drop the font-size auto-scale.
   if (pp.firstLineIndentChars !== undefined) {
-    out.firstLineIndent = `${pp.firstLineIndentChars / 100}char`
+    out.firstLineIndent = charUnitsToString(pp.firstLineIndentChars)
   } else if (pp.firstLineIndent !== undefined) {
-    out.firstLineIndent = `${pp.firstLineIndent / 20}pt`
+    out.firstLineIndent = twipsToPtString(pp.firstLineIndent)
   }
   if (pp.hangingIndentChars !== undefined) {
-    out.hangingIndent = `${pp.hangingIndentChars / 100}char`
+    out.hangingIndent = charUnitsToString(pp.hangingIndentChars)
   } else if (pp.hangingIndent !== undefined) {
-    out.hangingIndent = `${pp.hangingIndent / 20}pt`
+    out.hangingIndent = twipsToPtString(pp.hangingIndent)
   }
   if (pp.outlineLevel !== undefined) out.outlineLevel = pp.outlineLevel
   // intentionally omitted: pStyle (would self-reference), numId/numLevel (bound via numbering config)
@@ -335,19 +348,13 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
   ) {
     const spacing = stylesDoc.createElementNS(w, "w:spacing")
     if (def.spaceBefore !== undefined)
-      spacing.setAttributeNS(w, "w:before", String(Math.round(def.spaceBefore * 20)))
+      spacing.setAttributeNS(w, "w:before", String(toTwips(def.spaceBefore, "spaceBefore")))
     if (def.spaceAfter !== undefined)
-      spacing.setAttributeNS(w, "w:after", String(Math.round(def.spaceAfter * 20)))
+      spacing.setAttributeNS(w, "w:after", String(toTwips(def.spaceAfter, "spaceAfter")))
     if (def.lineSpacing !== undefined) {
-      const ls = parseLineSpacing(def.lineSpacing)
-      const rule = def.lineRule ?? (ls.explicitPt || ls.value >= 10 ? "exact" : "auto")
-      if (rule === "auto") {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 240)))
-        spacing.setAttributeNS(w, "w:lineRule", "auto")
-      } else {
-        spacing.setAttributeNS(w, "w:line", String(Math.round(ls.value * 20)))
-        spacing.setAttributeNS(w, "w:lineRule", rule)
-      }
+      const ls = parseLineSpacing(def.lineSpacing as LineSpacingInput, "lineSpacing")
+      spacing.setAttributeNS(w, "w:line", String(ls.value))
+      spacing.setAttributeNS(w, "w:lineRule", ls.mode)
     }
     pPrAdditions.push(spacing)
   }
@@ -410,11 +417,12 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     rPrAdditions.push(rFonts)
   }
   if (def.size !== undefined) {
+    const halfPt = toHalfPt(def.size, "size")
     const sz = stylesDoc.createElementNS(w, "w:sz")
-    sz.setAttributeNS(w, "w:val", String(Math.round(def.size * 2)))
+    sz.setAttributeNS(w, "w:val", String(halfPt))
     rPrAdditions.push(sz)
     const szCs = stylesDoc.createElementNS(w, "w:szCs")
-    szCs.setAttributeNS(w, "w:val", String(Math.round(def.size * 2)))
+    szCs.setAttributeNS(w, "w:val", String(halfPt))
     rPrAdditions.push(szCs)
   }
   if (def.bold) {
@@ -446,51 +454,6 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
   return result
 }
 
-/**
- * Parse an indent config value into a tagged twip-or-char unit.
- *
- *   number      → pt, written as fixed-twip indent
- *   "Npt"       → pt, fixed-twip
- *   "Nchar"     → 1/100 character, written as `firstLineChars`/`hangingChars`
- *                 so Word auto-scales the indent with the run font size
- *
- * The previous implementation collapsed both to twips by hard-coding
- * 240 twips/char (12pt assumption), which silently broke "首行缩进 2 字符"
- * for any non-12pt body and disabled font-size tracking on round-trip.
- */
-/** Returns `null` on unparseable strings — callers fall back to "don't
- * emit the attribute" (semantically equivalent to a 0-twip indent for
- * Word, but more conservative than blindly writing `w:firstLine="0"`). */
-export function parseIndent(
-  v: string | number | null,
-): { kind: "twip" | "char"; value: number } | null {
-  if (v === null) return null
-  if (typeof v === "number") return { kind: "twip", value: Math.round(v * 20) }
-  const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*(char|chars|pt)?$/i)
-  if (!m) return null
-  const n = parseFloat(m[1]!)
-  const unit = (m[2] || "").toLowerCase()
-  if (unit.startsWith("char")) return { kind: "char", value: Math.round(n * 100) }
-  return { kind: "twip", value: Math.round(n * 20) }
-}
-
-/** Normalize a lineSpacing config value to `{ value, explicitPt }`.
- *  - number stays as-is; explicitPt=false (downstream applies the legacy
- *    `<10 → multiplier`, `>=10 → pt` magnitude heuristic).
- *  - "Npt" string (e.g. "20pt") parses to N with explicitPt=true so the
- *    downstream rule defaults to "exact" regardless of magnitude — agent
- *    who explicitly typed "pt" gets pt even at small numbers like 1.5pt.
- *  Throws on unparseable strings so the error fires at config-read time. */
-export function parseLineSpacing(v: string | number): { value: number; explicitPt: boolean } {
-  if (typeof v === "number") return { value: v, explicitPt: false }
-  const m = v.trim().match(/^(-?\d+(?:\.\d+)?)\s*pt$/i)
-  if (!m) {
-    throw new Error(
-      `lineSpacing "${v}": must be a number (e.g. 1.5 multiplier / 20 pt) or "Npt" string (e.g. "20pt").`,
-    )
-  }
-  return { value: parseFloat(m[1]!), explicitPt: true }
-}
 
 /**
  * Move the styles named in `orderedIds` to the top of styles.xml's <w:style>

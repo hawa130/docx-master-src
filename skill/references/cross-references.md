@@ -59,7 +59,7 @@ When an `edits[]` insert creates a paragraph later refs will cite, give it an `a
       "op": "insert-after",
       "at": { "type": "paragraph", "index": 50 },
       "content": [
-        { "type": "image", "src": "diagrams/arch.png", "widthPt": 360, "heightPt": 240 },
+        { "type": "image", "src": "diagrams/arch.png", "width": "12.7cm", "height": "8.5cm" },
         {
           "type": "caption",
           "captionId": "Figure",
