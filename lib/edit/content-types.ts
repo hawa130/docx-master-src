@@ -32,7 +32,10 @@ export class ContentTypes {
   }
 
   /** Ensure a `<Default Extension="..." ContentType="..."/>` entry exists.
-   *  Idempotent — duplicate calls for the same extension are no-ops. */
+   *  Idempotent on `ext` — duplicate calls with the same extension skip
+   *  even if `mime` differs (each ext should resolve to exactly one MIME
+   *  in practice; if a caller passes inconsistent MIMEs the first wins
+   *  silently). */
   ensureDefault(ext: string, mime: string): void {
     const key = ext.toLowerCase()
     if (this.extensions.has(key)) return

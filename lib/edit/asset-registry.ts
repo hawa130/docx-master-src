@@ -88,17 +88,20 @@ export class DocxAssetRegistry {
     if (cached) return { rId: cached.rId, ext: cached.ext }
     const rawExt = extname(abs).slice(1).toLowerCase()
     if (!rawExt) throw new Error(`image source has no extension: ${abs}`)
-    const ext = rawExt === "jpg" ? "jpeg" : rawExt
+    // ext stays as the source's file suffix ("jpg" not "jpeg") so the
+    // archivePath, the [Content_Types].xml Default entry, and the cached
+    // return value all agree. mimeForExt internally maps "jpg" / "jpeg" /
+    // "tif" / "tiff" to the canonical MIME, so no normalization needed.
     const archivePath = this.uniqueMediaPath(rawExt)
     const bytes = new Uint8Array(readFileSync(abs))
     this.binaryAdditions.set(archivePath, bytes)
-    this.contentTypes.ensureDefault(rawExt, mimeForExt(ext))
+    this.contentTypes.ensureDefault(rawExt, mimeForExt(rawExt))
     const { rId } = this.partRels.appendRel(
       REL_TYPE_IMAGE,
       archivePath.replace(/^word\//, ""),
     )
-    this.byAbsPath.set(abs, { rId, ext })
-    return { rId, ext }
+    this.byAbsPath.set(abs, { rId, ext: rawExt })
+    return { rId, ext: rawExt }
   }
 
   /** Register an external hyperlink target. Returns the rId for the
