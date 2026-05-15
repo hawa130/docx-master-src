@@ -237,4 +237,3 @@ function insertSettingsChild(root: Element, newEl: Element, afterSet: Set<string
   }
   root.appendChild(newEl)
 }
-

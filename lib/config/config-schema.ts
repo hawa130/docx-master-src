@@ -303,18 +303,16 @@ const PageSetupSectionFieldsSchema = z.strictObject(pageSetupFields)
  *   "N"     — section N (1-based, matching `inspect_section`)
  *   "N-M"   — sections N through M inclusive
  *  No "all" selector — top-level fields already serve that role. */
-const PageSetupSectionsSchema = z
-  .record(z.string(), PageSetupSectionFieldsSchema)
-  .check(
-    z.refine((rec) => Object.keys(rec).every((k) => /^\d+(?:-\d+)?$/.test(k)), {
-      // zod prefixes with the field path automatically; don't repeat it here.
-      error: (issue) => {
-        const rec = issue.input as Record<string, unknown>
-        const bad = Object.keys(rec).find((k) => !/^\d+(?:-\d+)?$/.test(k))
-        return `key "${bad}" is invalid. Use "N" (1-based section index) or "N-M" (inclusive range).`
-      },
-    }),
-  )
+const PageSetupSectionsSchema = z.record(z.string(), PageSetupSectionFieldsSchema).check(
+  z.refine((rec) => Object.keys(rec).every((k) => /^\d+(?:-\d+)?$/.test(k)), {
+    // zod prefixes with the field path automatically; don't repeat it here.
+    error: (issue) => {
+      const rec = issue.input as Record<string, unknown>
+      const bad = Object.keys(rec).find((k) => !/^\d+(?:-\d+)?$/.test(k))
+      return `key "${bad}" is invalid. Use "N" (1-based section index) or "N-M" (inclusive range).`
+    },
+  }),
+)
 
 export const PageSetupSchema = z.strictObject({
   ...pageSetupFields,
@@ -459,13 +457,9 @@ const HeaderFooterVariantsSchema = z
     even: z.optional(HeaderFooterContentSchema),
   })
   .check(
-    z.refine(
-      (v) => v.default !== undefined || v.first !== undefined || v.even !== undefined,
-      {
-        error:
-          "header/footer surface: at least one of `default` / `first` / `even` must be declared",
-      },
-    ),
+    z.refine((v) => v.default !== undefined || v.first !== undefined || v.even !== undefined, {
+      error: "header/footer surface: at least one of `default` / `first` / `even` must be declared",
+    }),
   )
 
 export const HeaderFooterSchema = z

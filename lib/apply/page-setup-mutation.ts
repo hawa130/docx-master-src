@@ -118,10 +118,7 @@ function expandSelector(key: string, sectionCount: number): number[] {
  *  on top of the top-level defaults. Margins merge field-wise; paperSize /
  *  orientation / columns replace wholesale. Returns one entry per section
  *  (1-based; entry at index 0 is unused). */
-function buildEffectiveConfigs(
-  config: PageSetupConfig,
-  sectionCount: number,
-): SectionFields[] {
+function buildEffectiveConfigs(config: PageSetupConfig, sectionCount: number): SectionFields[] {
   const defaults: SectionFields = {
     paperSize: config.paperSize,
     orientation: config.orientation,
@@ -156,7 +153,10 @@ function paperSizeToTwips(paper: PaperSize): { w: number; h: number } {
     if (!dims) throw new Error(`pageSetup.paperSize: unknown size "${paper}"`)
     return { w: dims[0], h: dims[1] }
   }
-  return { w: toTwips(paper.width, "paperSize.width"), h: toTwips(paper.height, "paperSize.height") }
+  return {
+    w: toTwips(paper.width, "paperSize.width"),
+    h: toTwips(paper.height, "paperSize.height"),
+  }
 }
 
 /** Build / replace `<w:pgSz>` on a sectPr. When paperSize is declared the
@@ -347,10 +347,7 @@ function colsElementsEqual(a: Element, b: Element): boolean {
 
 /** Apply pageSetup to every relevant sectPr in the document. Returns a
  *  per-section before/after snapshot for the dry-run report. */
-export function applyPageSetup(
-  documentDoc: Document,
-  config: PageSetupConfig,
-): PageSetupReport {
+export function applyPageSetup(documentDoc: Document, config: PageSetupConfig): PageSetupReport {
   const body = firstChildNS(documentDoc.documentElement!, w, "body")
   if (!body) return { sections: [], touchedCount: 0 }
 
@@ -393,8 +390,7 @@ function snapshotSection(sectPr: Element): SectionReportEntry["before"] {
       : widthTwips > heightTwips && widthTwips > 0
         ? "landscape"
         : "portrait"
-  const readMar = (attr: string) =>
-    pgMar ? parseInt(pgMar.getAttributeNS(w, attr) || "0", 10) : 0
+  const readMar = (attr: string) => (pgMar ? parseInt(pgMar.getAttributeNS(w, attr) || "0", 10) : 0)
   return {
     paperSize: matchPaperLabel(widthTwips, heightTwips),
     orientation: orient,

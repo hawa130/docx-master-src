@@ -41,7 +41,11 @@ export function emitInlineField(
   format: RunFormat | undefined,
 ): Element[] {
   const { instr, placeholder } = FIELD_DESCRIPTORS[field]
-  const { runs } = emitComplexField(ownerDoc, { instrCode: instr, initialResult: placeholder, format })
+  const { runs } = emitComplexField(ownerDoc, {
+    instrCode: instr,
+    initialResult: placeholder,
+    format,
+  })
   return runs
 }
 

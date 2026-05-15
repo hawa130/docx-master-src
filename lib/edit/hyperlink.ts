@@ -28,7 +28,9 @@ const HYPERLINK_STYLE_ID = "Hyperlink"
 /** Parse a link string into either an internal anchor name or an external
  *  URI. Schema's refine already enforces `#`-prefix format for anchors;
  *  this is a runtime split, not a re-validation. */
-export function parseLinkTarget(link: string): { kind: "anchor"; name: string } | { kind: "url"; href: string } {
+export function parseLinkTarget(
+  link: string,
+): { kind: "anchor"; name: string } | { kind: "url"; href: string } {
   if (link.startsWith("#")) return { kind: "anchor", name: link.slice(1) }
   return { kind: "url", href: link }
 }
@@ -132,4 +134,3 @@ export function hasHyperlinkCharStyle(stylesDoc: Document): boolean {
   }
   return false
 }
-

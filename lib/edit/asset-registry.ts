@@ -108,10 +108,7 @@ export class DocxAssetRegistry {
     const bytes = new Uint8Array(readFileSync(abs))
     this.binaryAdditions.set(archivePath, bytes)
     this.contentTypes.ensureDefault(rawExt, mimeForExt(rawExt))
-    const { rId } = this.partRels.appendRel(
-      REL_TYPE_IMAGE,
-      archivePath.replace(/^word\//, ""),
-    )
+    const { rId } = this.partRels.appendRel(REL_TYPE_IMAGE, archivePath.replace(/^word\//, ""))
     this.byAbsPath.set(abs, { rId, ext: rawExt })
     return { rId, ext: rawExt }
   }
@@ -229,10 +226,7 @@ export class DocxAssetRegistry {
    *
    * `relsPath` defaults to the body part's rels file. Header / footer
    * registries pass their own part rels path. */
-  flushTo(
-    replacements: WritableArchive,
-    relsPath = "word/_rels/document.xml.rels",
-  ): void {
+  flushTo(replacements: WritableArchive, relsPath = "word/_rels/document.xml.rels"): void {
     this.partRels.flushTo(replacements, relsPath)
     for (const [path, bytes] of this.binaryAdditions) {
       replacements.set(path, bytes)
@@ -278,4 +272,3 @@ function mimeForExt(ext: string): string {
       return `image/${ext}`
   }
 }
-

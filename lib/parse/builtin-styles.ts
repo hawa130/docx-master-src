@@ -65,10 +65,7 @@ const BUILT_IN_NAMES: ReadonlySet<string> = new Set(
  *  by collision detection to treat "Normal" and "正文" as the same
  *  built-in identity. */
 const TO_CANONICAL: ReadonlyMap<string, string> = new Map(
-  ENGLISH_TO_ZH_CN.flatMap(([eng, zh]) => [
-    [eng, eng] as const,
-    [zh, eng] as const,
-  ]),
+  ENGLISH_TO_ZH_CN.flatMap(([eng, zh]) => [[eng, eng] as const, [zh, eng] as const]),
 )
 
 /** Map a style name to its English canonical form when it's a known

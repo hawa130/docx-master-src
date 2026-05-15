@@ -47,10 +47,7 @@ import {
   ensureHiddenChapterCounterStyle,
   injectChapterCounters,
 } from "@lib/apply/inject-chapter-counters.ts"
-import {
-  ensureUpdateFieldsFlag,
-  setEvenAndOddHeadersFlag,
-} from "@lib/apply/settings-mutation.ts"
+import { ensureUpdateFieldsFlag, setEvenAndOddHeadersFlag } from "@lib/apply/settings-mutation.ts"
 import { applyPageSetup, type PageSetupReport } from "@lib/apply/page-setup-mutation.ts"
 import {
   applyHeaderFooter,
@@ -1221,7 +1218,6 @@ function buildStyleChildCascade(
   for (const id of directChildren.keys()) walk(id, new Set())
   return cascade
 }
-
 
 /** Build `outlineParagraphs: Map<Element, { styleName, rendered }>` for the
  * caption simulator. Walks the body, finds paragraphs whose pStyle matches

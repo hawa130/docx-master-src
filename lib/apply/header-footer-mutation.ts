@@ -52,10 +52,8 @@ type Variant = "default" | "first" | "even"
 const VARIANT_ORDER: readonly Variant[] = ["default", "first", "even"] as const
 const SURFACE_ORDER: readonly Surface[] = ["header", "footer"] as const
 
-const HEADER_REL_TYPE =
-  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
-const FOOTER_REL_TYPE =
-  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
+const HEADER_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
+const FOOTER_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
 const HEADER_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
 const FOOTER_CONTENT_TYPE =
@@ -131,7 +129,16 @@ function emitOnePart(args: {
   replacements: WritableArchive
   resolveStyle: (styleId: string) => StyleInfo | undefined
 }): HeaderFooterPartRecord {
-  const { surface, variant, blocks, partIndex, bodyPartRels, contentTypes, replacements, resolveStyle } = args
+  const {
+    surface,
+    variant,
+    blocks,
+    partIndex,
+    bodyPartRels,
+    contentTypes,
+    replacements,
+    resolveStyle,
+  } = args
   const partFileName = `${surface}${partIndex}.xml`
   const partPath = `word/${partFileName}` // archive entry path
   const partNameSlash = `/${partPath}` // Override convention
@@ -404,4 +411,3 @@ export function applyHeaderFooterBinding(
   }
   return { sectionCount: sectPrs.length, titlePgApplied }
 }
-

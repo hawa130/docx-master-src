@@ -346,7 +346,12 @@ export interface EmitContext {
    * Decoupled so fragment-emit stays free of rels-registry / character-style
    * concerns. Absent ctx.emitHyperlink + a HyperlinkNode in input = engine
    * error at emit. */
-  emitHyperlink?: (link: string, text: string, format: RunFormat | undefined, ownerDoc: Document) => Element
+  emitHyperlink?: (
+    link: string,
+    text: string,
+    format: RunFormat | undefined,
+    ownerDoc: Document,
+  ) => Element
   /** Called when a `ParagraphBlock.anchor` is set — registers the named
    * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
    * + an anchor in input = engine error at emit. */

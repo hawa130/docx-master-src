@@ -236,8 +236,7 @@ export class DocumentParser {
     // actual styleId so usage counts and dominant-binding stats attribute
     // correctly; POI/WPS templates auto-generate ids like "a" for Normal,
     // so the literal "Normal" string usually matches no real style.
-    const styleId =
-      literalStyleId || this.resolver.getDefaultParagraphStyleId() || "Normal"
+    const styleId = literalStyleId || this.resolver.getDefaultParagraphStyleId() || "Normal"
 
     // dominant run rPr — pick the run with the most visible text characters.
     // Fallback to first non-empty run, then paragraph-mark rPr in pPr.

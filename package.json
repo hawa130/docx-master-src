@@ -1,31 +1,31 @@
 {
   "name": "docx-master",
   "version": "0.1.0",
-  "description": "Word (.docx) automation skill for AI agents — direct OOXML mutation for restyling, renumbering, editing, and auditing.",
   "private": true,
-  "type": "module",
-  "module": "index.ts",
+  "description": "Word (.docx) automation skill for AI agents — direct OOXML mutation for restyling, renumbering, editing, and auditing.",
+  "keywords": [
+    "ai-agent",
+    "claude-code",
+    "claude-skill",
+    "codex",
+    "cursor",
+    "docx",
+    "office",
+    "ooxml",
+    "word"
+  ],
+  "homepage": "https://github.com/hawa130/docx-master",
+  "bugs": {
+    "url": "https://github.com/hawa130/docx-master/issues"
+  },
   "license": "Apache-2.0",
   "author": "hawa130",
-  "homepage": "https://github.com/hawa130/docx-master",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hawa130/docx-master.git"
   },
-  "bugs": {
-    "url": "https://github.com/hawa130/docx-master/issues"
-  },
-  "keywords": [
-    "docx",
-    "word",
-    "ooxml",
-    "office",
-    "claude-skill",
-    "ai-agent",
-    "cursor",
-    "claude-code",
-    "codex"
-  ],
+  "type": "module",
+  "module": "index.ts",
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",

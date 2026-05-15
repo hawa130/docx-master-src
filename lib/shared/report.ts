@@ -227,7 +227,9 @@ export function printReport(args: {
   }
   if (args.pageSetup && args.pageSetup.sections.length > 0) {
     const ps = args.pageSetup
-    lines.push(`Page setup: applies to ${ps.sections.length} section(s); ${ps.touchedCount} mutated.`)
+    lines.push(
+      `Page setup: applies to ${ps.sections.length} section(s); ${ps.touchedCount} mutated.`,
+    )
     for (const sec of ps.sections) {
       if (!sec.changed) continue
       const diffs = pageSetupDiff(sec.before, sec.after)

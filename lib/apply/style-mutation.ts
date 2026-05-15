@@ -454,7 +454,6 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
   return result
 }
 
-
 /**
  * Move the styles named in `orderedIds` to the top of styles.xml's <w:style>
  * entry list, preserving the given order. Styles not in the list keep their
