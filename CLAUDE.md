@@ -123,6 +123,26 @@ LLMs are bad at byte-level work; scripts must guarantee these and never bend the
 
 When changing any of these, verify against `test/fixtures/` and inspect the output zip.
 
+## Implementation workflow
+
+Process patterns that converge faster on non-trivial changes.
+
+### Ground claims in the artifact
+
+Factual claims about codebase state come from grep / Read / running the tool — not memory, not inference. Applies equally to your own statements and to subagent feedback; both can be wrong, the code and the validator can't. A minute of verification saves an hour of revert.
+
+### Audit existing conventions before designing new
+
+When adding to an existing concept layer (schemas, helpers, file conventions, doc structure), read the nearest 2-3 siblings first. Catches helpers that already exist, prevents API-shape drift between siblings. When an existing convention is imperfect, weigh refactoring against blast radius — convenience-only consistency rarely clears the bar for breaking change.
+
+### Spawn parallel review agents for non-trivial work
+
+Dispatch two reviewers in parallel — one for agent-facing outputs (docs, API contracts), one for code (bugs, reuse, edges). Different agents have different blind spots; reusing one shares its blind spot. Iterate until both report no new issues — typically 2–3 rounds with monotonically decreasing severity. If round 3 still surfaces critical issues, the design has a structural problem worth reframing, not patching.
+
+### Exercise new × existing combinations
+
+Before declaring done, test the new feature combined with horizontal-cutting features already in the system. Pre-existing latent bugs hide in combinations; new-in-isolation tests miss them. Same at the doc level — grep for redundancy across the whole doc set after each phase, because canonical-location decay accumulates between phases.
+
 ## Commit style
 
 - One line, title only (what changed). No body.
