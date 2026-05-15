@@ -47,6 +47,7 @@ import type { PendingRefBackfill } from "@lib/edit/fields/ref-field.ts"
 import { standardizeCaptions } from "@lib/apply/standardize-captions.ts"
 import { injectChapterCounters } from "@lib/apply/inject-chapter-counters.ts"
 import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
+import { applyPageSetup, type PageSetupReport } from "@lib/apply/page-setup-mutation.ts"
 import type {
   ApplyConfig,
   ApplyContext,
@@ -935,6 +936,14 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     )
   }
 
+  // 7e. Page setup — mutates every relevant <w:sectPr> in documentDoc before
+  // serialization. Sparse-by-design: only declared fields change; per-section
+  // overrides layer on top of top-level defaults.
+  let pageSetupReport: PageSetupReport | undefined
+  if (config.pageSetup) {
+    pageSetupReport = applyPageSetup(documentDoc, config.pageSetup)
+  }
+
   // 8. Serialize and write
   const replacements = new Map<string, string | Uint8Array>()
   replacements.set("word/styles.xml", serializeXml(stylesDoc))
@@ -1052,6 +1061,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     editsPreview,
     captionsPreview,
     panguWarnings: panguWarnings.length > 0 ? panguWarnings : undefined,
+    pageSetup: pageSetupReport,
   })
 
   // Dry-run also invokes runEditOps now (so the cross-ref pipeline can see

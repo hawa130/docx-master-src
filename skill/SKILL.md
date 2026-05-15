@@ -80,6 +80,8 @@ Default first. Don't ask unless one of the cases below applies:
 
 Surface to the user when blocked by: layout-**table** restructuring, TOC body content, footnotes / comments / headers / footers content, page-number cites. Paragraphs *inside* layout-table cells ARE indexed and fully editable; only the table holding them is off-limits.
 
+Page setup (paper size, orientation, margins, columns) IS supported — see [`config-schema.md`](references/config-schema.md#page-setup).
+
 ## Tool Reference
 
 All tools invoked via `node <script> <args>`, output to stdout.
@@ -106,7 +108,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 ## Cross-command invariants
 
 - Original file is never modified; every applying CLI writes a fresh copy + validates before keeping. Validation failure → discard, surface to user — don't silently retry.
-- Section properties (page size, margins, headers, footers, columns) never modified.
+- Section properties sparse-by-design: untouched unless declared via `pageSetup`. Details: [`config-schema.md`](references/config-schema.md#page-setup).
 - Paragraph indexing is 1-based, matching `#NNN` in skeleton. Layout-table paragraphs are indexed; data / form-table paragraphs aren't (reachable via cell locator on edit path).
 - All `edits[]` locators resolve against the **pre-edits** document state — `#NNN` from `overview` is what locators reference, regardless of intervening ops. Resolved Element refs survive subsequent mutations.
 - Paths resolve against CWD; use absolute paths if you may have changed directories.

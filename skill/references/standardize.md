@@ -239,7 +239,7 @@ Targeting precedence and assignment-action semantics: see [`config-schema.md`](c
 
 The negative space matters as much as the positive. Standardize **does not** touch:
 
-- **Section properties** — page size, margins, headers, footers, columns. Never modified.
+- **Section properties** — untouched unless declared via top-level `pageSetup`. See [`config-schema.md`](config-schema.md#page-setup).
 - **Run-level direct format on untargeted paragraphs.** The uniform-strip rule fires only on paragraphs the engine restyles; untouched paragraphs keep their direct rPr verbatim.
 - **Unreferenced style definitions.** Engine doesn't prune them (sparse-by-design). If the style picker matters to the user, prune in Word manually.
 - **Tracked changes / SDT controls / complex fields.** The edit phase refuses these; `pattern_rules` won't reach inside them either. Run `inspect_blockers` if unsure.

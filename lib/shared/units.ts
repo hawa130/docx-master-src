@@ -159,6 +159,13 @@ export function twipsToPtString(twips: number): string {
   return `${twips / TWIPS_PER_PT}pt`
 }
 
+/** Format twips into a `"N.NNcm"` display string for dry-run / report
+ *  contexts where users think in cm (margins, paper sizes). Two-decimal
+ *  precision matches Word's UI display granularity. */
+export function twipsToCmString(twips: number): string {
+  return `${(twips / (TWIPS_PER_PT * PT_PER_CM)).toFixed(2)}cm`
+}
+
 /** Half-pt → pt (number form, since size fields take bare pt). */
 export function halfPtToPt(halfPt: number): number {
   return halfPt / HALF_PT_PER_PT

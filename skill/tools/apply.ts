@@ -40,16 +40,25 @@ void runCli({
       Object.values(config.theme.fonts).some((v) => typeof v === "string" && v)
     const hasEdits = (config.edits?.length ?? 0) > 0
     const hasCaptions = !!config.captions && Object.keys(config.captions).length > 0
+    const hasPageSetup =
+      !!config.pageSetup &&
+      (config.pageSetup.paperSize !== undefined ||
+        config.pageSetup.orientation !== undefined ||
+        config.pageSetup.margins !== undefined ||
+        config.pageSetup.columns !== undefined ||
+        (config.pageSetup.sections !== undefined &&
+          Object.keys(config.pageSetup.sections).length > 0))
     if (
       !hasStyles &&
       !hasNumbering &&
       !hasTemplate &&
       !hasThemeOverride &&
       !hasEdits &&
-      !hasCaptions
+      !hasCaptions &&
+      !hasPageSetup
     ) {
       throw new Error(
-        "config has no operation: provide at least one of styles[] (non-empty), numbering, template, theme.fonts, edits[], or captions",
+        "config has no operation: provide at least one of styles[] (non-empty), numbering, template, theme.fonts, pageSetup, edits[], or captions",
       )
     }
   },

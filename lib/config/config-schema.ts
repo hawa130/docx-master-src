@@ -231,6 +231,96 @@ export const ThemeSchema = z.strictObject({
   fonts: z.optional(ThemeFontsSchema),
 })
 
+/* ------------- page setup ------------- */
+
+export const PAPER_SIZES = ["A4", "A3", "A5", "Letter", "Legal", "B5", "16K"] as const
+const PaperSizeEnum = z.enum(PAPER_SIZES)
+const PaperSizeCustom = z.strictObject({ width: LengthValue, height: LengthValue })
+const PaperSizeSchema = z.union([PaperSizeEnum, PaperSizeCustom])
+
+const MarginsSchema = z.strictObject({
+  top: z.optional(LengthValue),
+  bottom: z.optional(LengthValue),
+  left: z.optional(LengthValue),
+  right: z.optional(LengthValue),
+  header: z.optional(LengthValue),
+  footer: z.optional(LengthValue),
+  gutter: z.optional(LengthValue),
+})
+
+/** Columns: `number` shorthand = equal-width count. Object form supports both
+ *  equal-width (specify `count`) and unequal-width (specify `widths` array).
+ *  `widths` and `count` are mutually exclusive — `widths.length` IS the count.
+ *  When `widths` is given, OOXML `w:equalWidth="false"` is set automatically. */
+const ColumnsSchema = z.union([
+  z.number().check(z.gte(1)),
+  z
+    .strictObject({
+      count: z.optional(z.number().check(z.gte(1))),
+      space: z.optional(LengthValue),
+      separator: z.optional(z.boolean()),
+      widths: z.optional(z.array(LengthValue).check(z.minLength(1))),
+      spaces: z.optional(z.array(LengthValue)),
+    })
+    .check(
+      z.refine((c) => !(c.count !== undefined && c.widths !== undefined), {
+        error:
+          "columns: specify either `count` (equal-width) or `widths` (unequal-width), not both. `widths.length` is the column count.",
+      }),
+    )
+    .check(
+      z.refine((c) => c.count !== undefined || c.widths !== undefined, {
+        error: "columns object: at least one of `count` or `widths` is required.",
+      }),
+    )
+    .check(
+      z.refine(
+        (c) =>
+          !c.spaces ||
+          (c.widths !== undefined &&
+            c.widths.length >= 2 &&
+            c.spaces.length === c.widths.length - 1),
+        {
+          error:
+            "columns.spaces: only valid alongside `widths` with at least 2 columns; length must equal `widths.length - 1` (one space between each pair).",
+        },
+      ),
+    ),
+])
+
+/** Fields shared between top-level (default for all sections) and per-section
+ *  overrides under `sections`. */
+const pageSetupFields = {
+  paperSize: z.optional(PaperSizeSchema),
+  orientation: z.optional(z.enum(["portrait", "landscape"])),
+  margins: z.optional(MarginsSchema),
+  columns: z.optional(ColumnsSchema),
+}
+
+const PageSetupSectionFieldsSchema = z.strictObject(pageSetupFields)
+
+/** Per-section overrides keyed by section selector:
+ *   "N"     — section N (1-based, matching `inspect_section`)
+ *   "N-M"   — sections N through M inclusive
+ *  No "all" selector — top-level fields already serve that role. */
+const PageSetupSectionsSchema = z
+  .record(z.string(), PageSetupSectionFieldsSchema)
+  .check(
+    z.refine((rec) => Object.keys(rec).every((k) => /^\d+(?:-\d+)?$/.test(k)), {
+      // zod prefixes with the field path automatically; don't repeat it here.
+      error: (issue) => {
+        const rec = issue.input as Record<string, unknown>
+        const bad = Object.keys(rec).find((k) => !/^\d+(?:-\d+)?$/.test(k))
+        return `key "${bad}" is invalid. Use "N" (1-based section index) or "N-M" (inclusive range).`
+      },
+    }),
+  )
+
+export const PageSetupSchema = z.strictObject({
+  ...pageSetupFields,
+  sections: z.optional(PageSetupSectionsSchema),
+})
+
 /* ------------- paragraph mapping ------------- */
 
 export const AssignmentSchema = z.strictObject({
@@ -268,6 +358,7 @@ export const ApplyConfigSchema = z.strictObject({
   dryRun: z.optional(z.boolean()),
   template: z.optional(TemplateSchema),
   theme: z.optional(ThemeSchema),
+  pageSetup: z.optional(PageSetupSchema),
   styles: z.optional(z.array(StyleEntrySchema)),
   // Single scheme (most common: one multi-level scheme bound to Heading1–N)
   // or an array of schemes when the doc needs multiple parallel ones (e.g.

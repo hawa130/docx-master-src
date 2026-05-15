@@ -1,6 +1,7 @@
 import type { EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import type { ImportResult } from "@lib/apply/template-import.ts"
-import { type LineSpacingInput, parseLineSpacing } from "@lib/shared/units.ts"
+import type { PageSetupReport } from "@lib/apply/page-setup-mutation.ts"
+import { type LineSpacingInput, parseLineSpacing, twipsToCmString } from "@lib/shared/units.ts"
 import { sameValue, type VsDirectReport } from "@lib/shared/vs-direct.ts"
 import type {
   FlagRecord,
@@ -185,6 +186,9 @@ export function printReport(args: {
    * already inserts the visual gap between CJK and Latin glyphs;
    * stacking a manual ASCII space on top renders too wide. */
   panguWarnings?: Array<{ editIndex: number; snippet: string; hit: string }>
+  /** Per-section before/after for any `pageSetup` mutation. Absent when
+   * pageSetup was not declared. */
+  pageSetup?: PageSetupReport
 }) {
   const lines: string[] = []
   lines.push(
@@ -208,6 +212,17 @@ export function printReport(args: {
     if (ti.numIdRemap.size > 0) {
       const remaps = [...ti.numIdRemap.entries()].map(([o, n]) => `${o}→${n}`).join(", ")
       lines.push(`  numIds migrated: ${remaps}`)
+    }
+    lines.push("")
+  }
+  if (args.pageSetup && args.pageSetup.sections.length > 0) {
+    const ps = args.pageSetup
+    lines.push(`Page setup: applies to ${ps.sections.length} section(s); ${ps.touchedCount} mutated.`)
+    for (const sec of ps.sections) {
+      if (!sec.changed) continue
+      const diffs = pageSetupDiff(sec.before, sec.after)
+      if (diffs.length === 0) continue
+      lines.push(`  Section ${sec.index}: ${diffs.join("; ")}`)
     }
     lines.push("")
   }
@@ -513,4 +528,28 @@ export function printReport(args: {
     lines.push(`Output: ${args.output}`)
   }
   console.log(lines.join("\n"))
+}
+
+/** Per-section before/after summary lines. Returns only fields that actually
+ *  changed so the report stays sparse. Twips → mm + cm for readability. */
+function pageSetupDiff(
+  before: PageSetupReport["sections"][number]["before"],
+  after: PageSetupReport["sections"][number]["after"],
+): string[] {
+  const out: string[] = []
+  if (before.paperSize !== after.paperSize) {
+    out.push(`paper ${before.paperSize ?? "?"} → ${after.paperSize ?? "?"}`)
+  }
+  if (before.orientation !== after.orientation) {
+    out.push(`orient ${before.orientation} → ${after.orientation}`)
+  }
+  const mEdges: Array<keyof typeof before.margins> = ["top", "bottom", "left", "right"]
+  const mDiffs: string[] = []
+  for (const e of mEdges) {
+    const b = before.margins[e]
+    const a = after.margins[e]
+    if (b !== a) mDiffs.push(`${e} ${twipsToCmString(b)} → ${twipsToCmString(a)}`)
+  }
+  if (mDiffs.length > 0) out.push(`margins(${mDiffs.join(", ")})`)
+  return out
 }

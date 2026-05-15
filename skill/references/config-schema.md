@@ -48,9 +48,10 @@ string form when you mean an exact line height.
   dryRun: false,                     // optional. true = in-memory pipeline + report, no file written.
                                      // Equivalent to the --dry-run CLI flag.
 
-  template: { ... },                 // optional. See § "Template import" below.
-  theme:    { fonts: {...} },        // optional. See § "Theme" below.
-  styles:   [ ... ],                 // REQUIRED. See § "Style entries" below.
+  template:   { ... },               // optional. See § "Template import" below.
+  theme:      { fonts: {...} },      // optional. See § "Theme" below.
+  pageSetup:  { ... },               // optional. See § "Page setup" below.
+  styles:     [ ... ],               // REQUIRED. See § "Style entries" below.
   numbering: { levels: [...] }       // optional. Single scheme, OR array of
             | [ {levels:[...]}, ... ], // schemes for parallel installations
                                      // (e.g. multi-level heading + single-level list).
@@ -240,6 +241,51 @@ theme: {
 Modifies `word/theme/theme1.xml`. Any `docDefaults` / `styles[]` / direct rPr that references theme fonts (`<w:rFonts w:asciiTheme="majorHAnsi"/>` etc.) auto-resolves to the new values — the document-design layer instead of per-style declarations.
 
 Use when the user wants the doc's underlying font scheme changed ("把这份文档的主题字体改成 X / Y"), not when they want one specific style restyled. Sparse: declare only the slots being changed; omitted slots keep the source's existing theme value.
+
+## Page setup
+
+Mutates `<w:sectPr>` children — paper size, orientation, margins, columns. Sparse-by-design: only declared fields change; undeclared `<w:sectPr>` attributes (headerReference, type, docGrid, …) stay intact. Top-level fields apply to every section; `sections.<selector>` overrides specific sections.
+
+```jsonc
+pageSetup: {
+  paperSize:   "A4",                  // or "A3"/"A5"/"Letter"/"Legal"/"B5"/"16K", or { width, height }
+  orientation: "portrait",            // "portrait" | "landscape"
+  margins: {                          // all Length, all optional, per-edge merge
+    top: "2.54cm", bottom: "2.54cm", left: "3.17cm", right: "3.17cm",
+    header: "1.5cm",                  // distance from page edge to header text
+    footer: "1.75cm",
+    gutter: "0cm",
+  },
+  columns: 2,                         // equal-width count; see column forms below
+  sections: {                         // only when some sections differ from defaults
+    "1":   { orientation: "portrait" },
+    "2-3": { orientation: "landscape" },
+  },
+}
+```
+
+### `columns` forms
+
+- **`columns: N`** — equal-width count, default 0.5cm gap.
+- **`columns: { count, space?, separator? }`** — equal-width with custom gap / vertical separator line.
+- **`columns: { widths: [...], spaces?: [...], separator? }`** — unequal widths. `spaces.length` must equal `widths.length - 1`. Auto-sets OOXML `equalWidth="false"`.
+
+`count` and `widths` are mutually exclusive — declare exactly one.
+
+### `sections.<selector>` keys
+
+- `"N"` — section N (1-based, matches `inspect_section <N>`).
+- `"N-M"` — sections N through M inclusive.
+
+Multiple selectors overlapping on the same section layer in object key order: later wins per field, and `margins` merges per-edge across layers (declaring `top` in one layer and `left` in a later layer leaves both set).
+
+### Field semantics
+
+- **margins** are per-edge merged: declaring `top` doesn't touch other edges. Omitted edges keep the source value (or the top-level default when overriding in a section).
+- **orientation alone** reads current pgSz w/h and swaps as needed. Sections with no existing pgSz reject orientation-only — declare `paperSize` alongside.
+- **columns** is replaced wholesale when declared. To leave columns untouched, omit the field.
+
+The dry-run report includes per-section before → after — verify the selectors hit intended sections.
 
 ## Paragraph mapping
 

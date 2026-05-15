@@ -128,6 +128,36 @@ export const TR_PR_CHILD_ORDER = [
   "trPrChange",
 ] as const
 
+/** CT_SectPr child order, per ECMA-376 17.6.18. Truncated to the children
+ * page-setup-mutation writes (pgSz, pgMar, cols). pageSetup leaves
+ * everything else (headerReference, footerReference, type, lnNumType,
+ * pgNumType, formProt, vAlign, noEndnote, titlePg, textDirection, bidi,
+ * rtlGutter, docGrid, printerSettings, sectPrChange) untouched. */
+export const SECT_PR_CHILD_ORDER = [
+  "headerReference",
+  "footerReference",
+  "footnotePr",
+  "endnotePr",
+  "type",
+  "pgSz",
+  "pgMar",
+  "paperSrc",
+  "pgBorders",
+  "lnNumType",
+  "pgNumType",
+  "cols",
+  "formProt",
+  "vAlign",
+  "noEndnote",
+  "titlePg",
+  "textDirection",
+  "bidi",
+  "rtlGutter",
+  "docGrid",
+  "printerSettings",
+  "sectPrChange",
+] as const
+
 /** CT_PPr child order, per ECMA-376 17.3.1.26. Truncated to children we
  * encounter when building or mutating paragraph properties. */
 export const PPR_CHILD_ORDER = [
