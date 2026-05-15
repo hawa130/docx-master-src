@@ -37,7 +37,12 @@ interface IndexedPara {
 
 /** Walk the document in DocumentParser order and return every indexed
  * paragraph with its element + container. Skips paragraphs inside data/form
- * tables (they're unindexed; reachable only via cell locator). */
+ * tables (they're unindexed; reachable only via cell locator). Also skips
+ * engine-managed scaffolding paragraphs — those carry a styleId starting
+ * with `_` (currently `_HiddenChapterCounter`, holds the hidden chapter
+ * SEQ counter as a sibling next to each H1 so STYLEREF on headings stays
+ * clean). Skipping them here means the agent-facing 1-based paragraph
+ * index matches user-visible content order, not the raw DOM order. */
 export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
   const out: IndexedPara[] = []
   const root = documentDoc.documentElement
@@ -49,6 +54,8 @@ export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
     for (const child of getChildren(parent)) {
       if (child.namespaceURI !== NS.w) continue
       if (child.localName === "p") {
+        const styleId = paragraphStyleIdOrUndefined(child)
+        if (styleId !== undefined && styleId.startsWith("_")) continue
         out.push({ index: nextIndex++, element: child, container: parent })
       } else if (child.localName === "tbl") {
         const summary = summarizeTable(child)

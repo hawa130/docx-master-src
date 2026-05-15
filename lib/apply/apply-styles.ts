@@ -42,7 +42,10 @@ import {
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import type { PendingRefBackfill } from "@lib/edit/fields/ref-field.ts"
 import { standardizeCaptions } from "@lib/apply/standardize-captions.ts"
-import { injectChapterCounters } from "@lib/apply/inject-chapter-counters.ts"
+import {
+  ensureHiddenChapterCounterStyle,
+  injectChapterCounters,
+} from "@lib/apply/inject-chapter-counters.ts"
 import {
   ensureUpdateFieldsFlag,
   setEvenAndOddHeadersFlag,
@@ -800,6 +803,9 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // outline style by assignments / pattern_rules / bulk_rules pick up
       // the counter too.
       const chapterSeqsInjected = injectChapterCounters(documentDoc, resolvedCaptions.byIdentifier)
+      if (chapterSeqsInjected > 0) {
+        ensureHiddenChapterCounterStyle(stylesDoc)
+      }
 
       // Standardize re-emit: any caption paragraph already in the doc
       // (source-doc captions, or output from a prior apply) gets its
