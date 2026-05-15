@@ -48,6 +48,7 @@ void runCli({
         config.pageSetup.columns !== undefined ||
         (config.pageSetup.sections !== undefined &&
           Object.keys(config.pageSetup.sections).length > 0))
+    const hasHeaderFooter = !!config.headerFooter
     if (
       !hasStyles &&
       !hasNumbering &&
@@ -55,10 +56,11 @@ void runCli({
       !hasThemeOverride &&
       !hasEdits &&
       !hasCaptions &&
-      !hasPageSetup
+      !hasPageSetup &&
+      !hasHeaderFooter
     ) {
       throw new Error(
-        "config has no operation: provide at least one of styles[] (non-empty), numbering, template, theme.fonts, pageSetup, edits[], or captions",
+        "config has no operation: provide at least one of styles[] (non-empty), numbering, template, theme.fonts, pageSetup, headerFooter, edits[], or captions",
       )
     }
   },
