@@ -30,6 +30,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { extname, resolve as resolvePath } from "node:path"
 import type { DocxReader } from "@lib/xml/reader.ts"
+import type { WritableArchive } from "@lib/xml/writable-archive.ts"
 import { NS } from "@lib/parse/types.ts"
 import { type Length, toEmu } from "@lib/shared/units.ts"
 import { PartRels } from "@lib/edit/part-rels.ts"
@@ -229,7 +230,7 @@ export class DocxAssetRegistry {
    * `relsPath` defaults to the body part's rels file. Header / footer
    * registries pass their own part rels path. */
   flushTo(
-    replacements: Map<string, string | Uint8Array>,
+    replacements: WritableArchive,
     relsPath = "word/_rels/document.xml.rels",
   ): void {
     this.partRels.flushTo(replacements, relsPath)

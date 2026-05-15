@@ -12,6 +12,7 @@
  */
 
 import { type DocxReader, parseXml } from "@lib/xml/reader.ts"
+import type { WritableArchive } from "@lib/xml/writable-archive.ts"
 
 interface RelEntry {
   id: string
@@ -76,10 +77,16 @@ export class PartRels {
   }
 
   /** Stage the modified rels text at `path` in the writer's replacement
-   *  map. No-op when nothing was appended. */
-  flushTo(replacements: Map<string, string | Uint8Array>, path: string): void {
+   *  map. No-op when nothing was appended. The body's rels path
+   *  (`word/_rels/document.xml.rels`) is one of the forbidden direct-
+   *  write targets on `WritableArchive`; uses the `_setFromAccumulator`
+   *  escape hatch since this IS the legitimate accumulator path.
+   *  Per-part HF rels paths (header1.xml.rels etc.) aren't forbidden
+   *  and could go through `.set` too, but routing both through one
+   *  method keeps the call sites uniform. */
+  flushTo(replacements: WritableArchive, path: string): void {
     if (!this.dirty) return
-    replacements.set(path, this.relsText)
+    replacements.setFromAccumulator(path, this.relsText)
   }
 
   /** Returns the next free `imageN` suffix for media path allocation.

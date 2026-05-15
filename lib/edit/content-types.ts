@@ -9,6 +9,7 @@
  */
 
 import type { DocxReader } from "@lib/xml/reader.ts"
+import type { WritableArchive } from "@lib/xml/writable-archive.ts"
 
 const DEFAULT_CONTENT_TYPES_XML =
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
@@ -69,10 +70,13 @@ export class ContentTypes {
   }
 
   /** Stage the modified content-types XML in the writer's replacement map.
-   *  No-op when nothing was added. */
-  flushTo(replacements: Map<string, string | Uint8Array>): void {
+   *  No-op when nothing was added. Uses the `_setFromAccumulator` escape
+   *  hatch — `WritableArchive.set` would reject `[Content_Types].xml` as
+   *  one of the forbidden direct-write paths, the very invariant this
+   *  accumulator exists to enforce. */
+  flushTo(replacements: WritableArchive): void {
     if (!this.dirty) return
-    replacements.set("[Content_Types].xml", this.text)
+    replacements.setFromAccumulator("[Content_Types].xml", this.text)
   }
 
   /* ------------- internals ------------- */

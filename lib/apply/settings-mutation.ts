@@ -20,10 +20,10 @@
 import { DocxReader, parseXml, serializeXml } from "@lib/xml/reader.ts"
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import type { WritableArchive } from "@lib/xml/writable-archive.ts"
+import type { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 
 const w = NS.w
-const PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
-const CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 const SETTINGS_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"
 const SETTINGS_REL_TYPE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings"
@@ -45,9 +45,10 @@ const MINIMAL_SETTINGS_XML =
  */
 export async function ensureUpdateFieldsFlag(
   reader: DocxReader,
-  replacements: Map<string, string | Uint8Array>,
+  replacements: WritableArchive,
+  bodyAssetRegistry: DocxAssetRegistry,
 ): Promise<void> {
-  await mutateSettings(reader, replacements, (root) => {
+  await mutateSettings(reader, replacements, bodyAssetRegistry, (root) => {
     let updateFields = firstChildNS(root, w, "updateFields")
     if (updateFields) {
       if (wAttr(updateFields, "val") === "true") return false // already flagged
@@ -77,12 +78,14 @@ export async function ensureUpdateFieldsFlag(
  */
 export async function setEvenAndOddHeadersFlag(
   reader: DocxReader,
-  replacements: Map<string, string | Uint8Array>,
+  replacements: WritableArchive,
   enabled: boolean,
+  bodyAssetRegistry: DocxAssetRegistry,
 ): Promise<void> {
   await mutateSettings(
     reader,
     replacements,
+    bodyAssetRegistry,
     (root) => {
       const existing = firstChildNS(root, w, "evenAndOddHeaders")
       if (enabled) {
@@ -109,7 +112,8 @@ export async function setEvenAndOddHeadersFlag(
  *  fabricate path if no settings.xml existed at all. */
 async function mutateSettings(
   reader: DocxReader,
-  replacements: Map<string, string | Uint8Array>,
+  replacements: WritableArchive,
+  bodyAssetRegistry: DocxAssetRegistry,
   mutate: (root: Element) => boolean,
   opts: { fabricateOnMissing?: boolean } = {},
 ): Promise<void> {
@@ -137,14 +141,19 @@ async function mutateSettings(
   // Path 3: fabricate from the minimal stub, then let mutate set its
   // contribution on top. Skipped when `fabricateOnMissing=false`
   // (e.g. clearing a flag that wasn't there — no need to materialise
-  // settings.xml just to keep it empty).
+  // settings.xml just to keep it empty). Content-Types Override and the
+  // document-rels Relationship for the new settings.xml part go through
+  // the shared accumulators (single-writer invariant on those two paths).
   if (!fabricateOnMissing) return
   const fabricated = parseXml(MINIMAL_SETTINGS_XML)
   const root = fabricated.documentElement
   if (root) mutate(root)
   replacements.set("word/settings.xml", serializeXml(fabricated))
-  await registerSettingsContentType(reader, replacements)
-  await registerSettingsRelationship(reader, replacements)
+  bodyAssetRegistry.getContentTypes().ensureOverride("/word/settings.xml", SETTINGS_CT)
+  const sharedRels = bodyAssetRegistry.getPartRels()
+  if (!sharedRels.hasRelTo("settings.xml")) {
+    sharedRels.appendRel(SETTINGS_REL_TYPE, "settings.xml")
+  }
 }
 
 /** Per ECMA-376 §17.15.1, CT_Settings has a long fixed child order.
@@ -229,58 +238,3 @@ function insertSettingsChild(root: Element, newEl: Element, afterSet: Set<string
   root.appendChild(newEl)
 }
 
-/** Add the settings Override entry to [Content_Types].xml when not present. */
-async function registerSettingsContentType(
-  reader: DocxReader,
-  replacements: Map<string, string | Uint8Array>,
-): Promise<void> {
-  const path = "[Content_Types].xml"
-  const ctSerialized = replacements.get(path)
-  const ctDoc =
-    typeof ctSerialized === "string" ? parseXml(ctSerialized) : await reader.readXml(path)
-  if (!ctDoc) return
-  const root = ctDoc.documentElement
-  if (!root) return
-  // Skip if an Override already targets /word/settings.xml.
-  const overrides = root.getElementsByTagNameNS(CT_NS, "Override")
-  for (let i = 0; i < overrides.length; i++) {
-    if (overrides[i]!.getAttribute("PartName") === "/word/settings.xml") return
-  }
-  const override = ctDoc.createElementNS(CT_NS, "Override")
-  override.setAttribute("PartName", "/word/settings.xml")
-  override.setAttribute("ContentType", SETTINGS_CT)
-  root.appendChild(override)
-  replacements.set(path, serializeXml(ctDoc))
-}
-
-/** Add the settings relationship to word/_rels/document.xml.rels when not present. */
-async function registerSettingsRelationship(
-  reader: DocxReader,
-  replacements: Map<string, string | Uint8Array>,
-): Promise<void> {
-  const path = "word/_rels/document.xml.rels"
-  const relsSerialized = replacements.get(path)
-  const relsDoc =
-    typeof relsSerialized === "string" ? parseXml(relsSerialized) : await reader.readXml(path)
-  if (!relsDoc) return
-  const root = relsDoc.documentElement
-  if (!root) return
-  const rels = root.getElementsByTagNameNS(PKG_REL, "Relationship")
-  let maxId = 0
-  for (let i = 0; i < rels.length; i++) {
-    const rel = rels[i]!
-    if (rel.getAttribute("Type") === SETTINGS_REL_TYPE) return // already linked
-    const id = rel.getAttribute("Id") || ""
-    const m = id.match(/^rId(\d+)$/)
-    if (m) {
-      const n = parseInt(m[1]!, 10)
-      if (n > maxId) maxId = n
-    }
-  }
-  const rel = relsDoc.createElementNS(PKG_REL, "Relationship")
-  rel.setAttribute("Id", `rId${maxId + 1}`)
-  rel.setAttribute("Type", SETTINGS_REL_TYPE)
-  rel.setAttribute("Target", "settings.xml")
-  root.appendChild(rel)
-  replacements.set(path, serializeXml(relsDoc))
-}

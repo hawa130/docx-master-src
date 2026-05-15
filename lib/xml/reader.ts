@@ -57,10 +57,15 @@ export class DocxReader {
    * XML/text strings (most cases) or binary `Uint8Array` (image assets).
    * JSZip handles both shapes natively. Adding a *new* archive entry uses
    * the same call: `replacements.set("word/media/image1.png", bytes)`.
+   *
+   * Accepts both raw `Map` (for callers without invariant requirements,
+   * e.g. ad-hoc tests) and `WritableArchive` (the apply pipeline's
+   * single-writer-enforcing wrapper — see `lib/xml/writable-archive.ts`).
+   * The iteration interface is the only thing this method needs.
    */
   async copyAndModify(
     outputPath: string,
-    replacements: Map<string, string | Uint8Array>,
+    replacements: Iterable<[string, string | Uint8Array]>,
   ): Promise<void> {
     // load fresh zip from original buffer to avoid mutating the open one
     const original = readFileSync(this.filePath)

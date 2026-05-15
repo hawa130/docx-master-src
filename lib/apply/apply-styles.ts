@@ -1,6 +1,7 @@
 import { unlinkSync, existsSync, copyFileSync, mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { DocxReader, serializeXml } from "@lib/xml/reader.ts"
+import { WritableArchive } from "@lib/xml/writable-archive.ts"
 import { importTemplateStyles, type ImportResult } from "@lib/apply/template-import.ts"
 import { StyleResolver, applyThemeFontOverrides } from "@lib/parse/style-resolver.ts"
 import { DocumentParser } from "@lib/parse/document-parser.ts"
@@ -960,7 +961,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   //    mutations here (new HF parts + their rels, settings.xml flips, the
   //    final body / styles / numbering serializations). Single writer
   //    pass at the end consumes it.
-  const replacements = new Map<string, string | Uint8Array>()
+  const replacements = new WritableArchive()
 
   // 7f. Header / footer — generates header*.xml / footer*.xml parts, plugs
   //     references into every sectPr, ensures the Header/Footer paragraph
@@ -989,7 +990,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     // `even` variant is declared anywhere, clear otherwise. Without the
     // clear branch, a re-run that drops `even` leaves the flag set and
     // Word renders even pages as blank.
-    await setEvenAndOddHeadersFlag(reader, replacements, headerFooterReport.hasEven)
+    await setEvenAndOddHeadersFlag(
+      reader,
+      replacements,
+      headerFooterReport.hasEven,
+      bodyAssetRegistry,
+    )
   }
 
   // Stage stylesDoc / numberingDoc / documentDoc AFTER all in-place
@@ -1024,19 +1030,24 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       )
     }
   }
-  // Body asset registry flushes its binary media (word/media/imageN.*) + the
-  // body's rels (word/_rels/document.xml.rels). The HF pass appended
-  // header/footer Relationships onto the same PartRels instance, so this
-  // flush carries those entries too. ContentTypes is shared across body
-  // and HF parts — flushed once at the end below.
-  bodyAssetRegistry.flushTo(replacements)
-  bodyAssetRegistry.getContentTypes().flushTo(replacements)
   // Cross-references emitted in this run — flip settings.xml's
   // <w:updateFields> flag so Word resolves each REF on next open without
-  // the user manually pressing Ctrl+A then F9.
+  // the user manually pressing Ctrl+A then F9. MUST run before the
+  // bodyAssetRegistry flushes below: when source lacks settings.xml the
+  // fabrication path appends settings Override + Relationship to the
+  // shared accumulators, and those additions need to be in the
+  // accumulator state at flush time.
   if (crossRefsTouched) {
-    await ensureUpdateFieldsFlag(reader, replacements)
+    await ensureUpdateFieldsFlag(reader, replacements, bodyAssetRegistry)
   }
+  // Body asset registry flushes its binary media (word/media/imageN.*) + the
+  // body's rels (word/_rels/document.xml.rels). HF / settings-fabrication /
+  // numbering Override registrations all appended to these accumulators
+  // earlier in the pipeline; this single flush carries every accumulated
+  // entry. ContentTypes is shared across body and HF parts — flushed once
+  // immediately after.
+  bodyAssetRegistry.flushTo(replacements)
+  bodyAssetRegistry.getContentTypes().flushTo(replacements)
   // 8b. Dry-run skips write + post-write validation; the agent iterates on
   // the in-memory report alone. Otherwise: write, then run the comprehensive
   // bundle check (XML well-formedness, CT_* schema, whitespace preservation,

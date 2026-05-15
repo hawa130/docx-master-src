@@ -32,6 +32,7 @@
 
 import type { DocxReader } from "@lib/xml/reader.ts"
 import { parseXml, serializeXml } from "@lib/xml/reader.ts"
+import type { WritableArchive } from "@lib/xml/writable-archive.ts"
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 import { SECT_PR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
@@ -127,7 +128,7 @@ function emitOnePart(args: {
   reader: DocxReader
   bodyPartRels: PartRels
   contentTypes: ContentTypes
-  replacements: Map<string, string | Uint8Array>
+  replacements: WritableArchive
   resolveStyleName: (styleId: string) => string | undefined
 }): HeaderFooterPartRecord {
   const { surface, variant, blocks, partIndex, bodyPartRels, contentTypes, replacements, resolveStyleName } = args
@@ -206,7 +207,7 @@ export async function applyHeaderFooter(
   config: HeaderFooterConfig,
   bodyPartRels: PartRels,
   contentTypes: ContentTypes,
-  replacements: Map<string, string | Uint8Array>,
+  replacements: WritableArchive,
   stylesDoc: Document | null,
 ): Promise<HeaderFooterReport> {
   const parts: HeaderFooterPartRecord[] = []
