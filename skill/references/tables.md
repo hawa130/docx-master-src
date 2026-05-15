@@ -172,6 +172,8 @@ Three distinct alignment fields apply at different scopes:
 
 Resolution for any cell: `cell.vAlign ?? block.vAlign ?? "center"`. Engine always emits `vAlign` on every cell — to restore Word's native top default, set `vAlign: "top"` at the table level.
 
+**Caveat**: multiplier line spacing (e.g. 1.5x) puts the extra leading below the text, so single-line cells look top-aligned despite `vAlign: "center"`. Set the cell paragraph's `paraFormat.lineSpacing: 1`; multi-line content is unaffected.
+
 ## Cell padding
 
 `padding` on TableBlock applies to every cell that doesn't carry its own; `padding` on a cell object overrides for that one cell. Resolution: `cell.padding ?? block.padding ?? <preset default>`.
