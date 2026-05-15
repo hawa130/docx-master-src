@@ -67,6 +67,14 @@ export class PartRels {
     return this.dirty
   }
 
+  /** Check whether a Relationship with the given Target string already
+   *  exists. Used by callers that want to be idempotent about adding a
+   *  named-part rel (e.g. the numbering.xml registration, which apply
+   *  re-runs on a doc that already has the rel from a prior apply). */
+  hasRelTo(target: string): boolean {
+    return this.rels.some((r) => r.target === target)
+  }
+
   /** Stage the modified rels text at `path` in the writer's replacement
    *  map. No-op when nothing was appended. */
   flushTo(replacements: Map<string, string | Uint8Array>, path: string): void {

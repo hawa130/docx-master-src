@@ -37,6 +37,7 @@ import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-ut
 import { SECT_PR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import type { ApplyConfig } from "@lib/config/config-types.ts"
 import type { Block } from "@lib/config/edit-types.ts"
+import { buildStyleNameResolver } from "@lib/parse/style-names.ts"
 import { emitBlock, type EmitContext } from "@lib/edit/fragment-emit.ts"
 import { PartRels } from "@lib/edit/part-rels.ts"
 import { ContentTypes } from "@lib/edit/content-types.ts"
@@ -127,8 +128,9 @@ function emitOnePart(args: {
   bodyPartRels: PartRels
   contentTypes: ContentTypes
   replacements: Map<string, string | Uint8Array>
+  resolveStyleName: (styleId: string) => string | undefined
 }): HeaderFooterPartRecord {
-  const { surface, variant, blocks, partIndex, bodyPartRels, contentTypes, replacements } = args
+  const { surface, variant, blocks, partIndex, bodyPartRels, contentTypes, replacements, resolveStyleName } = args
   const partFileName = `${surface}${partIndex}.xml`
   const partPath = `word/${partFileName}` // archive entry path
   const partNameSlash = `/${partPath}` // Override convention
@@ -152,6 +154,7 @@ function emitOnePart(args: {
       const { rId } = partRegistry.registerImage(src)
       return partRegistry.buildDrawing(rId, w, h, alt, ownerDoc)
     },
+    resolveStyleName,
     emitHyperlink: (link, text, format, ownerDoc) => {
       // parseLinkTarget inside emitHyperlinkNode discriminates anchor vs url;
       // url path consumes the registry (rels rId), anchor path doesn't.
@@ -204,11 +207,13 @@ export async function applyHeaderFooter(
   bodyPartRels: PartRels,
   contentTypes: ContentTypes,
   replacements: Map<string, string | Uint8Array>,
+  stylesDoc: Document | null,
 ): Promise<HeaderFooterReport> {
   const parts: HeaderFooterPartRecord[] = []
   let hasFirst = false
   let hasEven = false
   let partIndex = nextFreePartIndex(reader)
+  const resolveStyleName = buildStyleNameResolver(stylesDoc)
 
   for (const surface of SURFACE_ORDER) {
     const surfaceCfg = config[surface]
@@ -228,6 +233,7 @@ export async function applyHeaderFooter(
         bodyPartRels,
         contentTypes,
         replacements,
+        resolveStyleName,
       })
       parts.push(record)
       partIndex++

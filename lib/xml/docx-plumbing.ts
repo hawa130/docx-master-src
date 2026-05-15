@@ -15,11 +15,24 @@ export function blankNumberingDoc(): Document {
   )
 }
 
+/** Read the current state of `path` — pending in-flight replacement first
+ *  (some earlier subsystem already mutated it during this apply), then
+ *  reader (source bytes). Returns null when neither has the entry. */
+async function readPending(
+  reader: DocxReader,
+  replacements: Map<string, string | Uint8Array>,
+  path: string,
+): Promise<string | null> {
+  const pending = replacements.get(path)
+  if (typeof pending === "string") return pending
+  return reader.readText(path)
+}
+
 export async function ensureNumberingContentType(
   reader: DocxReader,
   replacements: Map<string, string | Uint8Array>,
 ): Promise<void> {
-  const ctText = await reader.readText("[Content_Types].xml")
+  const ctText = await readPending(reader, replacements, "[Content_Types].xml")
   if (!ctText) return
   if (ctText.includes("/word/numbering.xml")) return
   const insert = `<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>`
@@ -32,7 +45,7 @@ export async function ensureNumberingRelationship(
   replacements: Map<string, string | Uint8Array>,
 ): Promise<void> {
   const path = "word/_rels/document.xml.rels"
-  const text = await reader.readText(path)
+  const text = await readPending(reader, replacements, path)
   if (!text) return
   if (text.includes('Target="numbering.xml"')) return
   // pick a fresh rId

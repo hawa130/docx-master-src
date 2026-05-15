@@ -7,12 +7,7 @@ import { DocumentParser } from "@lib/parse/document-parser.ts"
 import { Fingerprinter } from "@lib/parse/fingerprint.ts"
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
-import {
-  blankNumberingDoc,
-  blankStylesDoc,
-  ensureNumberingContentType,
-  ensureNumberingRelationship,
-} from "@lib/xml/docx-plumbing.ts"
+import { blankNumberingDoc, blankStylesDoc } from "@lib/xml/docx-plumbing.ts"
 import { applyToBody } from "@lib/apply/para-mutation.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { analyzeVsDirect } from "@lib/shared/vs-direct.ts"
@@ -261,8 +256,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     templateImport = await importTemplateStyles(tplPath, tplCfg.styles, stylesDoc, numberingDoc, {
       importNumbering: tplCfg.importNumbering,
     })
-    // If template numbering was imported, ensureNumberingContentType /
-    // ensureNumberingRelationship below picks it up via numIdRemap.size > 0.
+    // If template numbering was imported, the numbering content-type +
+    // rels registration below picks it up via numIdRemap.size > 0.
   }
 
   // 4. Resolve fromParagraph references and inject styles into styles.xml.
@@ -981,6 +976,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       bodyAssetRegistry.getPartRels(),
       bodyAssetRegistry.getContentTypes(),
       replacements,
+      stylesDoc,
     )
     headerFooterBindingReport = applyHeaderFooterBinding(documentDoc, headerFooterReport)
     if (headerFooterReport.parts.some((p) => p.hasHyperlinks)) {
@@ -1007,13 +1003,26 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   if (themeMutated && themeDoc) {
     replacements.set("word/theme/theme1.xml", serializeXml(themeDoc))
   }
-  // Make sure numbering.xml is referenced from [Content_Types].xml when
-  // newly created — covers both injectNumbering and template numbering
-  // migration paths.
+  // Make sure numbering.xml is referenced from [Content_Types].xml and
+  // word/_rels/document.xml.rels when newly created. Routes through the
+  // SHARED ContentTypes and body PartRels accumulators so the final
+  // flushTo (below) preserves these additions; the older path that
+  // mutated the staged [Content_Types].xml / rels strings directly raced
+  // with the registry's flushTo and got silently clobbered.
   const numberingTouched = !!config.numbering || !!templateImport?.numIdRemap.size
   if (numberingTouched) {
-    await ensureNumberingContentType(reader, replacements)
-    await ensureNumberingRelationship(reader, replacements)
+    const sharedCT = bodyAssetRegistry.getContentTypes()
+    const sharedRels = bodyAssetRegistry.getPartRels()
+    sharedCT.ensureOverride(
+      "/word/numbering.xml",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+    )
+    if (!sharedRels.hasRelTo("numbering.xml")) {
+      sharedRels.appendRel(
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+        "numbering.xml",
+      )
+    }
   }
   // Body asset registry flushes its binary media (word/media/imageN.*) + the
   // body's rels (word/_rels/document.xml.rels). The HF pass appended
