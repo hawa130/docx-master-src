@@ -18,7 +18,7 @@
 
 import { DocxReader } from "@lib/xml/reader.ts"
 import { NS, type ParsedParagraph, type SectionInfo } from "@lib/parse/types.ts"
-import { buildStyleNameResolver } from "@lib/parse/style-names.ts"
+import { buildStyleResolver } from "@lib/parse/style-names.ts"
 import { sectionForParagraph, sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
 import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
 import { PPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
@@ -332,13 +332,13 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   const pendingCaptionFills: PendingCaptionFill[] = []
   const pendingCaptionResets: PendingCaptionReset[] = []
   const captionsMap = input.captions
-  const resolveStyleName = buildStyleNameResolver(stylesDoc ?? null)
+  const resolveStyle = buildStyleResolver(stylesDoc ?? null)
   const emitCtx: EmitContext = {
     emitImage: (src, width, height, alt, ownerDoc) => {
       const { rId } = imageRegistry.registerImage(src)
       return imageRegistry.buildDrawing(rId, width, height, alt, ownerDoc)
     },
-    resolveStyleName,
+    resolveStyle,
     emitHyperlink: (link, text, format, ownerDoc) => {
       // Inject the Hyperlink character style on first hyperlink emit only —
       // sparse-by-design (no style added when no hyperlink declared). The

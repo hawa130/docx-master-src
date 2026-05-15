@@ -8,6 +8,7 @@ import { DocumentParser } from "@lib/parse/document-parser.ts"
 import { Fingerprinter } from "@lib/parse/fingerprint.ts"
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
+import { canonicalStyleName } from "@lib/parse/builtin-styles.ts"
 import { blankNumberingDoc, blankStylesDoc } from "@lib/xml/docx-plumbing.ts"
 import { applyToBody } from "@lib/apply/para-mutation.ts"
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
@@ -317,7 +318,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // are flagged. The alias table covers the common en-US ↔ zh-CN pairs
   // (which is most real Chinese-academic doc traffic for this skill);
   // unknown locales fall back to string equality.
-  const canonicalNameKey = makeCanonicalNameKey()
+  const canonicalNameKey = canonicalStyleName
   const sourceCanonicalToStyleId = new Map<string, string>()
   const sourceCanonicalToOriginalName = new Map<string, string>()
   for (const styleEl of getChildrenNS(stylesDoc.documentElement!, NS.w, "style")) {
@@ -1221,43 +1222,6 @@ function buildStyleChildCascade(
   return cascade
 }
 
-function makeCanonicalNameKey(): (name: string) => string {
-  // English form is the canonical key for each pair. Pairs are stored
-  // both directions in a single Map for O(1) lookup either way.
-  const aliasPairs: Array<readonly [string, string]> = [
-    ["Normal", "正文"],
-    ["heading 1", "标题 1"],
-    ["heading 2", "标题 2"],
-    ["heading 3", "标题 3"],
-    ["heading 4", "标题 4"],
-    ["heading 5", "标题 5"],
-    ["heading 6", "标题 6"],
-    ["heading 7", "标题 7"],
-    ["heading 8", "标题 8"],
-    ["heading 9", "标题 9"],
-    ["Title", "标题"],
-    ["Subtitle", "副标题"],
-    ["Body Text", "正文文本"],
-    ["Caption", "题注"],
-    ["Quote", "引用"],
-    ["List Bullet", "列表项目符号"],
-    ["List Number", "列表编号"],
-    ["Header", "页眉"],
-    ["Footer", "页脚"],
-    ["TOC 1", "目录 1"],
-    ["TOC 2", "目录 2"],
-    ["TOC 3", "目录 3"],
-    ["Default Paragraph Font", "默认段落字体"],
-    ["Normal Table", "普通表格"],
-    ["No List", "无列表"],
-  ]
-  const toCanonical = new Map<string, string>()
-  for (const [eng, zh] of aliasPairs) {
-    toCanonical.set(eng, eng)
-    toCanonical.set(zh, eng)
-  }
-  return (name: string) => toCanonical.get(name) ?? name
-}
 
 /** Build `outlineParagraphs: Map<Element, { styleName, rendered }>` for the
  * caption simulator. Walks the body, finds paragraphs whose pStyle matches

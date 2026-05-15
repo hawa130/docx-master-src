@@ -18,6 +18,7 @@
 
 import { emitComplexField } from "@lib/edit/fields/complex-field.ts"
 import type { RunFormat } from "@lib/config/edit-types.ts"
+import type { StyleInfo } from "@lib/parse/style-names.ts"
 
 type FieldKind = "page" | "numPages" | "date"
 
@@ -46,34 +47,51 @@ export function emitInlineField(
 
 export function emitInlineStyleRef(
   ownerDoc: Document,
-  styleName: string,
+  info: StyleInfo,
   numberOnly: boolean,
   format: RunFormat | undefined,
 ): Element[] {
-  // STYLEREF's argument for built-in heading styles is locale-sensitive
-  // in Word: a doc whose styles.xml carries `<w:name w:val="heading 1"/>`
-  // resolves as "标题 1" in a Chinese Word UI, "Überschrift 1" in
-  // German, etc. — emitting `STYLEREF "heading 1"` fails the localized
-  // built-in identity match and Word renders the "Error! Use Home tab
-  // to apply ..." placeholder. The documented cross-locale form is
-  // `STYLEREF N` (bare numeric outline level 1-9) — Word treats it as
-  // "the heading at level N", works in every language version. Custom
-  // style names aren't translated so the quoted form is fine there.
-  const headingLevel = headingLevelFromName(styleName)
-  const argument = headingLevel !== null ? String(headingLevel) : `"${styleName}"`
+  // Three-way dispatch driven by the resolved style's identity:
+  //
+  //   1. outline-bound (`<w:outlineLvl>` present) → emit `STYLEREF N`.
+  //      Locale-neutral — Word resolves by outline level, not name.
+  //      Built-in headings 1-9 + any custom style the agent bound to
+  //      an outline level both land here.
+  //
+  //   2. custom (non-built-in) name → emit `STYLEREF "<name>"`.
+  //      Custom style names aren't translated by Word's locale
+  //      mapping; the quoted form matches reliably across all UI
+  //      languages.
+  //
+  //   3. built-in localizable non-outline (Title / Caption / Subtitle /
+  //      etc.) → throw. `STYLEREF "Title"` would silently fail in
+  //      non-EN Word UIs (the UI shows "标题" / "Titre" / "Titel" and
+  //      STYLEREF resolves against that localized form, not the
+  //      stored English canonical name). No `STYLEREF N` equivalent
+  //      exists for non-outline built-ins — agent must either bind
+  //      the style to an outline level or rename to a custom name.
   const switches = numberOnly ? " \\n" : ""
+  let argument: string
+  if (info.outlineLevel !== undefined) {
+    argument = String(info.outlineLevel)
+  } else if (!info.isBuiltInLocalizable) {
+    argument = `"${info.name}"`
+  } else {
+    throw new Error(
+      `InlineStyleRef: cannot reference built-in style "${info.name}" via STYLEREF. ` +
+        `Word translates built-in style names per UI locale (e.g. "Title" ↔ "标题", ` +
+        `"Caption" ↔ "题注"), so STYLEREF "${info.name}" silently fails in non-English Word. ` +
+        `Fix by either: ` +
+        `(a) binding this style to an outline level (set styles[].outlineLevel = 0-8) so the ` +
+        `engine can emit STYLEREF N (locale-neutral); or ` +
+        `(b) renaming the style to a custom name (e.g. "Doc${info.name}") — custom names ` +
+        `aren't translated.`,
+    )
+  }
   const { runs } = emitComplexField(ownerDoc, {
     instrCode: `STYLEREF ${argument}${switches}`,
     initialResult: "",
     format,
   })
   return runs
-}
-
-/** Returns 1-9 when `name` is a built-in heading display name in the
- *  `<w:name w:val="heading N"/>` form (case-insensitive, trims), null
- *  otherwise. */
-function headingLevelFromName(name: string): number | null {
-  const m = /^heading\s+([1-9])$/i.exec(name.trim())
-  return m ? parseInt(m[1]!, 10) : null
 }

@@ -17,6 +17,7 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
+import type { StyleInfo } from "@lib/parse/style-names.ts"
 import type * as z from "zod/mini"
 import type { InlineRefSchema } from "@lib/config/edit-config-schema.ts"
 import {
@@ -294,21 +295,21 @@ export function emitRichText(
     }
     if ("styleRef" in piece) {
       const fmt = piece.format ?? defaultFormat
-      if (!ctx.resolveStyleName) {
+      if (!ctx.resolveStyle) {
         throw new Error(
-          "InlineStyleRef encountered but ctx.resolveStyleName was not provided. " +
-            "The engine must wire a styleId → name resolver so STYLEREF emits the " +
-            "ECMA-376-required display name, not the styleId.",
+          "InlineStyleRef encountered but ctx.resolveStyle was not provided. " +
+            "The engine must wire a styleId → StyleInfo resolver so STYLEREF " +
+            "picks a locale-safe field code shape at emit time.",
         )
       }
-      const name = ctx.resolveStyleName(piece.styleRef)
-      if (!name) {
+      const info = ctx.resolveStyle(piece.styleRef)
+      if (!info) {
         throw new Error(
           `InlineStyleRef: styleId "${piece.styleRef}" not found in styles.xml. ` +
             `Declare it via styles[] in this apply, or reference an existing styleId.`,
         )
       }
-      for (const r of emitInlineStyleRef(ownerDoc, name, piece.numberOnly ?? false, fmt)) {
+      for (const r of emitInlineStyleRef(ownerDoc, info, piece.numberOnly ?? false, fmt)) {
         out.push(r)
       }
       continue
@@ -350,12 +351,12 @@ export interface EmitContext {
    * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
    * + an anchor in input = engine error at emit. */
   adoptAnchor?: (name: string, pEl: Element) => void
-  /** Resolves a `styleId` to the style's display name (the `<w:name w:val="..."/>`
-   * in styles.xml). Required for InlineStyleRef nodes — ECMA-376 §17.16.5.61
-   * specifies STYLEREF takes the style NAME, not the styleId, so the emitter
-   * must look up the name at write time. Absent + an InlineStyleRef in input
-   * = engine error at emit. */
-  resolveStyleName?: (styleId: string) => string | undefined
+  /** Resolves a `styleId` to a rich `StyleInfo` (display name +
+   * outlineLevel + isBuiltInLocalizable). Required for InlineStyleRef
+   * nodes — `emitInlineStyleRef` picks one of three locale-safe field
+   * code shapes based on this info. Absent + an InlineStyleRef in
+   * input = engine error at emit. */
+  resolveStyle?: (styleId: string) => StyleInfo | undefined
   /** Usable content width (LaTeX `\textwidth`) of the section the current
    * op is targeting, in twips. Consumed by `emitTableBlock` to seed
    * autofit gridCol widths. Populated per-op by the engine (different ops
