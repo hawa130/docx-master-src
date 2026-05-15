@@ -34,7 +34,8 @@ import {
 } from "@lib/apply/style-mutation.ts"
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import { lintPanguInEdits, type PanguWarning } from "@lib/edit/pangu-lint.ts"
-import type { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
+import { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
+import { ensureHyperlinkCharStyle } from "@lib/edit/hyperlink.ts"
 import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
 import { resolveCaptions } from "@lib/parse/caption-resolver.ts"
 import {
@@ -46,8 +47,18 @@ import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import type { PendingRefBackfill } from "@lib/edit/fields/ref-field.ts"
 import { standardizeCaptions } from "@lib/apply/standardize-captions.ts"
 import { injectChapterCounters } from "@lib/apply/inject-chapter-counters.ts"
-import { ensureUpdateFieldsFlag } from "@lib/apply/settings-mutation.ts"
+import {
+  ensureUpdateFieldsFlag,
+  ensureEvenAndOddHeadersFlag,
+} from "@lib/apply/settings-mutation.ts"
 import { applyPageSetup, type PageSetupReport } from "@lib/apply/page-setup-mutation.ts"
+import {
+  applyHeaderFooter,
+  applyHeaderFooterBinding,
+  ensureHeaderFooterStyles,
+  type HeaderFooterReport,
+  type HeaderFooterBindingReport,
+} from "@lib/apply/header-footer-mutation.ts"
 import type {
   ApplyConfig,
   ApplyContext,
@@ -491,7 +502,13 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   if (!config.dryRun) {
     for (const wmsg of resolvedCaptions.warnings) console.warn(`Warning: ${wmsg}`)
   }
-  let imageRegistry: DocxAssetRegistry | null = null
+  // Body asset registry — owns word/_rels/document.xml.rels and the shared
+  // [Content_Types].xml accumulator. Constructed up-front (independent of
+  // whether edits / HF are declared) so both the edits pass and the HF
+  // pass route rels appends through the same instance; rId allocation
+  // stays linear across image / hyperlink / header / footer entries.
+  // flushTo at the end is a no-op when no subsystem registered anything.
+  const bodyAssetRegistry = await DocxAssetRegistry.open(reader)
   let editsApplied = 0
   let editsTrackChanges = false
   let editsPreview: EditsPreviewEntry[] = []
@@ -540,8 +557,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       stylesDoc,
       sections: parsed.sections,
       captions: resolvedCaptions.byIdentifier,
+      imageRegistry: bodyAssetRegistry,
     })
-    imageRegistry = result.imageRegistry
     editsApplied = result.report.applied
     editsTrackChanges = result.report.trackChanges
     ;({ bookmarkAllocator, pendingBackfills, pendingCaptionFills, pendingCaptionResets } =
@@ -944,8 +961,42 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     pageSetupReport = applyPageSetup(documentDoc, config.pageSetup)
   }
 
-  // 8. Serialize and write
+  // 8. Replacement map — every following subsystem stages its part-level
+  //    mutations here (new HF parts + their rels, settings.xml flips, the
+  //    final body / styles / numbering serializations). Single writer
+  //    pass at the end consumes it.
   const replacements = new Map<string, string | Uint8Array>()
+
+  // 7f. Header / footer — generates header*.xml / footer*.xml parts, plugs
+  //     references into every sectPr, ensures the Header/Footer paragraph
+  //     styles exist, and (when an `even` variant is declared) flips the
+  //     evenAndOddHeaders flag in settings.xml.
+  let headerFooterReport: HeaderFooterReport | undefined
+  let headerFooterBindingReport: HeaderFooterBindingReport | undefined
+  if (config.headerFooter) {
+    ensureHeaderFooterStyles(stylesDoc)
+    headerFooterReport = await applyHeaderFooter(
+      reader,
+      config.headerFooter,
+      bodyAssetRegistry.getPartRels(),
+      bodyAssetRegistry.getContentTypes(),
+      replacements,
+    )
+    headerFooterBindingReport = applyHeaderFooterBinding(documentDoc, headerFooterReport)
+    if (headerFooterReport.parts.some((p) => p.hasHyperlinks)) {
+      // HF emitted at least one external hyperlink — the runs carry the
+      // built-in `Hyperlink` character style; inject it into styles.xml on
+      // first encounter (no-op when already present).
+      ensureHyperlinkCharStyle(stylesDoc)
+    }
+    if (headerFooterReport.hasEven) {
+      await ensureEvenAndOddHeadersFlag(reader, replacements)
+    }
+  }
+
+  // Stage stylesDoc / numberingDoc / documentDoc AFTER all in-place
+  // mutation is finished — HF binding writes to documentDoc, styles
+  // ensures write to stylesDoc.
   replacements.set("word/styles.xml", serializeXml(stylesDoc))
   if (numberingDoc) replacements.set("word/numbering.xml", serializeXml(numberingDoc))
   replacements.set("word/document.xml", serializeXml(documentDoc))
@@ -962,13 +1013,13 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     await ensureNumberingContentType(reader, replacements)
     await ensureNumberingRelationship(reader, replacements)
   }
-  // Asset registry flushes its binary media + part rels. ContentTypes is
-  // shared and flushed once after — header/footer part registries (when
-  // present) will hand back to the same accumulator before this point.
-  if (imageRegistry) {
-    imageRegistry.flushTo(replacements)
-    imageRegistry.getContentTypes().flushTo(replacements)
-  }
+  // Body asset registry flushes its binary media (word/media/imageN.*) + the
+  // body's rels (word/_rels/document.xml.rels). The HF pass appended
+  // header/footer Relationships onto the same PartRels instance, so this
+  // flush carries those entries too. ContentTypes is shared across body
+  // and HF parts — flushed once at the end below.
+  bodyAssetRegistry.flushTo(replacements)
+  bodyAssetRegistry.getContentTypes().flushTo(replacements)
   // Cross-references emitted in this run — flip settings.xml's
   // <w:updateFields> flag so Word resolves each REF on next open without
   // the user manually pressing Ctrl+A then F9.
@@ -1066,6 +1117,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     captionsPreview,
     panguWarnings: panguWarnings.length > 0 ? panguWarnings : undefined,
     pageSetup: pageSetupReport,
+    headerFooter: headerFooterReport,
+    headerFooterBinding: headerFooterBindingReport,
   })
 
   // Dry-run also invokes runEditOps now (so the cross-ref pipeline can see

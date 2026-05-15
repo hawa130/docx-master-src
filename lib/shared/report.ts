@@ -1,6 +1,10 @@
 import type { EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import type { ImportResult } from "@lib/apply/template-import.ts"
 import type { PageSetupReport } from "@lib/apply/page-setup-mutation.ts"
+import type {
+  HeaderFooterReport,
+  HeaderFooterBindingReport,
+} from "@lib/apply/header-footer-mutation.ts"
 import { type LineSpacingInput, parseLineSpacing, twipsToCmString } from "@lib/shared/units.ts"
 import { sameValue, type VsDirectReport } from "@lib/shared/vs-direct.ts"
 import type {
@@ -189,6 +193,12 @@ export function printReport(args: {
   /** Per-section before/after for any `pageSetup` mutation. Absent when
    * pageSetup was not declared. */
   pageSetup?: PageSetupReport
+  /** Header/footer parts generated this run. Absent when headerFooter was
+   *  not declared. */
+  headerFooter?: HeaderFooterReport
+  /** Per-sectPr binding summary — section count touched + whether
+   *  `<w:titlePg/>` was set. Absent when headerFooter was not declared. */
+  headerFooterBinding?: HeaderFooterBindingReport
 }) {
   const lines: string[] = []
   lines.push(
@@ -223,6 +233,23 @@ export function printReport(args: {
       const diffs = pageSetupDiff(sec.before, sec.after)
       if (diffs.length === 0) continue
       lines.push(`  Section ${sec.index}: ${diffs.join("; ")}`)
+    }
+    lines.push("")
+  }
+  if (args.headerFooter && args.headerFooter.parts.length > 0) {
+    const hf = args.headerFooter
+    const bind = args.headerFooterBinding
+    const flags: string[] = []
+    if (hf.hasFirst) flags.push("titlePg")
+    if (hf.hasEven) flags.push("evenAndOddHeaders")
+    const flagSuffix = flags.length > 0 ? ` (flags: ${flags.join(", ")})` : ""
+    lines.push(
+      `Header/footer: ${hf.parts.length} part(s) generated; bound to ${bind?.sectionCount ?? 0} section(s)${flagSuffix}.`,
+    )
+    for (const p of hf.parts) {
+      const extras: string[] = [`${p.blockCount} block(s)`]
+      if (p.hasHyperlinks) extras.push("hyperlink")
+      lines.push(`  ${p.surface}.${p.variant} → ${p.partName} (rId=${p.rId}, ${extras.join(", ")})`)
     }
     lines.push("")
   }

@@ -205,6 +205,12 @@ export interface RunEditOpsInput {
    * with captionId, CaptionBlock, CaptionCounterReset) can resolve their
    * identifier at emit time. Absent → caption blocks throw at emit. */
   captions?: Map<string, ResolvedCaptionConfig>
+  /** Caller-supplied body asset registry. When omitted, runEditOps
+   *  constructs its own from `reader`. apply-styles always passes one
+   *  because the header / footer pass writes header/footer Relationships
+   *  to the same body rels file — sharing a single registry instance
+   *  avoids racing rId allocation. */
+  imageRegistry?: DocxAssetRegistry
 }
 
 export interface RunEditOpsOutput {
@@ -299,7 +305,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
 
   const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
-  const imageRegistry = await DocxAssetRegistry.open(reader)
+  const imageRegistry = input.imageRegistry ?? (await DocxAssetRegistry.open(reader))
   const bookmarkAllocator = new BookmarkAllocator(documentDoc)
 
   // Pre-scan declared anchors so forward refs (a ref citing an anchor in a

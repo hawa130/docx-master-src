@@ -28,11 +28,12 @@ const SETTINGS_CT = "application/vnd.openxmlformats-officedocument.wordprocessin
 const SETTINGS_REL_TYPE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings"
 
+/** Empty stub for the fabrication path. Each mutator adds its own children
+ *  via `insertSettingsChildInOrder`; leaving the stub child-free avoids
+ *  baking in flags the caller didn't request. */
 const MINIMAL_SETTINGS_XML =
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
-  `<w:settings xmlns:w="${w}">` +
-  `<w:updateFields w:val="true"/>` +
-  `</w:settings>`
+  `<w:settings xmlns:w="${w}"></w:settings>`
 
 /**
  * Ensure word/settings.xml carries `<w:updateFields w:val="true"/>`, and
@@ -46,40 +47,90 @@ export async function ensureUpdateFieldsFlag(
   reader: DocxReader,
   replacements: Map<string, string | Uint8Array>,
 ): Promise<void> {
-  const settingsDoc = await reader.readXml("word/settings.xml")
+  await mutateSettings(reader, replacements, (root) => {
+    let updateFields = firstChildNS(root, w, "updateFields")
+    if (updateFields) {
+      if (wAttr(updateFields, "val") === "true") return false // already flagged
+      updateFields.setAttributeNS(w, "w:val", "true")
+      return true
+    }
+    updateFields = root.ownerDocument!.createElementNS(w, "w:updateFields")
+    updateFields.setAttributeNS(w, "w:val", "true")
+    insertSettingsChild(root, updateFields, SETTINGS_AFTER_UPDATEFIELDS)
+    return true
+  })
+}
+
+/**
+ * Ensure `<w:evenAndOddHeaders/>` is present in settings.xml. Flag is
+ * presence-only (no @val attribute); Word treats the empty element as
+ * enabling distinct even/odd headers and footers. Pair with sectPrs that
+ * carry header/footer references with `w:type="even"`.
+ *
+ * Idempotent: a re-run on an already-flagged doc no-ops.
+ */
+export async function ensureEvenAndOddHeadersFlag(
+  reader: DocxReader,
+  replacements: Map<string, string | Uint8Array>,
+): Promise<void> {
+  await mutateSettings(reader, replacements, (root) => {
+    if (firstChildNS(root, w, "evenAndOddHeaders")) return false
+    const el = root.ownerDocument!.createElementNS(w, "w:evenAndOddHeaders")
+    insertSettingsChild(root, el, SETTINGS_AFTER_EVENANDODDHEADERS)
+    return true
+  })
+}
+
+/** Shared settings.xml mutation flow. Loads (or reuses an in-flight
+ *  replacement of) settings.xml, hands the root to `mutate`, and stages
+ *  the result. Fabricates a minimal settings.xml + registers the part
+ *  in Content_Types and the body rels when none exists.
+ *
+ *  `mutate` returns true when it changed the doc; false (already in
+ *  desired state) skips re-serialization but still falls through to the
+ *  fabricate path if no settings.xml existed at all. */
+async function mutateSettings(
+  reader: DocxReader,
+  replacements: Map<string, string | Uint8Array>,
+  mutate: (root: Element) => boolean,
+): Promise<void> {
+  // Honour pending in-flight changes from earlier ensure calls in this run
+  // so the second mutator sees the first's edits (e.g. updateFields then
+  // evenAndOddHeaders both target the same file).
+  const pending = replacements.get("word/settings.xml")
+  let settingsDoc: Document | null = null
+  if (typeof pending === "string") {
+    settingsDoc = parseXml(pending)
+  } else {
+    settingsDoc = await reader.readXml("word/settings.xml")
+  }
+
   if (settingsDoc) {
     const root = settingsDoc.documentElement
     if (root) {
-      let updateFields = firstChildNS(root, w, "updateFields")
-      if (updateFields) {
-        if (wAttr(updateFields, "val") === "true") return // already flagged
-        updateFields.setAttributeNS(w, "w:val", "true")
-      } else {
-        updateFields = settingsDoc.createElementNS(w, "w:updateFields")
-        updateFields.setAttributeNS(w, "w:val", "true")
-        insertSettingsChildInOrder(root, updateFields)
-      }
-      replacements.set("word/settings.xml", serializeXml(settingsDoc))
+      const changed = mutate(root)
+      if (changed) replacements.set("word/settings.xml", serializeXml(settingsDoc))
       return
     }
   }
 
-  // Path 3: fabricate. Parse the minimal stub into a Document so the
-  // serializer produces consistent output formatting with the rest of the
-  // docx, then register the new part in Content_Types and the doc rels.
+  // Path 3: fabricate from the minimal stub, then let mutate set its
+  // contribution on top.
   const fabricated = parseXml(MINIMAL_SETTINGS_XML)
+  const root = fabricated.documentElement
+  if (root) mutate(root)
   replacements.set("word/settings.xml", serializeXml(fabricated))
   await registerSettingsContentType(reader, replacements)
   await registerSettingsRelationship(reader, replacements)
 }
 
 /** Per ECMA-376 §17.15.1, CT_Settings has a long fixed child order.
- * `<w:updateFields>` sits late in the sequence — every element listed here
- * comes AFTER it, so we insert before the first occurrence of any of these
- * to stay schema-valid. The list intentionally only enumerates the tail of
- * CT_Settings (post-updateFields elements); pre-updateFields elements
- * don't need to be named — if none of the tail elements are present,
- * appending at the end works.  */
+ * Rather than enumerate the full ~80-element sequence, each ensure
+ * function declares the set of element local-names that come AFTER its
+ * own insertion — `insertSettingsChild` then places the new element
+ * before the first existing child found in that set. Pre-element
+ * children stay untouched; trailing position is preserved when none of
+ * the AFTER elements are present. */
 const SETTINGS_AFTER_UPDATEFIELDS = new Set([
   "hdrShapeDefaults",
   "footnotePr",
@@ -105,9 +156,49 @@ const SETTINGS_AFTER_UPDATEFIELDS = new Set([
   "listSeparator",
 ])
 
-function insertSettingsChildInOrder(root: Element, newEl: Element): void {
+/** Elements that come AFTER `<w:evenAndOddHeaders>` in CT_Settings.
+ * Superset of SETTINGS_AFTER_UPDATEFIELDS plus the run of mid-tail
+ * elements between defaultTableStyle (position ~47) and updateFields
+ * (position ~74). Without these, an insert against a source doc that
+ * already carries updateFields (which most do) misplaces the new
+ * evenAndOddHeaders AFTER updateFields, producing schema-invalid XML. */
+const SETTINGS_AFTER_EVENANDODDHEADERS = new Set([
+  "bookFoldRevPrinting",
+  "bookFoldPrinting",
+  "bookFoldPrintingSheets",
+  "drawingGridHorizontalSpacing",
+  "drawingGridVerticalSpacing",
+  "displayHorizontalDrawingGridEvery",
+  "displayVerticalDrawingGridEvery",
+  "doNotUseMarginsForDrawingGridOrigin",
+  "drawingGridHorizontalOrigin",
+  "drawingGridVerticalOrigin",
+  "doNotShadeFormData",
+  "noPunctuationKerning",
+  "characterSpacingControl",
+  "printTwoOnOne",
+  "strictFirstAndLastChars",
+  "noLineBreaksAfter",
+  "noLineBreaksBefore",
+  "savePreviewPicture",
+  "doNotValidateAgainstSchema",
+  "saveInvalidXml",
+  "ignoreMixedContent",
+  "alwaysShowPlaceholderText",
+  "doNotDemarcateInvalidXml",
+  "saveXmlDataOnly",
+  "useXSLTWhenSaving",
+  "saveThroughXslt",
+  "showXMLTags",
+  "alwaysMergeEmptyNamespace",
+  "updateStyles",
+  "updateFields",
+  ...SETTINGS_AFTER_UPDATEFIELDS,
+])
+
+function insertSettingsChild(root: Element, newEl: Element, afterSet: Set<string>): void {
   for (const el of getChildren(root)) {
-    if (el.namespaceURI === w && SETTINGS_AFTER_UPDATEFIELDS.has(el.localName!)) {
+    if (el.namespaceURI === w && afterSet.has(el.localName!)) {
       root.insertBefore(newEl, el)
       return
     }

@@ -66,6 +66,17 @@ export class DocxAssetRegistry {
     return this.contentTypes
   }
 
+  /** Expose this part's `PartRels` to peer subsystems that need to
+   *  append non-image, non-hyperlink Relationships to the same file.
+   *  Currently used by `applyHeaderFooter`: header / footer parts are
+   *  referenced from the BODY's rels file (document.xml.rels), so the
+   *  HF mutation grabs this registry's PartRels and appends a
+   *  `Relationship` per HF part. Keeping rId allocation centralized
+   *  here avoids racing the body's image / hyperlink rId stream. */
+  getPartRels(): PartRels {
+    return this.partRels
+  }
+
   /** Convenience: open the body-part registry from a docx reader. Loads
    *  `word/_rels/document.xml.rels` and `[Content_Types].xml`. For header /
    *  footer parts, the orchestrator constructs `PartRels` and the shared

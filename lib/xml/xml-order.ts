@@ -128,11 +128,15 @@ export const TR_PR_CHILD_ORDER = [
   "trPrChange",
 ] as const
 
-/** CT_SectPr child order, per ECMA-376 17.6.18. Truncated to the children
- * page-setup-mutation writes (pgSz, pgMar, cols). pageSetup leaves
- * everything else (headerReference, footerReference, type, lnNumType,
- * pgNumType, formProt, vAlign, noEndnote, titlePg, textDirection, bidi,
- * rtlGutter, docGrid, printerSettings, sectPrChange) untouched. */
+/** CT_SectPr child order, per ECMA-376 17.6.18. Covers every sectPr
+ * child written by an apply subsystem — `page-setup-mutation` writes
+ * pgSz / pgMar / cols; `header-footer-mutation` writes headerReference
+ * / footerReference / titlePg. Other sectPr children present on source
+ * (type / lnNumType / pgNumType / formProt / vAlign / noEndnote /
+ * textDirection / bidi / rtlGutter / docGrid / printerSettings /
+ * sectPrChange) are preserved as-is and listed for completeness so
+ * `insertChildInOrder` correctly positions new children relative to
+ * them. */
 export const SECT_PR_CHILD_ORDER = [
   "headerReference",
   "footerReference",
