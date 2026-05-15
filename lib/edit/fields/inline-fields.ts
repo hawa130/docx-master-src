@@ -46,19 +46,34 @@ export function emitInlineField(
 
 export function emitInlineStyleRef(
   ownerDoc: Document,
-  styleRef: string,
+  styleName: string,
   numberOnly: boolean,
   format: RunFormat | undefined,
 ): Element[] {
-  // Per ECMA-376 17.16.5.61, STYLEREF's style-name argument is quoted with
-  // straight ASCII double quotes. Internal " is not valid in OOXML styleIds,
-  // so escaping isn't needed — strictObject's NonEmptyString and the apply-
-  // time styleId-existence check catch anything weird earlier.
+  // STYLEREF's argument for built-in heading styles is locale-sensitive
+  // in Word: a doc whose styles.xml carries `<w:name w:val="heading 1"/>`
+  // resolves as "标题 1" in a Chinese Word UI, "Überschrift 1" in
+  // German, etc. — emitting `STYLEREF "heading 1"` fails the localized
+  // built-in identity match and Word renders the "Error! Use Home tab
+  // to apply ..." placeholder. The documented cross-locale form is
+  // `STYLEREF N` (bare numeric outline level 1-9) — Word treats it as
+  // "the heading at level N", works in every language version. Custom
+  // style names aren't translated so the quoted form is fine there.
+  const headingLevel = headingLevelFromName(styleName)
+  const argument = headingLevel !== null ? String(headingLevel) : `"${styleName}"`
   const switches = numberOnly ? " \\n" : ""
   const { runs } = emitComplexField(ownerDoc, {
-    instrCode: `STYLEREF "${styleRef}"${switches}`,
+    instrCode: `STYLEREF ${argument}${switches}`,
     initialResult: "",
     format,
   })
   return runs
+}
+
+/** Returns 1-9 when `name` is a built-in heading display name in the
+ *  `<w:name w:val="heading N"/>` form (case-insensitive, trims), null
+ *  otherwise. */
+function headingLevelFromName(name: string): number | null {
+  const m = /^heading\s+([1-9])$/i.exec(name.trim())
+  return m ? parseInt(m[1]!, 10) : null
 }
