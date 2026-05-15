@@ -321,6 +321,121 @@ export const PageSetupSchema = z.strictObject({
   sections: z.optional(PageSetupSectionsSchema),
 })
 
+/* ------------- header / footer ------------- */
+
+import {
+  EditOpSchema,
+  HorizontalRuleBlockSchema,
+  ImageBlockSchema,
+  ParagraphBlockSchema,
+  TableBlockSchema,
+} from "@lib/config/edit-config-schema.ts"
+
+/** Block subset allowed inside a header / footer part.
+ *  Excluded:
+ *    - page-break  (meaningless inside HF — Word ignores it)
+ *    - equation / caption / caption-counter-reset  (numbering-counter state
+ *      lives in body; using these inside HF double-increments and breaks the
+ *      counter sim)
+ *  Table is allowed — the common header layout "left text | center text |
+ *  right text" is typically a single-row 3-column borderless table. */
+const HeaderFooterBlockSchema = z.union([
+  ParagraphBlockSchema,
+  ImageBlockSchema,
+  HorizontalRuleBlockSchema,
+  TableBlockSchema,
+])
+
+/** Paragraph styleIds that misbehave inside HF: heading IDs carry outline
+ *  level + numbering bindings the body's chapter SEQ counter watches, so a
+ *  Heading1 paragraph in a header would re-trigger chapter restarts. Title
+ *  / Subtitle / BodyText carry doc-flow assumptions that look wrong in HF
+ *  context. Agents wanting "this header text is bold 14pt" should use the
+ *  built-in `Header` / `Footer` styleId plus a paraFormat / runFormat
+ *  override, or mint a custom non-heading styleId. */
+const HF_FORBIDDEN_STYLE_IDS = /^(Heading[1-9]|Title|Subtitle|BodyText)$/
+
+const HeaderFooterContentSchema = z.array(HeaderFooterBlockSchema).check(
+  z.refine(
+    (blocks) => {
+      const stack: unknown[] = [...blocks]
+      while (stack.length > 0) {
+        const node = stack.pop()
+        if (!node || typeof node !== "object") continue
+        const obj = node as Record<string, unknown>
+        if (obj.type === "paragraph" && typeof obj.styleId === "string") {
+          if (HF_FORBIDDEN_STYLE_IDS.test(obj.styleId)) return false
+        }
+        // Recurse into table cells; cell content can be string / InlineNode[]
+        // / Block[] / { content }. Only Block[] / { content: Block[] } need
+        // checking for forbidden paragraph styleIds.
+        if (obj.type === "table" && Array.isArray(obj.rows)) {
+          for (const row of obj.rows as unknown[]) {
+            if (!Array.isArray(row)) continue
+            for (const cell of row) {
+              if (Array.isArray(cell)) {
+                stack.push(...cell)
+              } else if (cell && typeof cell === "object" && "content" in cell) {
+                const content = (cell as { content: unknown }).content
+                if (Array.isArray(content)) stack.push(...content)
+              }
+            }
+          }
+        }
+      }
+      return true
+    },
+    {
+      error:
+        "header/footer paragraphs cannot use heading/body-text styleIds " +
+        "(Heading1..9 / Title / Subtitle / BodyText). These styles carry outline-level " +
+        "and numbering bindings that misbehave outside the body. Use the built-in " +
+        "`Header` / `Footer` styleId with a paraFormat / runFormat override, or mint a " +
+        "custom non-heading styleId.",
+    },
+  ),
+)
+
+/** Per-surface variants. ECMA-376 sectPr supports three reference types:
+ *
+ *   default  — applies to every page that isn't covered by first / even
+ *   first    — applies to the section's first page; needs <w:titlePg/> on
+ *              the sectPr (engine auto-sets when this variant is declared)
+ *   even     — applies to even-numbered pages; needs
+ *              <w:evenAndOddHeaders/> in settings.xml (engine auto-sets
+ *              when this variant is declared anywhere)
+ *
+ *  At least one variant must be declared per surface. Empty array `[]` is
+ *  legal: it means "the variant exists for the trigger flags (titlePg /
+ *  evenAndOdd) but renders no content" — useful for blanking the cover
+ *  page's header. */
+const HeaderFooterVariantsSchema = z
+  .strictObject({
+    default: z.optional(HeaderFooterContentSchema),
+    first: z.optional(HeaderFooterContentSchema),
+    even: z.optional(HeaderFooterContentSchema),
+  })
+  .check(
+    z.refine(
+      (v) => v.default !== undefined || v.first !== undefined || v.even !== undefined,
+      {
+        error:
+          "header/footer surface: at least one of `default` / `first` / `even` must be declared",
+      },
+    ),
+  )
+
+export const HeaderFooterSchema = z
+  .strictObject({
+    header: z.optional(HeaderFooterVariantsSchema),
+    footer: z.optional(HeaderFooterVariantsSchema),
+  })
+  .check(
+    z.refine((hf) => hf.header !== undefined || hf.footer !== undefined, {
+      error: "headerFooter: at least one of `header` or `footer` must be declared",
+    }),
+  )
+
 /* ------------- paragraph mapping ------------- */
 
 export const AssignmentSchema = z.strictObject({
@@ -344,13 +459,13 @@ export const PatternRuleSchema = z.strictObject({
 
 /* ------------- top-level apply config ------------- */
 
-// edits live in lib/edit-config-schema.ts; reference by import to avoid circular
-// engine dependencies. The schema is reused as-is, just embedded inside
-// ApplyConfig as an optional block. When present, the engine runs edit ops
-// after style + numbering install and before pattern_rules / bulk_rules /
-// assignments — so the rules pass sees both pre-existing chrome paragraphs
-// and any agent-inserted content uniformly.
-import { EditOpSchema } from "@lib/config/edit-config-schema.ts"
+// edits live in lib/edit-config-schema.ts; reference by import (alongside the
+// header/footer Block schemas) to avoid circular engine dependencies. The
+// schema is reused as-is, just embedded inside ApplyConfig as an optional
+// block. When present, the engine runs edit ops after style + numbering
+// install and before pattern_rules / bulk_rules / assignments — so the rules
+// pass sees both pre-existing chrome paragraphs and any agent-inserted
+// content uniformly.
 
 export const ApplyConfigSchema = z.strictObject({
   source: NonEmptyString,
@@ -359,6 +474,7 @@ export const ApplyConfigSchema = z.strictObject({
   template: z.optional(TemplateSchema),
   theme: z.optional(ThemeSchema),
   pageSetup: z.optional(PageSetupSchema),
+  headerFooter: z.optional(HeaderFooterSchema),
   styles: z.optional(z.array(StyleEntrySchema)),
   // Single scheme (most common: one multi-level scheme bound to Heading1–N)
   // or an array of schemes when the doc needs multiple parallel ones (e.g.

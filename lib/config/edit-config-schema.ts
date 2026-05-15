@@ -196,7 +196,7 @@ const NumberingRefSchema = z.strictObject({
 
 /* ------------- blocks ------------- */
 
-const ParagraphBlockSchema = z.strictObject({
+export const ParagraphBlockSchema = z.strictObject({
   type: z.literal("paragraph"),
   text: RichTextSchema,
   styleId: z.optional(NonEmptyString),
@@ -213,7 +213,7 @@ const ParagraphBlockSchema = z.strictObject({
   anchor: z.optional(AnchorNameSchema),
 })
 
-const ImageBlockSchema = z.strictObject({
+export const ImageBlockSchema = z.strictObject({
   type: z.literal("image"),
   src: NonEmptyString,
   width: LengthValue,
@@ -235,7 +235,7 @@ const PageBreakBlockSchema = z.strictObject({
   type: z.literal("page-break"),
 })
 
-const HorizontalRuleBlockSchema = z.strictObject({
+export const HorizontalRuleBlockSchema = z.strictObject({
   type: z.literal("horizontal-rule"),
 })
 
