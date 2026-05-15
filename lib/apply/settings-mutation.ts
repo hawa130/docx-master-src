@@ -62,23 +62,41 @@ export async function ensureUpdateFieldsFlag(
 }
 
 /**
- * Ensure `<w:evenAndOddHeaders/>` is present in settings.xml. Flag is
- * presence-only (no @val attribute); Word treats the empty element as
- * enabling distinct even/odd headers and footers. Pair with sectPrs that
- * carry header/footer references with `w:type="even"`.
+ * Set or clear `<w:evenAndOddHeaders/>` in settings.xml based on
+ * `enabled`. The flag is presence-only (no @val); Word treats the empty
+ * element as enabling distinct even/odd headers and footers. Pair with
+ * sectPrs that carry header/footer references with `w:type="even"`.
  *
- * Idempotent: a re-run on an already-flagged doc no-ops.
+ * Called by the HF pipeline as the source of truth: with HF config
+ * declared, the flag is enabled iff at least one surface declared an
+ * `even` variant. The fabrication path (no settings.xml in source)
+ * is skipped when `enabled=false` to avoid creating settings.xml just
+ * to remove a flag that wasn't there.
+ *
+ * Idempotent: re-run on an already-correct doc no-ops.
  */
-export async function ensureEvenAndOddHeadersFlag(
+export async function setEvenAndOddHeadersFlag(
   reader: DocxReader,
   replacements: Map<string, string | Uint8Array>,
+  enabled: boolean,
 ): Promise<void> {
-  await mutateSettings(reader, replacements, (root) => {
-    if (firstChildNS(root, w, "evenAndOddHeaders")) return false
-    const el = root.ownerDocument!.createElementNS(w, "w:evenAndOddHeaders")
-    insertSettingsChild(root, el, SETTINGS_AFTER_EVENANDODDHEADERS)
-    return true
-  })
+  await mutateSettings(
+    reader,
+    replacements,
+    (root) => {
+      const existing = firstChildNS(root, w, "evenAndOddHeaders")
+      if (enabled) {
+        if (existing) return false
+        const el = root.ownerDocument!.createElementNS(w, "w:evenAndOddHeaders")
+        insertSettingsChild(root, el, SETTINGS_AFTER_EVENANDODDHEADERS)
+        return true
+      }
+      if (!existing) return false
+      root.removeChild(existing)
+      return true
+    },
+    { fabricateOnMissing: enabled },
+  )
 }
 
 /** Shared settings.xml mutation flow. Loads (or reuses an in-flight
@@ -93,7 +111,9 @@ async function mutateSettings(
   reader: DocxReader,
   replacements: Map<string, string | Uint8Array>,
   mutate: (root: Element) => boolean,
+  opts: { fabricateOnMissing?: boolean } = {},
 ): Promise<void> {
+  const fabricateOnMissing = opts.fabricateOnMissing ?? true
   // Honour pending in-flight changes from earlier ensure calls in this run
   // so the second mutator sees the first's edits (e.g. updateFields then
   // evenAndOddHeaders both target the same file).
@@ -115,7 +135,10 @@ async function mutateSettings(
   }
 
   // Path 3: fabricate from the minimal stub, then let mutate set its
-  // contribution on top.
+  // contribution on top. Skipped when `fabricateOnMissing=false`
+  // (e.g. clearing a flag that wasn't there — no need to materialise
+  // settings.xml just to keep it empty).
+  if (!fabricateOnMissing) return
   const fabricated = parseXml(MINIMAL_SETTINGS_XML)
   const root = fabricated.documentElement
   if (root) mutate(root)

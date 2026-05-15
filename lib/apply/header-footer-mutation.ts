@@ -279,21 +279,30 @@ function stripExistingReferences(sectPr: Element): void {
   for (const el of stale) sectPr.removeChild(el)
 }
 
-/** Idempotent `<w:titlePg/>` ensure on a sectPr — sets the flag for first-
- *  page header/footer activation. Returns true when the element was
- *  freshly inserted; false on no-op so the report can distinguish a
- *  legit fresh apply from a re-run where the flag was already in place. */
-function ensureTitlePg(sectPr: Element, doc: Document): boolean {
-  if (firstChildNS(sectPr, w, "titlePg")) return false
-  const el = doc.createElementNS(w, "w:titlePg")
-  insertChildInOrder(sectPr, el, SECT_PR_CHILD_ORDER)
+/** Idempotent set/clear of `<w:titlePg/>` on a sectPr based on `enabled`.
+ *  HF config is the source of truth: with the block declared, titlePg
+ *  is set when any surface has a `first` variant, cleared otherwise.
+ *  Returns true when the DOM actually changed; false on no-op. */
+function setTitlePg(sectPr: Element, doc: Document, enabled: boolean): boolean {
+  const existing = firstChildNS(sectPr, w, "titlePg")
+  if (enabled) {
+    if (existing) return false
+    const el = doc.createElementNS(w, "w:titlePg")
+    insertChildInOrder(sectPr, el, SECT_PR_CHILD_ORDER)
+    return true
+  }
+  if (!existing) return false
+  sectPr.removeChild(existing)
   return true
 }
 
 export interface HeaderFooterBindingReport {
   /** Number of sectPrs we wrote references onto. */
   sectionCount: number
-  /** True when at least one sectPr received `<w:titlePg/>` this run. */
+  /** True when at least one sectPr's `<w:titlePg/>` flag was actually
+   *  mutated this run — either set (because `first` was declared and the
+   *  flag was missing) or cleared (because `first` is not declared and
+   *  the source had a leftover flag from a prior apply). */
   titlePgApplied: boolean
 }
 
@@ -307,7 +316,7 @@ export interface HeaderFooterBindingReport {
  *     `first` (decision 7)
  *
  *  evenAndOddHeaders activation lives in settings.xml — see
- *  `ensureEvenAndOddHeadersFlag` in settings-mutation.
+ *  `setEvenAndOddHeadersFlag` in settings-mutation.
  */
 /* ------------- Header / Footer paragraph styles ------------- */
 
@@ -384,9 +393,7 @@ export function applyHeaderFooterBinding(
       ref.setAttributeNS(NS.r, "r:id", part.rId)
       insertChildInOrder(sectPr, ref, SECT_PR_CHILD_ORDER)
     }
-    if (report.hasFirst) {
-      if (ensureTitlePg(sectPr, documentDoc)) titlePgApplied = true
-    }
+    if (setTitlePg(sectPr, documentDoc, report.hasFirst)) titlePgApplied = true
   }
   return { sectionCount: sectPrs.length, titlePgApplied }
 }

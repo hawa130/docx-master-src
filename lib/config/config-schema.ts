@@ -355,46 +355,89 @@ const HeaderFooterBlockSchema = z.union([
  *  override, or mint a custom non-heading styleId. */
 const HF_FORBIDDEN_STYLE_IDS = /^(Heading[1-9]|Title|Subtitle|BodyText)$/
 
-const HeaderFooterContentSchema = z.array(HeaderFooterBlockSchema).check(
-  z.refine(
-    (blocks) => {
-      const stack: unknown[] = [...blocks]
-      while (stack.length > 0) {
-        const node = stack.pop()
-        if (!node || typeof node !== "object") continue
-        const obj = node as Record<string, unknown>
-        if (obj.type === "paragraph" && typeof obj.styleId === "string") {
-          if (HF_FORBIDDEN_STYLE_IDS.test(obj.styleId)) return false
-        }
-        // Recurse into table cells; cell content can be string / InlineNode[]
-        // / Block[] / { content }. Only Block[] / { content: Block[] } need
-        // checking for forbidden paragraph styleIds.
-        if (obj.type === "table" && Array.isArray(obj.rows)) {
-          for (const row of obj.rows as unknown[]) {
-            if (!Array.isArray(row)) continue
-            for (const cell of row) {
-              if (Array.isArray(cell)) {
-                stack.push(...cell)
-              } else if (cell && typeof cell === "object" && "content" in cell) {
-                const content = (cell as { content: unknown }).content
-                if (Array.isArray(content)) stack.push(...content)
-              }
-            }
+/** Block `type` values disallowed at any nesting depth inside HF content,
+ *  including inside table cells (where `CellBlockSchema` would otherwise
+ *  permit them). caption / caption-counter-reset / equation pin counters
+ *  to the body's numbering / SEQ state; emitting them inside HF would
+ *  double-increment and break the counter sim. page-break is a no-op
+ *  inside an HF part — Word ignores it. */
+const HF_FORBIDDEN_NESTED_BLOCK_TYPES = new Set([
+  "caption",
+  "caption-counter-reset",
+  "equation",
+  "page-break",
+])
+
+/** DFS the block tree pushing into table cells via every cell-content
+ *  shape that can carry Block[]. Visitor returns true to stop (violation
+ *  found). Returns true when visitor signals stop, false otherwise. */
+function hfWalk(blocks: unknown[], visit: (node: Record<string, unknown>) => boolean): boolean {
+  const stack: unknown[] = [...blocks]
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (!node || typeof node !== "object") continue
+    const obj = node as Record<string, unknown>
+    if (visit(obj)) return true
+    if (obj.type === "table" && Array.isArray(obj.rows)) {
+      for (const row of obj.rows as unknown[]) {
+        if (!Array.isArray(row)) continue
+        for (const cell of row) {
+          if (Array.isArray(cell)) {
+            stack.push(...cell)
+          } else if (cell && typeof cell === "object" && "content" in cell) {
+            const content = (cell as { content: unknown }).content
+            if (Array.isArray(content)) stack.push(...content)
           }
         }
       }
-      return true
-    },
-    {
-      error:
-        "header/footer paragraphs cannot use heading/body-text styleIds " +
-        "(Heading1..9 / Title / Subtitle / BodyText). These styles carry outline-level " +
-        "and numbering bindings that misbehave outside the body. Use the built-in " +
-        "`Header` / `Footer` styleId with a paraFormat / runFormat override, or mint a " +
-        "custom non-heading styleId.",
-    },
-  ),
-)
+    }
+  }
+  return false
+}
+
+const HeaderFooterContentSchema = z
+  .array(HeaderFooterBlockSchema)
+  .check(
+    // Block-type pass: catches caption / equation / caption-counter-reset /
+    // page-break smuggled in via table cells (CellBlockSchema permits them
+    // even though the HF top-level union doesn't). The doc on
+    // references/header-footer.md promises these are rejected at parse;
+    // without this pass the rejection only surfaces at emit time.
+    z.refine(
+      (blocks) =>
+        !hfWalk(blocks as unknown[], (obj) => {
+          const t = obj.type
+          return typeof t === "string" && HF_FORBIDDEN_NESTED_BLOCK_TYPES.has(t)
+        }),
+      {
+        error:
+          "header/footer cannot contain caption / equation / caption-counter-reset / " +
+          "page-break blocks (allowed at any nesting depth, including inside table " +
+          "cells). caption/equation/caption-counter-reset bind to body counters and " +
+          "would double-increment; page-break is a no-op inside header/footer. Move " +
+          "these blocks to body edits[].",
+      },
+    ),
+  )
+  .check(
+    z.refine(
+      (blocks) =>
+        !hfWalk(blocks as unknown[], (obj) => {
+          if (obj.type !== "paragraph") return false
+          const id = obj.styleId
+          return typeof id === "string" && HF_FORBIDDEN_STYLE_IDS.test(id)
+        }),
+      {
+        error:
+          "header/footer paragraphs cannot use heading/body-text styleIds " +
+          "(Heading1..9 / Title / Subtitle / BodyText) at any nesting depth. " +
+          "These styles carry outline-level and numbering bindings that " +
+          "misbehave outside the body. Use the built-in `Header` / `Footer` " +
+          "styleId with a paraFormat / runFormat override, or mint a custom " +
+          "non-heading styleId.",
+      },
+    ),
+  )
 
 /** Per-surface variants. ECMA-376 sectPr supports three reference types:
  *

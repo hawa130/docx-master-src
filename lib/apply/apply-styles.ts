@@ -49,7 +49,7 @@ import { standardizeCaptions } from "@lib/apply/standardize-captions.ts"
 import { injectChapterCounters } from "@lib/apply/inject-chapter-counters.ts"
 import {
   ensureUpdateFieldsFlag,
-  ensureEvenAndOddHeadersFlag,
+  setEvenAndOddHeadersFlag,
 } from "@lib/apply/settings-mutation.ts"
 import { applyPageSetup, type PageSetupReport } from "@lib/apply/page-setup-mutation.ts"
 import {
@@ -989,9 +989,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       // first encounter (no-op when already present).
       ensureHyperlinkCharStyle(stylesDoc)
     }
-    if (headerFooterReport.hasEven) {
-      await ensureEvenAndOddHeadersFlag(reader, replacements)
-    }
+    // HF config is the source of truth for evenAndOddHeaders: set when an
+    // `even` variant is declared anywhere, clear otherwise. Without the
+    // clear branch, a re-run that drops `even` leaves the flag set and
+    // Word renders even pages as blank.
+    await setEvenAndOddHeadersFlag(reader, replacements, headerFooterReport.hasEven)
   }
 
   // Stage stylesDoc / numberingDoc / documentDoc AFTER all in-place
