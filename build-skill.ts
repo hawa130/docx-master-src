@@ -16,7 +16,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs"
-import { join, relative } from "node:path"
+import { dirname, join, relative } from "node:path"
 import JSZip from "jszip"
 
 const ROOT = import.meta.dirname
@@ -63,6 +63,24 @@ if (existsSync(schemasSrc)) {
 // vendor/ooxml-schemas/NOTICE.md in the source repo.
 const stagedNotice = join(schemasDst, "NOTICE.md")
 if (existsSync(stagedNotice)) rmSync(stagedNotice)
+
+// 2b''. Stage the bundled blank.docx template alongside the bundled
+// scripts. `lib/apply/blank-source.ts`'s resolver looks one of two ways:
+// `<MODULE_DIR>/_assets/blank.docx` (when the function inlines into the
+// apply.js entry → MODULE_DIR is SCRIPTS_DIR) and `<MODULE_DIR>/../_assets`
+// (when it lands in a `_shared/` chunk). Copying to SCRIPTS_DIR/_assets/
+// satisfies both candidates.
+const blankSrc = join(ROOT, "lib", "apply", "_assets", "blank.docx")
+const blankDst = join(SCRIPTS_DIR, "_assets", "blank.docx")
+if (!existsSync(blankSrc)) {
+  console.error(
+    `blank.docx template missing at ${relative(ROOT, blankSrc)} — ` +
+      `run \`bun run build-blank-template.ts\` first.`,
+  )
+  process.exit(1)
+}
+mkdirSync(dirname(blankDst), { recursive: true })
+cpSync(blankSrc, blankDst)
 
 // 2c. Copy xmllint-wasm runtime files (index-node.js + xmllint-node.js +
 // xmllint.wasm) into scripts/_shared/xmllint-wasm. The package can't be

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs"
 import { resolve } from "node:path"
 import { applyStyles } from "@lib/apply/apply-styles.ts"
+import { getBlankTemplatePath } from "@lib/apply/blank-source.ts"
 import { parseConfig, type ApplyConfig } from "@lib/config/config-schema.ts"
 
 /**
@@ -63,14 +64,21 @@ export async function runCli(spec: CliSpec): Promise<void> {
     process.exit(1)
   }
 
-  const source = resolve(config.source)
+  // Omitted source → scaffold from the bundled blank.docx template. The
+  // template ships at lib/apply/_assets/blank.docx (dev) and is copied
+  // into <scripts>/_assets/ by build-skill.
+  const source = config.source !== undefined ? resolve(config.source) : getBlankTemplatePath()
   const output = resolve(config.output)
   if (!config.dryRun && source === output) {
     console.error("output must differ from source")
     process.exit(1)
   }
   if (!existsSync(source)) {
-    console.error(`source not found: ${source}`)
+    console.error(
+      config.source !== undefined
+        ? `source not found: ${source}`
+        : `bundled blank template not found at ${source} — run \`bun run build:skill\` to stage it`,
+    )
     process.exit(1)
   }
 

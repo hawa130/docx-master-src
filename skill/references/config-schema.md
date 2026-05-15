@@ -41,9 +41,13 @@ string form when you mean an exact line height.
 
 ```jsonc
 {
-  source: "/path/to/original.docx",  // REQUIRED. Path to the input file.
+  source: "/path/to/original.docx",  // optional. Path to the input file.
                                      // This file is NEVER modified — apply
-                                     // copies it first, then writes the modified copy.
+                                     // copies it first, then writes the modified
+                                     // copy. Omit to scaffold from the bundled
+                                     // blank template (one empty Normal paragraph,
+                                     // A4 portrait). Required when a `template`
+                                     // block is declared.
   output: "/path/to/output.docx",    // REQUIRED. Path for the new file. Must differ from source.
   dryRun: false,                     // optional. true = in-memory pipeline + report, no file written.
                                      // Equivalent to the --dry-run CLI flag.

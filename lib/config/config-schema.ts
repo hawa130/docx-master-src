@@ -510,29 +510,40 @@ export const PatternRuleSchema = z.strictObject({
 // pass sees both pre-existing chrome paragraphs and any agent-inserted
 // content uniformly.
 
-export const ApplyConfigSchema = z.strictObject({
-  source: NonEmptyString,
-  output: NonEmptyString,
-  dryRun: z.optional(z.boolean()),
-  template: z.optional(TemplateSchema),
-  theme: z.optional(ThemeSchema),
-  pageSetup: z.optional(PageSetupSchema),
-  headerFooter: z.optional(HeaderFooterSchema),
-  styles: z.optional(z.array(StyleEntrySchema)),
-  // Single scheme (most common: one multi-level scheme bound to Heading1–N)
-  // or an array of schemes when the doc needs multiple parallel ones (e.g.
-  // a multi-level heading scheme + a single-level list-bound scheme). The
-  // engine processes them in array order, allocating fresh numIds for each.
-  numbering: z.optional(z.union([NumberingSchema, z.array(NumberingSchema)])),
-  captions: z.optional(CaptionsSchema),
-  assignments: z.optional(z.array(AssignmentSchema)),
-  bulk_rules: z.optional(z.array(BulkRuleSchema)),
-  pattern_rules: z.optional(z.array(PatternRuleSchema)),
-  requirements: z.optional(z.record(z.string(), z.string())),
-  exclude: z.optional(z.array(z.number())),
-  edits: z.optional(z.array(EditOpSchema)),
-  trackChanges: z.optional(z.boolean()),
-})
+export const ApplyConfigSchema = z
+  .strictObject({
+    // Omit `source` to scaffold from the bundled blank template (one empty
+    // Normal paragraph on A4 portrait). Required when a `template` block is
+    // declared — template-import without a host document has no resolution
+    // context.
+    source: z.optional(NonEmptyString),
+    output: NonEmptyString,
+    dryRun: z.optional(z.boolean()),
+    template: z.optional(TemplateSchema),
+    theme: z.optional(ThemeSchema),
+    pageSetup: z.optional(PageSetupSchema),
+    headerFooter: z.optional(HeaderFooterSchema),
+    styles: z.optional(z.array(StyleEntrySchema)),
+    // Single scheme (most common: one multi-level scheme bound to Heading1–N)
+    // or an array of schemes when the doc needs multiple parallel ones (e.g.
+    // a multi-level heading scheme + a single-level list-bound scheme). The
+    // engine processes them in array order, allocating fresh numIds for each.
+    numbering: z.optional(z.union([NumberingSchema, z.array(NumberingSchema)])),
+    captions: z.optional(CaptionsSchema),
+    assignments: z.optional(z.array(AssignmentSchema)),
+    bulk_rules: z.optional(z.array(BulkRuleSchema)),
+    pattern_rules: z.optional(z.array(PatternRuleSchema)),
+    requirements: z.optional(z.record(z.string(), z.string())),
+    exclude: z.optional(z.array(z.number())),
+    edits: z.optional(z.array(EditOpSchema)),
+    trackChanges: z.optional(z.boolean()),
+  })
+  .check(
+    z.refine((cfg) => !(cfg.template !== undefined && cfg.source === undefined), {
+      error:
+        "template: incompatible with blank-source mode (omitted `source`). Blank-source starts a clean document; template-import is a delta operation that transplants styles into an existing host with its own style cascade — combining them is conceptually inconsistent. Declare `source` when you want template-import, or drop `template` to use blank-source without the transplant.",
+    }),
+  )
 
 export type ApplyConfig = z.infer<typeof ApplyConfigSchema>
 
