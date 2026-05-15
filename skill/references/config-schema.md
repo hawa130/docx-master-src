@@ -51,6 +51,9 @@ string form when you mean an exact line height.
   template:   { ... },               // optional. See § "Template import" below.
   theme:      { fonts: {...} },      // optional. See § "Theme" below.
   pageSetup:  { ... },               // optional. See § "Page setup" below.
+  headerFooter: { header?, footer? }, // optional. Each surface declares one or
+                                     //   more of `default` / `first` / `even`.
+                                     //   See references/header-footer.md.
   styles:     [ ... ],               // REQUIRED. See § "Style entries" below.
   numbering: { levels: [...] }       // optional. Single scheme, OR array of
             | [ {levels:[...]}, ... ], // schemes for parallel installations
