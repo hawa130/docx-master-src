@@ -1,13 +1,22 @@
 /**
- * Image asset registry — wires image blocks to the docx zip.
+ * Document-asset registry — wires image blocks AND external hyperlinks into
+ * the docx zip. Both kinds of assets register entries in
+ * `word/_rels/document.xml.rels`, so they share one writer to avoid two
+ * paths racing on the same file. The class is still named after its first
+ * client (images); the hyperlink path was added in the inline-primitives
+ * phase.
  *
- * Adding an image touches three places besides word/document.xml:
+ * For images, registration touches three parts besides word/document.xml:
  *   1. word/media/imageN.<ext>           — the binary file
  *   2. word/_rels/document.xml.rels      — relationship from rId to media path
  *   3. [Content_Types].xml               — Default entry for the file extension
  *
- * The registry caches existing rels / extensions so multiple image emits in
- * one apply pass coexist with each other and with whatever the source docx
+ * For external hyperlinks: just the rels entry (TargetMode="External").
+ * Internal hyperlinks (`#anchor` form) skip the registry entirely — they
+ * use `<w:hyperlink w:anchor="name">` with no rId.
+ *
+ * The registry caches existing rels / extensions so multiple emits in one
+ * apply pass coexist with each other and with whatever the source docx
  * already had. After all emits, `flushTo(replacements)` stages every
  * mutation (text + binary) into the writer's replacement map.
  *
@@ -22,6 +31,8 @@ import { NS } from "@lib/parse/types.ts"
 import { type Length, toEmu } from "@lib/shared/units.ts"
 
 const REL_TYPE_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+const REL_TYPE_HYPERLINK =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 
 const PIC_NS = "http://schemas.openxmlformats.org/drawingml/2006/picture"
 
@@ -41,9 +52,17 @@ export class ImageAssetRegistry {
   private nextImageNum = 1
   private nextDocPrId = 1
   private nextRId = 1
+  /** Set whenever rels are appended (image OR hyperlink). Required because
+   *  hyperlink-only flushes still need to write the rels file even though
+   *  `binaryAdditions` stays empty. */
+  private relsDirty = false
   /** Cache: srcPath → already-registered rId. Lets two image blocks pointing
    * at the same file share one media entry. */
   private byAbsPath = new Map<string, string>()
+  /** Cache: external href → already-registered rId. Multiple hyperlinks to
+   *  the same target share one Relationship entry — matches what Word writes
+   *  when you paste the same URL twice. */
+  private byExternalHref = new Map<string, string>()
 
   private constructor(contentTypesText: string, relsText: string) {
     this.contentTypesText = contentTypesText
@@ -82,9 +101,23 @@ export class ImageAssetRegistry {
       this.existingExtensions.add(rawExt)
     }
     const rId = this.allocateRId()
-    this.appendRel(rId, archivePath.replace(/^word\//, ""))
+    this.appendRel(rId, REL_TYPE_IMAGE, archivePath.replace(/^word\//, ""))
     this.byAbsPath.set(abs, rId)
     return { rId, ext }
+  }
+
+  /** Register an external hyperlink target. Returns the rId for the
+   *  `<w:hyperlink r:id="...">` element. Identical hrefs share one rId
+   *  (matches Word's deduplication). Internal `#anchor` links don't go
+   *  through this path — they use `<w:hyperlink w:anchor="...">` with
+   *  no rId. */
+  registerExternalLink(href: string): { rId: string } {
+    const cached = this.byExternalHref.get(href)
+    if (cached) return { rId: cached }
+    const rId = this.allocateRId()
+    this.appendRel(rId, REL_TYPE_HYPERLINK, href, "External")
+    this.byExternalHref.set(href, rId)
+    return { rId }
   }
 
   /** Build a single inline <w:drawing> element ready to live inside a <w:r>.
@@ -181,14 +214,19 @@ export class ImageAssetRegistry {
   }
 
   /** Stage every mutation (modified [Content_Types].xml, modified rels,
-   * binary media files) into the writer's replacement map. No-op if no
-   * images were registered. */
+   * binary media files) into the writer's replacement map. No-op when
+   * nothing was registered. Hyperlinks-only flushes write the rels alone;
+   * image flushes additionally write content types + media binaries. */
   flushTo(replacements: Map<string, string | Uint8Array>): void {
-    if (this.binaryAdditions.size === 0) return
-    replacements.set("[Content_Types].xml", this.contentTypesText)
-    replacements.set("word/_rels/document.xml.rels", this.relsText)
-    for (const [path, bytes] of this.binaryAdditions) {
-      replacements.set(path, bytes)
+    if (!this.relsDirty && this.binaryAdditions.size === 0) return
+    if (this.relsDirty) {
+      replacements.set("word/_rels/document.xml.rels", this.relsText)
+    }
+    if (this.binaryAdditions.size > 0) {
+      replacements.set("[Content_Types].xml", this.contentTypesText)
+      for (const [path, bytes] of this.binaryAdditions) {
+        replacements.set(path, bytes)
+      }
     }
   }
 
@@ -247,12 +285,17 @@ export class ImageAssetRegistry {
     this.contentTypesText = this.contentTypesText.replace("</Types>", `${insert}</Types>`)
   }
 
-  private appendRel(id: string, target: string): void {
+  private appendRel(id: string, type: string, target: string, mode?: "External"): void {
     // target stored relative to the rels' part location: rels live in
     // word/_rels/, so a media file at word/media/imageN.ext is "media/imageN.ext".
-    const insert = `<Relationship Id="${id}" Type="${REL_TYPE_IMAGE}" Target="${target}"/>`
+    // External targets (hyperlink URLs) are stored verbatim; the writer
+    // doesn't rewrite them and Word resolves them at click time.
+    const modeAttr = mode ? ` TargetMode="${mode}"` : ""
+    const escapedTarget = escapeXmlAttr(target)
+    const insert = `<Relationship Id="${id}" Type="${type}" Target="${escapedTarget}"${modeAttr}/>`
     this.relsText = this.relsText.replace("</Relationships>", `${insert}</Relationships>`)
-    this.rels.push({ id, target, type: REL_TYPE_IMAGE })
+    this.rels.push({ id, target, type })
+    this.relsDirty = true
   }
 }
 
@@ -289,4 +332,15 @@ function defaultContentTypesXml(): string {
 function defaultRelsXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`
+}
+
+/** Minimal XML-attribute escape — image targets are sanitized media paths
+ *  but hyperlink hrefs are agent-supplied URIs that may contain `&` (query
+ *  strings), `"`, `<`, `>`. Encode just enough to keep the rels XML valid. */
+function escapeXmlAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
 }

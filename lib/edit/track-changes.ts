@@ -108,7 +108,8 @@ export function markParagraphMarkDeleted(p: Element, ownerDoc: Document, ctx: Tr
   del.setAttributeNS(w, "w:id", String(ctx.nextId()))
   del.setAttributeNS(w, "w:author", ctx.author)
   del.setAttributeNS(w, "w:date", ctx.date)
-  rPr.appendChild(del)
+  // CT_ParaRPrOriginal: ins/del markers FIRST per schema. Insert at head.
+  rPr.insertBefore(del, rPr.firstChild)
 }
 
 /**
@@ -142,20 +143,59 @@ export function wrapParagraphContentInDel(p: Element, ownerDoc: Document, ctx: T
  * insertion, accept-all leaves the paragraph break as if it were original.
  */
 export function markParagraphAsInserted(p: Element, ownerDoc: Document, ctx: TrackContext): void {
-  const runs = getChildrenNS(p, w, "r")
-  if (runs.length > 0) {
-    const firstRun = runs[0]!
-    const before = firstRun.previousSibling
+  // Walk paragraph children in order. Adjacent <w:r> direct children get
+  // grouped into one <w:ins> at their original position; <w:hyperlink>
+  // children get their internal <w:r> wrapped INSIDE the hyperlink (legal
+  // OOXML nesting is <w:hyperlink><w:ins><w:r>, not the other way around).
+  // Walking in order preserves reading sequence when hyperlinks interleave
+  // with paragraph-level runs.
+  const orderedChildren = Array.from(getChildren(p))
+  let runGroup: Element[] = []
+  let groupAnchor: ChildNode | null = null
+  const flushRunGroup = () => {
+    if (runGroup.length === 0) return
     const detached: Element[] = []
-    for (const r of runs) {
+    for (const r of runGroup) {
       p.removeChild(r)
       detached.push(r)
     }
     const ins = wrapInsertion(detached, ownerDoc, ctx)
-    if (before && before.nextSibling) p.insertBefore(ins, before.nextSibling)
-    else if (before) p.appendChild(ins)
+    if (groupAnchor && groupAnchor.nextSibling) p.insertBefore(ins, groupAnchor.nextSibling)
+    else if (groupAnchor) p.appendChild(ins)
     else p.insertBefore(ins, p.firstChild)
+    runGroup = []
+    groupAnchor = null
   }
+  for (const child of orderedChildren) {
+    if (child.namespaceURI !== w) continue
+    if (child.localName === "r") {
+      if (runGroup.length === 0) groupAnchor = child.previousSibling
+      runGroup.push(child)
+      continue
+    }
+    if (child.localName === "hyperlink") {
+      // Flush any pending run group BEFORE this hyperlink so the wrap stays
+      // in its original DOM position.
+      flushRunGroup()
+      const innerRuns = getChildrenNS(child, w, "r")
+      if (innerRuns.length === 0) continue
+      const innerBefore = innerRuns[0]!.previousSibling
+      const innerDetached: Element[] = []
+      for (const r of innerRuns) {
+        child.removeChild(r)
+        innerDetached.push(r)
+      }
+      const innerIns = wrapInsertion(innerDetached, ownerDoc, ctx)
+      if (innerBefore && innerBefore.nextSibling) {
+        child.insertBefore(innerIns, innerBefore.nextSibling)
+      } else if (innerBefore) {
+        child.appendChild(innerIns)
+      } else {
+        child.insertBefore(innerIns, child.firstChild)
+      }
+    }
+  }
+  flushRunGroup()
   // Mark the paragraph mark inserted regardless of whether content runs
   // existed — empty paragraphs (page break, horizontal rule) still need the
   // mark itself flagged so accept-all keeps them.
@@ -176,7 +216,9 @@ export function markParagraphAsInserted(p: Element, ownerDoc: Document, ctx: Tra
   insMark.setAttributeNS(w, "w:id", String(ctx.nextId()))
   insMark.setAttributeNS(w, "w:author", ctx.author)
   insMark.setAttributeNS(w, "w:date", ctx.date)
-  rPr.appendChild(insMark)
+  // CT_ParaRPrOriginal puts ins/del/moveFrom/moveTo markers FIRST, before
+  // rStyle/rFonts/sz/etc. Insert at head, not append.
+  rPr.insertBefore(insMark, rPr.firstChild)
 }
 
 /* ------------- format-level wrappers ------------- */

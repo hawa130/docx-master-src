@@ -35,6 +35,7 @@ import {
   toHalfPt,
   toTwips,
 } from "@lib/shared/units.ts"
+import { emitInlineField, emitInlineStyleRef } from "@lib/edit/fields/inline-fields.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
 import { emitEquationBlock, emitInlineEquation } from "@lib/edit/math/equation-emit.ts"
@@ -276,6 +277,28 @@ export function emitRichText(
       out.push(emitInlineEquation(piece.math, ownerDoc))
       continue
     }
+    if ("link" in piece) {
+      if (!ctx.emitHyperlink) {
+        throw new Error(
+          "HyperlinkNode encountered but ctx.emitHyperlink was not provided by the engine",
+        )
+      }
+      const fmt = piece.format ?? defaultFormat
+      out.push(ctx.emitHyperlink(piece.link, piece.text, fmt, ownerDoc))
+      continue
+    }
+    if ("field" in piece) {
+      const fmt = piece.format ?? defaultFormat
+      for (const r of emitInlineField(ownerDoc, piece.field, fmt)) out.push(r)
+      continue
+    }
+    if ("styleRef" in piece) {
+      const fmt = piece.format ?? defaultFormat
+      for (const r of emitInlineStyleRef(ownerDoc, piece.styleRef, piece.numberOnly ?? false, fmt)) {
+        out.push(r)
+      }
+      continue
+    }
     out.push(emitRun(piece.text, piece.format ?? defaultFormat, ownerDoc))
   }
   return out
@@ -303,6 +326,12 @@ export interface EmitContext {
    * over a bookmark allocator + locator resolver + pending-backfill queue.
    * Absent ctx.emitRef + an InlineRef in input = engine error at emit. */
   emitRef?: RefEmitter
+  /** Provided when edits[] contains HyperlinkNode inline nodes. Returns the
+   * complete `<w:hyperlink>` element ready to insert as a paragraph child.
+   * Decoupled so fragment-emit stays free of rels-registry / character-style
+   * concerns. Absent ctx.emitHyperlink + a HyperlinkNode in input = engine
+   * error at emit. */
+  emitHyperlink?: (link: string, text: string, format: RunFormat | undefined, ownerDoc: Document) => Element
   /** Called when a `ParagraphBlock.anchor` is set — registers the named
    * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
    * + an anchor in input = engine error at emit. */

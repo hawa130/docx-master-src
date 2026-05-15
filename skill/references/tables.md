@@ -208,5 +208,4 @@ Then in body text:
 - **Cell margins (`tcMar`), text rotation (`textDirection`), row no-break (`cantSplit`), zebra striping** — fall outside v1 scope. textDirection workaround: rephrase headers horizontally. cantSplit workaround: user fixes in Word after open.
 - **Word built-in styles like "Grid Table 4 - Accent 1"** — not referenced; declare equivalent borders + shading manually.
 - **Same-apply edit of a freshly inserted table's cells** — paragraph indices and cell locators reference pre-edit state. Insert the table in one apply, edit cells in a second.
-- **Hyperlinks in cells** — hyperlink blocks are out of scope for this skill globally; not specific to tables.
 - **Percentage column widths** — use fixed pt or `"auto"` instead.

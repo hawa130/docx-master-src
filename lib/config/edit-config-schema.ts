@@ -130,7 +130,58 @@ export const InlineEquationSchema = z.strictObject({
   math: NonEmptyString,
 })
 
-export const InlineNodeSchema = z.union([InlineRunSchema, InlineRefSchema, InlineEquationSchema])
+/** Hyperlink. `link` is a URI; `#name` prefix targets an internal bookmark
+ *  (any source bookmark or `anchor` declared on a Block in this apply run).
+ *  Anything else is treated as an external URL — `https:` / `http:` /
+ *  `mailto:` / `tel:` / `ftp:` etc.; Word resolves the protocol at click
+ *  time. The visible `text` is agent-supplied (unlike `refTo`, which lets
+ *  Word resolve the visible text from the target's numbering). `format`
+ *  overrides individual run properties; the Hyperlink character style
+ *  (color 0563C1, single underline — Word's default) is applied
+ *  automatically and injected into styles.xml when missing. */
+export const InlineHyperlinkSchema = z.strictObject({
+  link: NonEmptyString.check(
+    z.refine((s) => s.startsWith("#") ? /^#[A-Za-z_][A-Za-z0-9_-]{0,39}$/.test(s) : true, {
+      error:
+        'link "#..." (internal anchor) must start with a letter or underscore and contain only letters, digits, underscores, or hyphens (max 40 chars after #).',
+    }),
+  ),
+  text: NonEmptyString,
+  format: z.optional(RunFormatSchema),
+})
+
+/** Word complex field that resolves at render time:
+ *   "page"     → PAGE       (current page number)
+ *   "numPages" → NUMPAGES   (total page count)
+ *   "date"     → DATE       (current date, Word's default format)
+ *  Use in headers / footers / body text wherever the dynamic value matters.
+ *  Word's `updateFields` flag is set during apply so each field resolves on
+ *  next open without manual F9. */
+export const InlineFieldSchema = z.strictObject({
+  field: z.enum(["page", "numPages", "date"]),
+  format: z.optional(RunFormatSchema),
+})
+
+/** STYLEREF field — renders the nearest paragraph bound to `styleRef`. Most
+ *  common use is "chapter title in the page header" by setting
+ *  `styleRef: "Heading 1"`. With `numberOnly: true` (the OOXML `\n` switch)
+ *  only the heading's auto-number renders, no body text. `styleRef` must
+ *  match an existing styleId in the source document (or one installed via
+ *  `styles[]` in this same apply); apply throws on a missing styleId. */
+export const InlineStyleRefSchema = z.strictObject({
+  styleRef: NonEmptyString,
+  numberOnly: z.optional(z.boolean()),
+  format: z.optional(RunFormatSchema),
+})
+
+export const InlineNodeSchema = z.union([
+  InlineRunSchema,
+  InlineRefSchema,
+  InlineEquationSchema,
+  InlineHyperlinkSchema,
+  InlineFieldSchema,
+  InlineStyleRefSchema,
+])
 
 /** Plain string is shorthand for a single run with no inline formatting.
  * The emitter expands strings on the fly — most paragraphs are plain text. */

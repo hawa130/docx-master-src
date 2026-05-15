@@ -61,6 +61,7 @@ import {
   wrapParagraphContentInDel,
 } from "@lib/edit/track-changes.ts"
 import { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
+import { emitHyperlinkNode, ensureHyperlinkCharStyle } from "@lib/edit/hyperlink.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import {
   emitRefField,
@@ -328,6 +329,16 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
     emitImage: (src, width, height, alt, ownerDoc) => {
       const { rId } = imageRegistry.registerImage(src)
       return imageRegistry.buildDrawing(rId, width, height, alt, ownerDoc)
+    },
+    emitHyperlink: (link, text, format, ownerDoc) => {
+      // Inject the Hyperlink character style on first hyperlink emit only —
+      // sparse-by-design (no style added when no hyperlink declared). The
+      // helper is idempotent; the side-effect on stylesDoc is what we gate.
+      // stylesDoc may be absent on edits-only callers without an apply
+      // context — in that case the run still emits, just without the
+      // character-style guarantee.
+      if (stylesDoc) ensureHyperlinkCharStyle(stylesDoc)
+      return emitHyperlinkNode(ownerDoc, link, text, format, imageRegistry)
     },
     captions: captionsMap
       ? {

@@ -80,9 +80,28 @@ they need a `captions` table declared at the apply config root. See
 
 `anchor` attaches a stable bookmark name (Word's `[A-Za-z_][\w-]{0,39}` rule) so later `InlineRef` nodes can target this new paragraph via `refTo: { "type": "anchor", "name": ... }`. The only way to ref a paragraph created in this same `apply` run — paragraph-index locators reference pre-edit state. See [`cross-references.md`](cross-references.md).
 
-`text` is either a plain string (single run) or an array of inline nodes: `{ text, format }` runs, `{ refTo, display, format }` cross-references, or `{ math }` inline equations. Image dimensions are required. To cross-ref a figure, attach `anchor` to its caption paragraph — image paragraphs carry no numbering or text content for `display: "label"` / `"number"` / `"full"` to resolve against. **Table** block has its own schema for rows / cells / merging / borders / column widths / header repetition; details + four progressive cell-content forms in [`tables.md`](tables.md).
+`text` is either a plain string (single run) or an array of inline nodes. Six inline node types, discriminated by which key is present:
 
-For display math, `equation` block carries LaTeX (rendered to native OMML via Temml). Inline math uses `{ "math": "..." }` inside Paragraph.text alongside `{ text, format }` and `{ refTo, ... }` nodes. See [`equations.md`](equations.md) — LaTeX coverage, caption + cross-ref pattern, and the v1 n-ary operand visual quirk.
+| Shape | Renders |
+|---|---|
+| `{ text, format? }` | Plain run with optional rPr |
+| `{ refTo, display?, format? }` | Cross-reference (REF field) — see [`cross-references.md`](cross-references.md) |
+| `{ math }` | Inline equation (OMML) — see [`equations.md`](equations.md) |
+| `{ link, text, format? }` | Hyperlink (external URL or `#anchor` jump) |
+| `{ field, format? }` | Dynamic field (`"page"` / `"numPages"` / `"date"`) |
+| `{ styleRef, numberOnly?, format? }` | STYLEREF — render the nearest paragraph of a given style |
+
+**Hyperlinks** (`{ link, text }`) — `link` is any URI Word accepts (`https:` / `http:` / `mailto:` / `tel:` / `ftp:` / …); `#name` targets an internal bookmark — same anchor namespace as `refTo: { type: "anchor" }` (source bookmarks plus `anchor` on Blocks in this apply). The visible `text` is agent-supplied; the `Hyperlink` character style (Word's blue + underline) is applied automatically and injected into styles.xml on first use. Use `refTo` when the visible text should be the target's auto-numbered cite; use `link` when you supply the visible text and just want clickable navigation. Agent-supplied `format` merges on top of the Hyperlink character style — only the keys you set get overridden, the rest of the Hyperlink rPr (e.g. underline) survives.
+
+**Dynamic fields** (`{ field }`) — closed set of three values: `"page"` (PAGE), `"numPages"` (NUMPAGES), `"date"` (DATE, Word's default format). Other field codes aren't supported via this node — author them as plain runs only if you need them. `updateFields` is set so values resolve on first open without manual F9.
+
+**STYLEREF** (`{ styleRef, numberOnly? }`) — renders the nearest paragraph bound to `styleRef` (the styleId, not its display name; e.g. `"Heading1"` not `"Heading 1"`). Most common use: page header that follows the current chapter title. `numberOnly: true` restricts the output to the heading's auto-number, dropping body text — empty when the referenced style isn't bound to numbering. Unknown `styleRef` → Word renders `#ERROR`; verify the styleId is installed via `styles[]` or pre-existing in the source.
+
+### Block-specific notes
+
+Image dimensions are required. To cross-ref a figure, attach `anchor` to its caption paragraph — image paragraphs carry no numbering or text content for `display: "label"` / `"number"` / `"full"` to resolve against. **Table** block has its own schema for rows / cells / merging / borders / column widths / header repetition; details + four progressive cell-content forms in [`tables.md`](tables.md).
+
+For display math, `equation` block carries LaTeX (rendered to native OMML via Temml). Inline math uses `{ "math": "..." }` inside Paragraph.text. See [`equations.md`](equations.md) — LaTeX coverage, caption + cross-ref pattern, and the v1 n-ary operand visual quirk.
 
 **Express structure semantically.** Hierarchy and list shape bind via `styleId` and `numbering` — not by typing markers in `text`. Two paths to numbering:
 - **styleId-bound** (preferred): if the styleId you set is bound to a numbering scheme via `numbering[].levels[].styleId`, the binding handles auto-numbering automatically — don't supply a `numbering` field on the block. Use for headings (`Heading1..N`) and list-bound styles (`ListNumber` / `ListBullet`).
