@@ -4,9 +4,10 @@
  *   `{ link: "https://x", text: "..." }`  → `<w:hyperlink r:id="rIdN" w:history="1">`
  *   `{ link: "#fig-x",   text: "..." }`  → `<w:hyperlink w:anchor="fig-x">`
  *
- * External links register a Relationship via the shared ImageAssetRegistry
- * (TargetMode="External"); internal `#anchor` links use the w:anchor
- * attribute directly with no rId allocation. The visible text is
+ * External links register a Relationship via the `DocxAssetRegistry` that
+ * owns the host part (body for normal edits, a header / footer part for
+ * HF content). TargetMode="External" — internal `#anchor` links use the
+ * w:anchor attribute directly with no rId allocation. The visible text is
  * agent-supplied — Word doesn't compute it like REF/SEQ.
  *
  * Visual style: the run carries the `Hyperlink` character style (Word's
@@ -19,7 +20,7 @@ import { getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 import { RPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import { buildRPrChildren } from "@lib/edit/fragment-emit.ts"
 import type { RunFormat } from "@lib/config/edit-types.ts"
-import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
+import type { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 
 const w = NS.w
 const HYPERLINK_STYLE_ID = "Hyperlink"
@@ -40,7 +41,7 @@ export function emitHyperlinkNode(
   link: string,
   text: string,
   format: RunFormat | undefined,
-  assetRegistry: ImageAssetRegistry,
+  assetRegistry: DocxAssetRegistry,
 ): Element {
   const target = parseLinkTarget(link)
   const hyper = ownerDoc.createElementNS(w, "w:hyperlink")

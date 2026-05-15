@@ -34,7 +34,7 @@ import {
 } from "@lib/apply/style-mutation.ts"
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
 import { lintPanguInEdits, type PanguWarning } from "@lib/edit/pangu-lint.ts"
-import type { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
+import type { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
 import { resolveCaptions } from "@lib/parse/caption-resolver.ts"
 import {
@@ -491,7 +491,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   if (!config.dryRun) {
     for (const wmsg of resolvedCaptions.warnings) console.warn(`Warning: ${wmsg}`)
   }
-  let imageRegistry: ImageAssetRegistry | null = null
+  let imageRegistry: DocxAssetRegistry | null = null
   let editsApplied = 0
   let editsTrackChanges = false
   let editsPreview: EditsPreviewEntry[] = []
@@ -962,9 +962,13 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     await ensureNumberingContentType(reader, replacements)
     await ensureNumberingRelationship(reader, replacements)
   }
-  // Image registry from edit-pass flushes its staged binaries + rels +
-  // content-type updates. No-op when no images were embedded.
-  if (imageRegistry) imageRegistry.flushTo(replacements)
+  // Asset registry flushes its binary media + part rels. ContentTypes is
+  // shared and flushed once after — header/footer part registries (when
+  // present) will hand back to the same accumulator before this point.
+  if (imageRegistry) {
+    imageRegistry.flushTo(replacements)
+    imageRegistry.getContentTypes().flushTo(replacements)
+  }
   // Cross-references emitted in this run — flip settings.xml's
   // <w:updateFields> flag so Word resolves each REF on next open without
   // the user manually pressing Ctrl+A then F9.

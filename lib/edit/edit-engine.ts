@@ -60,7 +60,7 @@ import {
   markParagraphMarkDeleted,
   wrapParagraphContentInDel,
 } from "@lib/edit/track-changes.ts"
-import { ImageAssetRegistry } from "@lib/edit/image-asset.ts"
+import { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 import { emitHyperlinkNode, ensureHyperlinkCharStyle } from "@lib/edit/hyperlink.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import {
@@ -208,7 +208,7 @@ export interface RunEditOpsInput {
 }
 
 export interface RunEditOpsOutput {
-  imageRegistry: ImageAssetRegistry
+  imageRegistry: DocxAssetRegistry
   report: ApplyEditsReport
   /** Cross-reference state produced by `InlineRef` emissions during this
    * edit pass. apply-styles consumes these post-edits to (a) backfill REF
@@ -299,7 +299,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
 
   const trackContext = makeTrackContext(trackChanges)
   const stale = new Set<Element>()
-  const imageRegistry = await ImageAssetRegistry.open(reader)
+  const imageRegistry = await DocxAssetRegistry.open(reader)
   const bookmarkAllocator = new BookmarkAllocator(documentDoc)
 
   // Pre-scan declared anchors so forward refs (a ref citing an anchor in a

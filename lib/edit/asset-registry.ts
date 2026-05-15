@@ -1,24 +1,27 @@
 /**
- * Document-asset registry — wires image blocks AND external hyperlinks into
- * the docx zip. Both kinds of assets register entries in
- * `word/_rels/document.xml.rels`, so they share one writer to avoid two
- * paths racing on the same file. The class is still named after its first
- * client (images); the hyperlink path was added in the inline-primitives
- * phase.
+ * Document-asset registry — handles image and external-hyperlink registration
+ * for a single docx part (body or any header / footer). The class composes:
  *
- * For images, registration touches three parts besides word/document.xml:
- *   1. word/media/imageN.<ext>           — the binary file
- *   2. word/_rels/document.xml.rels      — relationship from rId to media path
- *   3. [Content_Types].xml               — Default entry for the file extension
+ *   - `PartRels` — owns this part's `_rels/<part>.rels` (rId allocation +
+ *     Relationship appends)
+ *   - `ContentTypes` — shared `[Content_Types].xml` accumulator across all
+ *     parts in the apply run (singleton, passed in by the orchestrator)
+ *   - image-specific state: media binaries staged for the writer, docPr id
+ *     counter, source-path / href dedup caches
+ *
+ * For images, registration touches three parts besides the host XML:
+ *   1. word/media/imageN.<ext>      — the binary file (per-instance state)
+ *   2. <relsPath>                   — relationship from rId to media path
+ *   3. [Content_Types].xml          — Default entry for the file extension
  *
  * For external hyperlinks: just the rels entry (TargetMode="External").
  * Internal hyperlinks (`#anchor` form) skip the registry entirely — they
  * use `<w:hyperlink w:anchor="name">` with no rId.
  *
- * The registry caches existing rels / extensions so multiple emits in one
- * apply pass coexist with each other and with whatever the source docx
- * already had. After all emits, `flushTo(replacements)` stages every
- * mutation (text + binary) into the writer's replacement map.
+ * One instance serves one part. The body of document.xml gets one
+ * registry pointing at `word/_rels/document.xml.rels`; each header /
+ * footer part gets its own registry pointing at `word/_rels/headerN.xml.rels`
+ * (etc.). All registries share one ContentTypes accumulator.
  *
  * Inline drawing XML structure follows ECMA-376 §20.4.2.8 (DrawingML
  * picture). Sizes are in EMU (1 pt = 12,700 EMU).
@@ -26,9 +29,11 @@
 
 import { existsSync, readFileSync } from "node:fs"
 import { extname, resolve as resolvePath } from "node:path"
-import { type DocxReader, parseXml } from "@lib/xml/reader.ts"
+import type { DocxReader } from "@lib/xml/reader.ts"
 import { NS } from "@lib/parse/types.ts"
 import { type Length, toEmu } from "@lib/shared/units.ts"
+import { PartRels } from "@lib/edit/part-rels.ts"
+import { ContentTypes } from "@lib/edit/content-types.ts"
 
 const REL_TYPE_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 const REL_TYPE_HYPERLINK =
@@ -36,45 +41,39 @@ const REL_TYPE_HYPERLINK =
 
 const PIC_NS = "http://schemas.openxmlformats.org/drawingml/2006/picture"
 
-interface RelEntry {
-  id: string
-  target: string
-  type: string
-}
-
-export class ImageAssetRegistry {
-  private contentTypesText: string
-  private relsText: string
+export class DocxAssetRegistry {
   /** archivePath → bytes. New media binaries staged for the writer. */
   private binaryAdditions = new Map<string, Uint8Array>()
-  private existingExtensions = new Set<string>()
-  private rels: RelEntry[] = []
-  private nextImageNum = 1
   private nextDocPrId = 1
-  private nextRId = 1
-  /** Set whenever rels are appended (image OR hyperlink). Required because
-   *  hyperlink-only flushes still need to write the rels file even though
-   *  `binaryAdditions` stays empty. */
-  private relsDirty = false
-  /** Cache: srcPath → already-registered rId. Lets two image blocks pointing
-   * at the same file share one media entry. */
-  private byAbsPath = new Map<string, string>()
+  /** Cache: srcPath → already-registered rId + ext. Lets two image blocks
+   *  pointing at the same file share one media entry. */
+  private byAbsPath = new Map<string, { rId: string; ext: string }>()
   /** Cache: external href → already-registered rId. Multiple hyperlinks to
    *  the same target share one Relationship entry — matches what Word writes
    *  when you paste the same URL twice. */
   private byExternalHref = new Map<string, string>()
 
-  private constructor(contentTypesText: string, relsText: string) {
-    this.contentTypesText = contentTypesText
-    this.relsText = relsText
-    this.parseExtensions()
-    this.parseRels()
+  constructor(
+    private readonly partRels: PartRels,
+    private readonly contentTypes: ContentTypes,
+  ) {}
+
+  /** Expose the shared ContentTypes accumulator. The orchestrator
+   *  (apply-styles) flushes it once at the end of the apply run, and HF
+   *  part registries get constructed with the same instance so all of
+   *  the apply's content-type additions land in one file. */
+  getContentTypes(): ContentTypes {
+    return this.contentTypes
   }
 
-  static async open(reader: DocxReader): Promise<ImageAssetRegistry> {
-    const ct = (await reader.readText("[Content_Types].xml")) ?? ""
-    const rels = (await reader.readText("word/_rels/document.xml.rels")) ?? defaultRelsXml()
-    return new ImageAssetRegistry(ct || defaultContentTypesXml(), rels)
+  /** Convenience: open the body-part registry from a docx reader. Loads
+   *  `word/_rels/document.xml.rels` and `[Content_Types].xml`. For header /
+   *  footer parts, the orchestrator constructs `PartRels` and the shared
+   *  `ContentTypes` directly and passes them in. */
+  static async open(reader: DocxReader): Promise<DocxAssetRegistry> {
+    const partRels = await PartRels.open(reader, "word/_rels/document.xml.rels")
+    const contentTypes = await ContentTypes.open(reader)
+    return new DocxAssetRegistry(partRels, contentTypes)
   }
 
   /** Returns the rId to use in <a:blip r:embed=...>. Reads the file, picks
@@ -86,23 +85,19 @@ export class ImageAssetRegistry {
       throw new Error(`image not found: ${abs}`)
     }
     const cached = this.byAbsPath.get(abs)
-    if (cached) {
-      const r = this.rels.find((x) => x.id === cached)!
-      return { rId: cached, ext: extname(r.target).slice(1).toLowerCase() }
-    }
+    if (cached) return { rId: cached.rId, ext: cached.ext }
     const rawExt = extname(abs).slice(1).toLowerCase()
     if (!rawExt) throw new Error(`image source has no extension: ${abs}`)
     const ext = rawExt === "jpg" ? "jpeg" : rawExt
     const archivePath = this.uniqueMediaPath(rawExt)
     const bytes = new Uint8Array(readFileSync(abs))
     this.binaryAdditions.set(archivePath, bytes)
-    if (!this.existingExtensions.has(rawExt)) {
-      this.appendContentTypeDefault(rawExt, mimeForExt(ext))
-      this.existingExtensions.add(rawExt)
-    }
-    const rId = this.allocateRId()
-    this.appendRel(rId, REL_TYPE_IMAGE, archivePath.replace(/^word\//, ""))
-    this.byAbsPath.set(abs, rId)
+    this.contentTypes.ensureDefault(rawExt, mimeForExt(ext))
+    const { rId } = this.partRels.appendRel(
+      REL_TYPE_IMAGE,
+      archivePath.replace(/^word\//, ""),
+    )
+    this.byAbsPath.set(abs, { rId, ext })
     return { rId, ext }
   }
 
@@ -114,8 +109,7 @@ export class ImageAssetRegistry {
   registerExternalLink(href: string): { rId: string } {
     const cached = this.byExternalHref.get(href)
     if (cached) return { rId: cached }
-    const rId = this.allocateRId()
-    this.appendRel(rId, REL_TYPE_HYPERLINK, href, "External")
+    const { rId } = this.partRels.appendRel(REL_TYPE_HYPERLINK, href, "External")
     this.byExternalHref.set(href, rId)
     return { rId }
   }
@@ -216,86 +210,32 @@ export class ImageAssetRegistry {
   /** Stage every mutation (modified [Content_Types].xml, modified rels,
    * binary media files) into the writer's replacement map. No-op when
    * nothing was registered. Hyperlinks-only flushes write the rels alone;
-   * image flushes additionally write content types + media binaries. */
-  flushTo(replacements: Map<string, string | Uint8Array>): void {
-    if (!this.relsDirty && this.binaryAdditions.size === 0) return
-    if (this.relsDirty) {
-      replacements.set("word/_rels/document.xml.rels", this.relsText)
+   * image flushes additionally write content types + media binaries.
+   *
+   * `relsPath` defaults to the body part's rels file. Header / footer
+   * registries pass their own part rels path. */
+  flushTo(
+    replacements: Map<string, string | Uint8Array>,
+    relsPath = "word/_rels/document.xml.rels",
+  ): void {
+    this.partRels.flushTo(replacements, relsPath)
+    for (const [path, bytes] of this.binaryAdditions) {
+      replacements.set(path, bytes)
     }
-    if (this.binaryAdditions.size > 0) {
-      replacements.set("[Content_Types].xml", this.contentTypesText)
-      for (const [path, bytes] of this.binaryAdditions) {
-        replacements.set(path, bytes)
-      }
-    }
+    // contentTypes is shared across all registries in the apply run; the
+    // orchestrator flushes it once at the end. Don't write it here — would
+    // race with other registries holding the same accumulator.
   }
 
   /* ------------- internals ------------- */
 
-  private parseExtensions(): void {
-    const re = /<Default[^>]*\bExtension="([^"]+)"/g
-    let m: RegExpMatchArray | null
-    while ((m = re.exec(this.contentTypesText)) !== null) {
-      this.existingExtensions.add(m[1]!.toLowerCase())
-    }
-  }
-
-  private parseRels(): void {
-    const doc = parseXml(this.relsText)
-    const root = doc.documentElement
-    if (!root) return
-    let maxNum = 0
-    for (let i = 0; i < root.childNodes.length; i++) {
-      const c = root.childNodes[i]
-      if (!c || c.nodeType !== 1) continue
-      const el = c as Element
-      if (el.localName !== "Relationship") continue
-      const id = el.getAttribute("Id") ?? ""
-      const target = el.getAttribute("Target") ?? ""
-      const type = el.getAttribute("Type") ?? ""
-      if (id) {
-        this.rels.push({ id, target, type })
-        const m = id.match(/^rId(\d+)$/)
-        if (m) maxNum = Math.max(maxNum, parseInt(m[1]!, 10))
-      }
-      const mt = target.match(/^(?:\.\.\/)?media\/image(\d+)\./)
-      if (mt) {
-        const n = parseInt(mt[1]!, 10) + 1
-        if (n > this.nextImageNum) this.nextImageNum = n
-      }
-    }
-    this.nextRId = maxNum + 1
-  }
-
-  private allocateRId(): string {
-    return `rId${this.nextRId++}`
-  }
-
   private uniqueMediaPath(ext: string): string {
     while (true) {
-      const path = `word/media/image${this.nextImageNum}.${ext}`
-      this.nextImageNum++
+      const n = this.partRels.nextImageNum()
+      this.partRels.advanceImageNum(n)
+      const path = `word/media/image${n}.${ext}`
       if (!this.binaryAdditions.has(path)) return path
     }
-  }
-
-  private appendContentTypeDefault(ext: string, mime: string): void {
-    const insert = `<Default Extension="${ext}" ContentType="${mime}"/>`
-    if (this.contentTypesText.includes(insert)) return
-    this.contentTypesText = this.contentTypesText.replace("</Types>", `${insert}</Types>`)
-  }
-
-  private appendRel(id: string, type: string, target: string, mode?: "External"): void {
-    // target stored relative to the rels' part location: rels live in
-    // word/_rels/, so a media file at word/media/imageN.ext is "media/imageN.ext".
-    // External targets (hyperlink URLs) are stored verbatim; the writer
-    // doesn't rewrite them and Word resolves them at click time.
-    const modeAttr = mode ? ` TargetMode="${mode}"` : ""
-    const escapedTarget = escapeXmlAttr(target)
-    const insert = `<Relationship Id="${id}" Type="${type}" Target="${escapedTarget}"${modeAttr}/>`
-    this.relsText = this.relsText.replace("</Relationships>", `${insert}</Relationships>`)
-    this.rels.push({ id, target, type })
-    this.relsDirty = true
   }
 }
 
@@ -324,23 +264,3 @@ function mimeForExt(ext: string): string {
   }
 }
 
-function defaultContentTypesXml(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>`
-}
-
-function defaultRelsXml(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`
-}
-
-/** Minimal XML-attribute escape — image targets are sanitized media paths
- *  but hyperlink hrefs are agent-supplied URIs that may contain `&` (query
- *  strings), `"`, `<`, `>`. Encode just enough to keep the rels XML valid. */
-function escapeXmlAttr(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-}
