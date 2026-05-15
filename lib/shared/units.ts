@@ -33,6 +33,16 @@ export type Length = number | string
 export type IndentInput = number | string | null
 export type LineSpacingInput = number | string | { atLeast: Length }
 
+/** CSS-style padding input. 1 / [all] / [v, h] / [t, h, b] / [t, r, b, l]. */
+export type PaddingInput =
+  | Length
+  | [Length]
+  | [Length, Length]
+  | [Length, Length, Length]
+  | [Length, Length, Length, Length]
+
+export type PaddingEdges = { top: number; right: number; bottom: number; left: number }
+
 /** Result of parsing an IndentInput: `char` preserves font-size scaling
  *  (Word's `firstLineChars` × 100); `twip` is a fixed indent. */
 export type IndentParsed = { kind: "char"; value: number } | { kind: "twip"; value: number }
@@ -131,6 +141,46 @@ export function parseLineSpacing(
   throw new Error(
     `${fieldName}: expected a number (multiplier, e.g. 1.5), a string (exact, e.g. "24pt"), or { atLeast: "<length>" }.`,
   )
+}
+
+/** Expand CSS-shorthand padding to four edges in pt. Throws on negative
+ *  values — OOXML cell margins are `xsd:unsignedDecimalNumber`.
+ *  Error labels reflect CSS shorthand semantics: 2-value reports
+ *  `.vertical` / `.horizontal`, 3-value reports `.top` / `.horizontal` /
+ *  `.bottom`, 4-value reports `.top` / `.right` / `.bottom` / `.left`. */
+export function parsePadding(v: PaddingInput, fieldName = "padding"): PaddingEdges {
+  const parts: Length[] = Array.isArray(v) ? (v as Length[]) : [v]
+  const at = (i: number, label: string) =>
+    parseLengthPt(parts[i]!, label ? `${fieldName}.${label}` : fieldName)
+  let edges: PaddingEdges
+  if (parts.length === 1) {
+    const all = at(0, "")
+    edges = { top: all, right: all, bottom: all, left: all }
+  } else if (parts.length === 2) {
+    const vert = at(0, "vertical")
+    const horiz = at(1, "horizontal")
+    edges = { top: vert, right: horiz, bottom: vert, left: horiz }
+  } else if (parts.length === 3) {
+    const horiz = at(1, "horizontal")
+    edges = { top: at(0, "top"), right: horiz, bottom: at(2, "bottom"), left: horiz }
+  } else if (parts.length === 4) {
+    edges = {
+      top: at(0, "top"),
+      right: at(1, "right"),
+      bottom: at(2, "bottom"),
+      left: at(3, "left"),
+    }
+  } else {
+    throw new Error(`${fieldName}: tuple must have 1-4 entries, got ${parts.length}`)
+  }
+  for (const side of ["top", "right", "bottom", "left"] as const) {
+    if (edges[side] < 0) {
+      throw new Error(
+        `${fieldName}.${side}: ${edges[side]} is negative; OOXML cell margins must be non-negative`,
+      )
+    }
+  }
+  return edges
 }
 
 /* --------------------------- unit conversions --------------------------- */

@@ -29,6 +29,7 @@ TableBlock {
   alignment?: "left" | "center" | "right"    // whole-table horizontal alignment on page
   vAlign?: "top" | "center" | "bottom"       // default cell vertical alignment; skill default "center"
   layout?: "fixed" | "autofit"               // default "autofit"
+  padding?: Padding                          // CSS-shorthand cell padding — see Cell padding below
 }
 
 TableWidth = "auto" | Length
@@ -41,13 +42,19 @@ TableCell = string                                  // plain text, single paragr
               rowspan?: number,
               vAlign?: "top" | "center" | "bottom",
               borders?: BordersCustom,
-              shading?: string                      // hex RGB
+              shading?: string,                     // hex RGB
+              padding?: Padding                     // overrides TableBlock.padding for this cell
             }
 
 BordersPreset = "all" | "none" | "outer" | "three-line"
 BordersCustom = { top?, bottom?, left?, right?, insideH?, insideV?: BorderEdge }
 BorderEdge    = "none" | "single" | "thick" | "double" | "dotted" | "dashed"
               | { style, size?: Length, color?: hex | "auto" }
+Padding       = Length                                              // all four edges
+              | [Length]                                            // [all]
+              | [Length, Length]                                    // [vertical, horizontal]
+              | [Length, Length, Length]                            // [top, horizontal, bottom]
+              | [Length, Length, Length, Length]                    // [top, right, bottom, left]
 ```
 
 ## Cell content — four progressive forms
@@ -94,7 +101,7 @@ Each row must total: `declared cells + cells claimed by ongoing rowspans + colsp
 | `"all"` | Thin single border on every edge (table-level + inside). Default. |
 | `"none"` | All edges suppressed. |
 | `"outer"` | Top / bottom / left / right thin; no inside lines. |
-| `"three-line"` | Top thick + bottom thick + thin line under last header row. Sides + inside suppressed. Requires `headerRows ≥ 1` for the middle line; degrades silently to "top + bottom only" when `headerRows: 0`. |
+| `"three-line"` | Top thick + bottom thick + thin line under last header row. Sides + inside suppressed. Requires `headerRows ≥ 1` for the middle line; degrades silently to "top + bottom only" when `headerRows: 0`. Injects default top/bottom 4pt cell padding (see [Cell padding](#cell-padding)). |
 
 ### Custom
 
@@ -165,6 +172,12 @@ Three distinct alignment fields apply at different scopes:
 
 Resolution for any cell: `cell.vAlign ?? block.vAlign ?? "center"`. Engine always emits `vAlign` on every cell — to restore Word's native top default, set `vAlign: "top"` at the table level.
 
+## Cell padding
+
+`padding` on TableBlock applies to every cell that doesn't carry its own; `padding` on a cell object overrides for that one cell. Resolution: `cell.padding ?? block.padding ?? <preset default>`.
+
+Explicit `padding` always emits **all four** edges (CSS-faithful) — `padding: 0` flattens, including Word's TableNormal default of left/right 5.4pt. The `"three-line"` preset is the only path that emits a partial default (top/bottom 4pt; left/right omitted to inherit TableNormal); writing any `padding` explicitly fully replaces this.
+
 ## Edge cases the engine handles
 
 - **Trailing paragraph after a table.** Word rejects a `<w:tbl>` as the last child of a body or cell. Engine appends `<w:p/>` after a trailing table in either container.
@@ -205,7 +218,7 @@ Then in body text:
 - **Deleting / replacing an existing table** — no locator selects a `<w:tbl>` directly. `paragraph` / `range` / `cell` / `heading` all target paragraphs.
 - **trackChanges on TableBlock insertion** — engine throws at emit; OOXML has no clean "table inserted" tracked-change wrapper. Run table insertion in a separate apply without trackChanges, then enable trackChanges for cell-content edits afterward.
 - **Table-level styles** (`<w:tblStyle>` reference + conditional region formatting like banded rows / firstRow auto-bold). OOXML's conditional regions are a separate sub-spec; this skill expects per-`TableBlock` declarations of borders / shading / alignment / headerStyle. Reuse across tables via JSON-fragment reuse.
-- **Cell margins (`tcMar`), text rotation (`textDirection`), row no-break (`cantSplit`), zebra striping** — fall outside v1 scope. textDirection workaround: rephrase headers horizontally. cantSplit workaround: user fixes in Word after open.
+- **Text rotation (`textDirection`), row no-break (`cantSplit`), zebra striping** — fall outside v1 scope. textDirection workaround: rephrase headers horizontally. cantSplit workaround: user fixes in Word after open.
 - **Word built-in styles like "Grid Table 4 - Accent 1"** — not referenced; declare equivalent borders + shading manually.
 - **Same-apply edit of a freshly inserted table's cells** — paragraph indices and cell locators reference pre-edit state. Insert the table in one apply, edit cells in a second.
 - **Percentage column widths** — use fixed pt or `"auto"` instead.

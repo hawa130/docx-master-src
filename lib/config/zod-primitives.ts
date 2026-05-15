@@ -6,7 +6,13 @@
  */
 
 import * as z from "zod/mini"
-import { parseIndent, parseLengthPt, parseLineSpacing } from "@lib/shared/units.ts"
+import {
+  parseIndent,
+  parseLengthPt,
+  parseLineSpacing,
+  parsePadding,
+  type PaddingInput,
+} from "@lib/shared/units.ts"
 
 /** Non-empty string. */
 export const NonEmptyString = z.string().check(z.minLength(1))
@@ -17,41 +23,77 @@ export const NonEmptyString = z.string().check(z.minLength(1))
  *  Validated eagerly at parse time so unit typos surface at config-read,
  *  not at the emit site.
  */
-export const LengthValue = z
-  .union([z.number(), z.string()])
-  .check(
-    z.refine(
-      (v) => {
+export const LengthValue = z.union([z.number(), z.string()]).check(
+  z.refine(
+    (v) => {
+      try {
+        parseLengthPt(v)
+        return true
+      } catch {
+        return false
+      }
+    },
+    {
+      error: (issue) => {
         try {
-          parseLengthPt(v)
-          return true
-        } catch {
-          return false
+          parseLengthPt(issue.input as number | string)
+          return "length parse failed"
+        } catch (e) {
+          return (e as Error).message
         }
       },
-      {
-        error: (issue) => {
-          try {
-            parseLengthPt(issue.input as number | string)
-            return "length parse failed"
-          } catch (e) {
-            return (e as Error).message
-          }
-        },
-      },
-    ),
-  )
+    },
+  ),
+)
 
 /** Paragraph indent value: a Length plus the special `"Nchar"` form (round-trips
  *  Word's `w:firstLineChars` / `w:hangingChars`, auto-scales with font size).
  *  Explicit `null` opts out of any indent attribute. */
-export const IndentValue = z
-  .union([z.number(), z.string(), z.null()])
+export const IndentValue = z.union([z.number(), z.string(), z.null()]).check(
+  z.refine(
+    (v) => {
+      try {
+        parseIndent(v)
+        return true
+      } catch {
+        return false
+      }
+    },
+    {
+      error: (issue) => {
+        try {
+          parseIndent(issue.input as number | string | null)
+          return "indent parse failed"
+        } catch (e) {
+          return (e as Error).message
+        }
+      },
+    },
+  ),
+)
+
+/** CSS-style padding: 1-4 Length values.
+ *   `4`             → all four edges 4pt
+ *   `[4]`           → same
+ *   `[4, 8]`        → vertical 4pt, horizontal 8pt
+ *   `[4, 8, 6]`     → top 4pt, horizontal 8pt, bottom 6pt
+ *   `[4, 8, 6, 2]`  → top / right / bottom / left
+ *  Negative values are refused (OOXML cell margins are unsigned).
+ */
+const PaddingLength = z.union([z.number(), z.string()])
+export const PaddingValue = z
+  .union([
+    PaddingLength,
+    z.tuple([PaddingLength]),
+    z.tuple([PaddingLength, PaddingLength]),
+    z.tuple([PaddingLength, PaddingLength, PaddingLength]),
+    z.tuple([PaddingLength, PaddingLength, PaddingLength, PaddingLength]),
+  ])
   .check(
     z.refine(
       (v) => {
         try {
-          parseIndent(v)
+          parsePadding(v as PaddingInput)
           return true
         } catch {
           return false
@@ -60,8 +102,8 @@ export const IndentValue = z
       {
         error: (issue) => {
           try {
-            parseIndent(issue.input as number | string | null)
-            return "indent parse failed"
+            parsePadding(issue.input as PaddingInput)
+            return "padding parse failed"
           } catch (e) {
             return (e as Error).message
           }

@@ -29,7 +29,7 @@
 
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
-import { toEighthPt, toTwips } from "@lib/shared/units.ts"
+import { parsePadding, toEighthPt, toTwips, type PaddingInput } from "@lib/shared/units.ts"
 import {
   TBL_PR_CHILD_ORDER,
   TC_PR_CHILD_ORDER,
@@ -258,6 +258,11 @@ function buildTblPr(
     tblLayout.setAttributeNS(w, "w:type", "fixed")
     insertChildInOrder(tblPr, tblLayout, TBL_PR_CHILD_ORDER)
   }
+
+  const tableEdges = resolveTablePadding(block)
+  if (tableEdges !== undefined) {
+    insertChildInOrder(tblPr, buildCellMar("tblCellMar", tableEdges, ownerDoc), TBL_PR_CHILD_ORDER)
+  }
   return tblPr
 }
 
@@ -400,9 +405,10 @@ function buildBorderElement(qname: string, edge: BorderEdge, ownerDoc: Document)
   } else {
     style = edge.style
     const defaultPt = edge.style === "thick" ? 1.5 : 0.5
-    sizeEighthPt = edge.size !== undefined
-      ? toEighthPt(edge.size, "border.size")
-      : toEighthPt(defaultPt, "border.size")
+    sizeEighthPt =
+      edge.size !== undefined
+        ? toEighthPt(edge.size, "border.size")
+        : toEighthPt(defaultPt, "border.size")
     color = edge.color ?? "auto"
   }
   // Map "thick" style to OOXML "single" with larger size — Word's val="thick"
@@ -412,6 +418,52 @@ function buildBorderElement(qname: string, edge: BorderEdge, ownerDoc: Document)
   el.setAttributeNS(w, "w:sz", String(Math.max(2, sizeEighthPt)))
   el.setAttributeNS(w, "w:space", "0")
   el.setAttributeNS(w, "w:color", color)
+  return el
+}
+
+/* ------------- cell margins (padding) ------------- */
+
+/** Three-line preset default vertical padding. Without it, single-line cells
+ * + auto row height + skill-default `vAlign: "center"` would render
+ * indistinguishably from top-aligned (row height = content height, vAlign has
+ * no slack). 4pt gives ~8pt vertical room for centering to read visually,
+ * matching academic typesetting conventions (LaTeX `booktabs`-ish). Only
+ * applies when the table doesn't carry an explicit `padding`. */
+const THREE_LINE_DEFAULT_VPAD_PT = 4
+
+type PartialEdges = { top?: number; right?: number; bottom?: number; left?: number }
+
+/** Resolve table-level padding to the edges that should be emitted as
+ * `<w:tblCellMar>` children. Explicit `block.padding` always emits all four
+ * edges (CSS-faithful — `padding: 0` flattens everything, including
+ * TableNormal's left/right). The three-line preset default emits only
+ * top/bottom so left/right inherit TableNormal (≈5.4pt). */
+function resolveTablePadding(block: TableBlock): PartialEdges | undefined {
+  if (block.padding !== undefined) {
+    return parsePadding(block.padding as PaddingInput, "table.padding")
+  }
+  if (block.borders === "three-line") {
+    return { top: THREE_LINE_DEFAULT_VPAD_PT, bottom: THREE_LINE_DEFAULT_VPAD_PT }
+  }
+  return undefined
+}
+
+function buildCellMar(
+  tagName: "tblCellMar" | "tcMar",
+  edges: PartialEdges,
+  doc: Document,
+): Element {
+  const el = doc.createElementNS(w, "w:" + tagName)
+  // CT_TcMar order is start/top/end/bottom; emit in spec order so loaders
+  // that re-render don't shuffle attributes silently.
+  for (const side of ["top", "left", "bottom", "right"] as const) {
+    const pt = edges[side]
+    if (pt === undefined) continue
+    const child = doc.createElementNS(w, "w:" + side)
+    child.setAttributeNS(w, "w:w", String(Math.round(pt * 20)))
+    child.setAttributeNS(w, "w:type", "dxa")
+    el.appendChild(child)
+  }
   return el
 }
 
@@ -507,6 +559,14 @@ function buildTcPr(slot: GridSlot, block: TableBlock, ownerDoc: Document): Eleme
     shd.setAttributeNS(w, "w:color", "auto")
     shd.setAttributeNS(w, "w:fill", slot.cell.shading)
     insertChildInOrder(tcPr, shd, TC_PR_CHILD_ORDER)
+  }
+
+  // Per-cell padding overrides the table-level emission for THIS cell.
+  // Schema layers the override at the cell granularity, so we don't merge
+  // edges — agent declares what they want for the cell, fully.
+  if (slot.cell.padding !== undefined && slot.kind !== "vmerge-continue") {
+    const edges = parsePadding(slot.cell.padding as PaddingInput, "cell.padding")
+    insertChildInOrder(tcPr, buildCellMar("tcMar", edges, ownerDoc), TC_PR_CHILD_ORDER)
   }
   // vAlign on restart cells only — Word's default (no w:vAlign) renders
   // top, but the skill default is "center" to match academic / formal

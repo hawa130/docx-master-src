@@ -30,6 +30,7 @@ import {
   LengthValue,
   LineSpacingValue,
   NonEmptyString,
+  PaddingValue,
 } from "@lib/config/zod-primitives.ts"
 
 /** RGB hex without leading "#". Six-hex form, case-insensitive. Same shape
@@ -141,7 +142,7 @@ export const InlineEquationSchema = z.strictObject({
  *  automatically and injected into styles.xml when missing. */
 export const InlineHyperlinkSchema = z.strictObject({
   link: NonEmptyString.check(
-    z.refine((s) => s.startsWith("#") ? /^#[A-Za-z_][A-Za-z0-9_-]{0,39}$/.test(s) : true, {
+    z.refine((s) => (s.startsWith("#") ? /^#[A-Za-z_][A-Za-z0-9_-]{0,39}$/.test(s) : true), {
       error:
         'link "#..." (internal anchor) must start with a letter or underscore and contain only letters, digits, underscores, or hyphens (max 40 chars after #).',
     }),
@@ -401,6 +402,10 @@ const TableCellObjectSchema = z.strictObject({
   borders: z.optional(BordersCustomSchema),
   /** Cell background color, hex RGB. */
   shading: z.optional(ColorHex),
+  /** Per-cell padding override — wins over `TableBlock.padding`. CSS shorthand
+   * (1-4 Lengths). All four edges are emitted as `<w:tcMar>` children; omit
+   * the field entirely to inherit. */
+  padding: z.optional(PaddingValue),
 })
 
 /** Cell content in four progressive forms:
@@ -459,6 +464,13 @@ export const TableBlockSchema = z
      * adjust columns to content; `"fixed"` enforces declared widths even
      * if total exceeds page width (content may overflow). */
     layout: z.optional(z.enum(["fixed", "autofit"])),
+    /** Default cell padding for every cell without its own `padding`. CSS
+     * shorthand (1-4 Lengths). Emitted as `<w:tblCellMar>` on tblPr — all
+     * four edges are written, overriding any inherited TableNormal margins.
+     * When omitted, the `"three-line"` preset injects top/bottom 4pt
+     * (left/right inherit TableNormal); other presets emit nothing and
+     * inherit fully. Set `padding: 0` to flatten. */
+    padding: z.optional(PaddingValue),
   })
   .check(
     z.refine((block) => block.headerRows === undefined || block.headerRows <= block.rows.length, {
