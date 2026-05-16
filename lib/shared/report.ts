@@ -242,7 +242,7 @@ export function printReport(args: {
     const hf = args.headerFooter
     const bind = args.headerFooterBinding
     const flags: string[] = []
-    if (hf.hasFirst) flags.push("titlePg")
+    if (hf.groups.some((g) => g.hasFirst)) flags.push("titlePg")
     if (hf.hasEven) flags.push("evenAndOddHeaders")
     const flagSuffix = flags.length > 0 ? ` (flags: ${flags.join(", ")})` : ""
     lines.push(

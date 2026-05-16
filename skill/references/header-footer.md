@@ -12,12 +12,20 @@ headerFooter: {
                                //   Auto-sets <w:titlePg/> on every sectPr.
     even:    [ ...Block[] ],   // optional. Even-numbered pages.
                                //   Auto-sets <w:evenAndOddHeaders/> in settings.
+    underline: true | BorderEdge,   // optional. Line below the header.
   },
-  footer: { default, first?, even? },  // same shape
+  footer: {
+    default, first?, even?,
+    overline: true | BorderEdge,    // optional. Line above the footer.
+  },
+  sections: {                  // optional. Per-section override; see below.
+    "1":   { header?, footer? },
+    "3-5": { header?, footer? }
+  }
 }
 ```
 
-At least one of `header` / `footer` is required, and each declared surface needs at least one variant. Empty array `[]` is legal — means "this variant exists for the trigger flag but renders nothing" (used to blank a cover page's header while keeping `titlePg` set).
+At least one of `header` / `footer` (or a non-empty `sections`) is required; each declared surface needs at least one variant. Empty array `[]` is legal — means "this variant exists for the trigger flag but renders nothing" (used to blank a cover page's header while keeping `titlePg` set).
 
 To blank only the first page, declare both `first: []` AND `default: [...]` — omitting `default` leaves non-first, non-even pages with no header/footer at all.
 
@@ -38,17 +46,30 @@ HF paragraphs cannot use heading or body-text styleIds (`Heading1..9`, `Title`, 
 
 Use the built-in `Header` / `Footer` styleId (engine auto-injects them when missing) with a `paraFormat` / `runFormat` override for typography. Custom non-heading styleIds declared in top-level `styles[]` also work.
 
+## Separator line (`underline` / `overline`)
+
+`header.underline` draws a line below the header (attached to the last `<w:p>` of each variant); `footer.overline` draws a line above the footer (first `<w:p>`).
+
+- `true` → thin black single line (0.5pt).
+- `BorderEdge` → same shape as table cell borders, see [`tables.md`](tables.md#borders).
+
+Silently skipped when the endpoint is a `table` (no `<w:p>` to attach to) or the variant is empty `[]`. If a variant ends with a `horizontal-rule`, the separator overwrites that rule's edge on the same side.
+
 ## Variant semantics
 
-ECMA-376 sectPr supports three reference types per surface; engine emits whichever variants the config declares:
+ECMA-376 sectPr supports three reference types per surface:
 
-- **default** — applies to every page not covered by `first` or `even`.
-- **first** — section's first page only. Engine sets `<w:titlePg/>` on every sectPr when this variant is declared anywhere; clears the flag when the variant is dropped on a re-run.
-- **even** — even-numbered pages. Engine sets `<w:evenAndOddHeaders/>` in settings.xml when declared anywhere; clears the flag when dropped.
+- **default** — every page not covered by `first` or `even`.
+- **first** — section's first page only. `<w:titlePg/>` is set on each sectPr whose effective config declares this variant.
+- **even** — even-numbered pages. `<w:evenAndOddHeaders/>` in settings.xml flips on whenever any section declares this variant (global flag).
 
-HF config is the source of truth for both flags — re-applying with a smaller variant set cleans up stale flags from prior runs.
+HF config is the source of truth for both flags — re-applying with a smaller variant set cleans them up.
 
-v1 binds the same HF set to every section. Per-section variation is not yet supported.
+## Per-section overrides (`sections`)
+
+Top-level `header` / `footer` is the default for every section. `sections` keys (`"N"` 1-based, or `"N-M"` inclusive — same shape as `pageSetup.sections`) override the surface **wholesale**: a section declaring `header` replaces the top-level header entirely (variants + `underline`) while inheriting the top-level `footer` if not redeclared.
+
+Sections with identical effective config share parts — declaring the same header across 50 sections still emits one `headerN.xml`. Combine with `pageSetup.sections.<N>.pgNumType` for section-aware page numbering (roman on TOC, arabic restart on body) — see [`config-schema.md`](config-schema.md#page-setup).
 
 ## Combinations
 
@@ -58,5 +79,4 @@ v1 binds the same HF set to every section. Per-section variation is not yet supp
 ## Not supported
 
 - `ParagraphBlock.anchor` inside HF — bookmark semantics on a part rendered across multiple pages are ambiguous; the engine throws at emit. For page-number cross-references, use the `field: "page"` inline node — shapes in [`edit.md`](edit.md).
-- Per-section HF overrides (every section gets the same HF set in v1).
 - HF cleanup (orphan strategy leaves old parts in archive; future phase may GC).

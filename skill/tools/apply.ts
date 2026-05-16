@@ -46,6 +46,7 @@ void runCli({
         config.pageSetup.orientation !== undefined ||
         config.pageSetup.margins !== undefined ||
         config.pageSetup.columns !== undefined ||
+        config.pageSetup.pgNumType !== undefined ||
         (config.pageSetup.sections !== undefined &&
           Object.keys(config.pageSetup.sections).length > 0))
     const hasHeaderFooter = !!config.headerFooter

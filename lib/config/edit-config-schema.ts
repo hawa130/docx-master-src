@@ -348,7 +348,7 @@ const BorderEdgeObjectSchema = z.strictObject({
 /** A single table border edge. String shorthand selects style with default
  * size + color "auto"; object form for full control. `"none"` suppresses
  * the edge — useful as a per-cell override. */
-const BorderEdgeSchema = z.union([
+export const BorderEdgeSchema = z.union([
   z.enum(["none", "single", "thick", "double", "dotted", "dashed"]),
   BorderEdgeObjectSchema,
 ])

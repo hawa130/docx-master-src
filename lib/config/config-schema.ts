@@ -27,6 +27,7 @@
  */
 
 import * as z from "zod/mini"
+import { SECTION_SELECTOR_KEY_RE } from "@lib/apply/section-selector.ts"
 
 /* ------------- atomic helpers ------------- */
 
@@ -288,6 +289,13 @@ const ColumnsSchema = z.union([
     ),
 ])
 
+/** Page numbering format + restart per section. `fmt` controls the numeral
+ *  shape; `start` restarts the counter at that value (omit to continue). */
+const PgNumTypeSchema = z.strictObject({
+  fmt: z.optional(z.enum(["decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter"])),
+  start: z.optional(z.number().check(z.gte(1))),
+})
+
 /** Fields shared between top-level (default for all sections) and per-section
  *  overrides under `sections`. */
 const pageSetupFields = {
@@ -295,6 +303,7 @@ const pageSetupFields = {
   orientation: z.optional(z.enum(["portrait", "landscape"])),
   margins: z.optional(MarginsSchema),
   columns: z.optional(ColumnsSchema),
+  pgNumType: z.optional(PgNumTypeSchema),
 }
 
 const PageSetupSectionFieldsSchema = z.strictObject(pageSetupFields)
@@ -304,11 +313,11 @@ const PageSetupSectionFieldsSchema = z.strictObject(pageSetupFields)
  *   "N-M"   — sections N through M inclusive
  *  No "all" selector — top-level fields already serve that role. */
 const PageSetupSectionsSchema = z.record(z.string(), PageSetupSectionFieldsSchema).check(
-  z.refine((rec) => Object.keys(rec).every((k) => /^\d+(?:-\d+)?$/.test(k)), {
+  z.refine((rec) => Object.keys(rec).every((k) => SECTION_SELECTOR_KEY_RE.test(k)), {
     // zod prefixes with the field path automatically; don't repeat it here.
     error: (issue) => {
       const rec = issue.input as Record<string, unknown>
-      const bad = Object.keys(rec).find((k) => !/^\d+(?:-\d+)?$/.test(k))
+      const bad = Object.keys(rec).find((k) => !SECTION_SELECTOR_KEY_RE.test(k))
       return `key "${bad}" is invalid. Use "N" (1-based section index) or "N-M" (inclusive range).`
     },
   }),
@@ -322,6 +331,7 @@ export const PageSetupSchema = z.strictObject({
 /* ------------- header / footer ------------- */
 
 import {
+  BorderEdgeSchema,
   EditOpSchema,
   HorizontalRuleBlockSchema,
   ImageBlockSchema,
@@ -449,28 +459,82 @@ const HeaderFooterContentSchema = z
  *  At least one variant must be declared per surface. Empty array `[]` is
  *  legal: it means "the variant exists for the trigger flags (titlePg /
  *  evenAndOdd) but renders no content" — useful for blanking the cover
- *  page's header. */
-const HeaderFooterVariantsSchema = z
+ *  page's header.
+ *
+ *  `underline` (header) / `overline` (footer) — separator line between the
+ *  HF surface and the body. Engine attaches `<w:pBdr>` to the variant's
+ *  endpoint paragraph (header → last; footer → first). `true` is sugar for
+ *  `"single"` 0.5pt black. Skipped silently when the variant has no
+ *  paragraph at the endpoint (empty `[]`, or endpoint block is a table /
+ *  image). */
+const HeaderVariantsSchema = z
   .strictObject({
     default: z.optional(HeaderFooterContentSchema),
     first: z.optional(HeaderFooterContentSchema),
     even: z.optional(HeaderFooterContentSchema),
+    underline: z.optional(z.union([BorderEdgeSchema, z.literal(true)])),
   })
   .check(
     z.refine((v) => v.default !== undefined || v.first !== undefined || v.even !== undefined, {
-      error: "header/footer surface: at least one of `default` / `first` / `even` must be declared",
+      error: "header: at least one of `default` / `first` / `even` must be declared",
     }),
   )
 
-export const HeaderFooterSchema = z
+const FooterVariantsSchema = z
   .strictObject({
-    header: z.optional(HeaderFooterVariantsSchema),
-    footer: z.optional(HeaderFooterVariantsSchema),
+    default: z.optional(HeaderFooterContentSchema),
+    first: z.optional(HeaderFooterContentSchema),
+    even: z.optional(HeaderFooterContentSchema),
+    overline: z.optional(z.union([BorderEdgeSchema, z.literal(true)])),
   })
   .check(
-    z.refine((hf) => hf.header !== undefined || hf.footer !== undefined, {
-      error: "headerFooter: at least one of `header` or `footer` must be declared",
+    z.refine((v) => v.default !== undefined || v.first !== undefined || v.even !== undefined, {
+      error: "footer: at least one of `default` / `first` / `even` must be declared",
     }),
+  )
+
+/** Per-section override: replaces the top-level header/footer surface wholesale
+ *  for the matched sections. A section that names only `header` keeps the
+ *  top-level `footer` (and vice versa). At least one surface must be named —
+ *  empty entries serve no purpose. */
+const HeaderFooterSectionFieldsSchema = z
+  .strictObject({
+    header: z.optional(HeaderVariantsSchema),
+    footer: z.optional(FooterVariantsSchema),
+  })
+  .check(
+    z.refine((s) => s.header !== undefined || s.footer !== undefined, {
+      error: "headerFooter.sections entry: at least one of `header` or `footer` must be declared",
+    }),
+  )
+
+const HeaderFooterSectionsSchema = z.record(z.string(), HeaderFooterSectionFieldsSchema).check(
+  z.refine((rec) => Object.keys(rec).every((k) => SECTION_SELECTOR_KEY_RE.test(k)), {
+    error: (issue) => {
+      const rec = issue.input as Record<string, unknown>
+      const bad = Object.keys(rec).find((k) => !SECTION_SELECTOR_KEY_RE.test(k))
+      return `key "${bad}" is invalid. Use "N" (1-based section index) or "N-M" (inclusive range).`
+    },
+  }),
+)
+
+export const HeaderFooterSchema = z
+  .strictObject({
+    header: z.optional(HeaderVariantsSchema),
+    footer: z.optional(FooterVariantsSchema),
+    sections: z.optional(HeaderFooterSectionsSchema),
+  })
+  .check(
+    z.refine(
+      (hf) =>
+        hf.header !== undefined ||
+        hf.footer !== undefined ||
+        (hf.sections !== undefined && Object.keys(hf.sections).length > 0),
+      {
+        error:
+          "headerFooter: at least one of `header`, `footer`, or non-empty `sections` must be declared",
+      },
+    ),
   )
 
 /* ------------- paragraph mapping ------------- */

@@ -82,7 +82,7 @@ Default first. Don't ask unless one of the cases below applies:
 
 Surface to the user when blocked by: layout-**table** restructuring, TOC body content, footnotes / comments, page-number cites. Paragraphs *inside* layout-table cells ARE indexed and fully editable; only the table holding them is off-limits.
 
-Page setup (paper size, orientation, margins, columns) and headers / footers ARE supported — see [`config-schema.md`](references/config-schema.md#page-setup) and [`references/header-footer.md`](references/header-footer.md).
+Page setup (paper size, orientation, margins, columns, page-number format) and headers / footers ARE supported, including per-section overrides — see [`config-schema.md`](references/config-schema.md#page-setup) and [`references/header-footer.md`](references/header-footer.md).
 
 ## Tool Reference
 

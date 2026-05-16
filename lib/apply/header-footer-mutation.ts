@@ -19,15 +19,22 @@
  *      the sectPr binding step (`applyHeaderFooterBinding`) has a rId
  *      to plug into `<w:headerReference>` / `<w:footerReference>`
  *
+ * Per-section: when `config.sections` partitions the document, we compute
+ * each section's effective HF, bucket sections by JSON-equal effective
+ * config (so identical sections share parts), and emit parts per group.
+ * Binding rebinds each sectPr to its group's parts. With no `sections`
+ * declared, every section falls into one group bound to the top-level
+ * surface — preserves pre-sections behaviour.
+ *
  * Part naming starts at the highest existing index + 1, so re-running
  * apply on a doc that already has headers/footers appends new parts
  * rather than colliding. Old parts are left orphaned in the archive —
- * sectPr binding (B3) replaces every section's references, so Word
- * never reads them. v2 may opt to GC orphans.
+ * sectPr binding replaces every section's references, so Word never
+ * reads them. Future phase may GC orphans.
  *
- * Triggers (`hasFirst` / `hasEven` in the report) feed B3: `<w:titlePg/>`
- * on each sectPr when any surface has a `first` variant, and
- * `<w:evenAndOddHeaders/>` in settings.xml when any surface has `even`.
+ * `<w:titlePg/>` is per-section (set on sectPrs whose group has a `first`
+ * variant); `<w:evenAndOddHeaders/>` in settings.xml is global (set when
+ * any group has `even`).
  */
 
 import type { DocxReader } from "@lib/xml/reader.ts"
@@ -35,19 +42,31 @@ import { parseXml, serializeXml } from "@lib/xml/reader.ts"
 import type { WritableArchive } from "@lib/xml/writable-archive.ts"
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
-import { SECT_PR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
+import { PPR_CHILD_ORDER, SECT_PR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import type { ApplyConfig } from "@lib/config/config-types.ts"
-import type { Block } from "@lib/config/edit-types.ts"
+import type { Block, BorderEdge } from "@lib/config/edit-types.ts"
 import { buildStyleResolver, type StyleInfo } from "@lib/parse/style-names.ts"
 import { emitBlock, type EmitContext } from "@lib/edit/fragment-emit.ts"
 import { PartRels } from "@lib/edit/part-rels.ts"
 import { ContentTypes } from "@lib/edit/content-types.ts"
 import { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 import { emitHyperlinkNode } from "@lib/edit/hyperlink.ts"
+import { buildBorderElement } from "@lib/edit/table-emit.ts"
+import { expandSectionSelector } from "@lib/apply/section-selector.ts"
+
+const w = NS.w
 
 type HeaderFooterConfig = NonNullable<ApplyConfig["headerFooter"]>
+type HeaderSurfaceConfig = NonNullable<HeaderFooterConfig["header"]>
+type FooterSurfaceConfig = NonNullable<HeaderFooterConfig["footer"]>
 type Surface = "header" | "footer"
 type Variant = "default" | "first" | "even"
+type Separator = BorderEdge | true
+
+interface EffectiveSection {
+  header?: HeaderSurfaceConfig
+  footer?: FooterSurfaceConfig
+}
 
 const VARIANT_ORDER: readonly Variant[] = ["default", "first", "even"] as const
 const SURFACE_ORDER: readonly Surface[] = ["header", "footer"] as const
@@ -76,14 +95,72 @@ export interface HeaderFooterPartRecord {
   hasHyperlinks: boolean
 }
 
-export interface HeaderFooterReport {
+/** One group of sections sharing identical HF config — all emit / bind to
+ *  the same parts. */
+export interface HeaderFooterGroup {
+  /** 1-based section indices binding to this group's parts. */
+  sectionIndices: number[]
   parts: HeaderFooterPartRecord[]
-  /** Any surface declared a `first` variant — drives `<w:titlePg/>` on
-   *  every sectPr in B3. */
+  /** Group's config declares a `first` variant somewhere — drives
+   *  `<w:titlePg/>` on each sectPr in `sectionIndices`. */
   hasFirst: boolean
-  /** Any surface declared an `even` variant — drives
-   *  `<w:evenAndOddHeaders/>` in settings.xml in B3. */
+}
+
+export interface HeaderFooterReport {
+  /** Flat list of every emitted part, across all groups. Used for the
+   *  hyperlink-style injection check. */
+  parts: HeaderFooterPartRecord[]
+  groups: HeaderFooterGroup[]
+  /** Any group declared an `even` variant — drives
+   *  `<w:evenAndOddHeaders/>` in settings.xml. */
   hasEven: boolean
+}
+
+/** Attach a paragraph border to the endpoint paragraph of an HF part:
+ *  header → last child `<w:p>` (bottom edge); footer → first child `<w:p>`
+ *  (top edge). Endpoint must be a paragraph — table/image-only variants
+ *  silently no-op (Word's HF parts conventionally end with a paragraph
+ *  anyway, but enforcing here keeps the rule observable). If a `<w:pBdr>`
+ *  already exists (e.g. variant ends with a `horizontal-rule` block), the
+ *  user's HF-level separator wins on the relevant edge — duplicate edge
+ *  children would be schema-invalid. */
+function attachSeparator(
+  root: Element,
+  edge: "top" | "bottom",
+  separator: Separator,
+  ownerDoc: Document,
+): void {
+  const target = edge === "bottom" ? findLastChildEl(root, w, "p") : findFirstChildEl(root, w, "p")
+  if (!target) return
+  const borderEdge: BorderEdge = separator === true ? "single" : separator
+  let pPr = firstChildNS(target, w, "pPr")
+  if (!pPr) {
+    pPr = ownerDoc.createElementNS(w, "w:pPr")
+    target.insertBefore(pPr, target.firstChild)
+  }
+  let pBdr = firstChildNS(pPr, w, "pBdr")
+  if (!pBdr) {
+    pBdr = ownerDoc.createElementNS(w, "w:pBdr")
+    insertChildInOrder(pPr, pBdr, PPR_CHILD_ORDER)
+  }
+  const existingEdge = firstChildNS(pBdr, w, edge)
+  if (existingEdge) pBdr.removeChild(existingEdge)
+  pBdr.appendChild(buildBorderElement(`w:${edge}`, borderEdge, ownerDoc, 1))
+}
+
+function findFirstChildEl(parent: Element, ns: string, local: string): Element | null {
+  for (const c of getChildren(parent)) {
+    if (c.namespaceURI === ns && c.localName === local) return c
+  }
+  return null
+}
+
+function findLastChildEl(parent: Element, ns: string, local: string): Element | null {
+  let found: Element | null = null
+  for (const c of getChildren(parent)) {
+    if (c.namespaceURI === ns && c.localName === local) found = c
+  }
+  return found
 }
 
 /** Skeleton XML for a fresh `<w:hdr>` or `<w:ftr>` part. Carries every
@@ -122,6 +199,7 @@ function emitOnePart(args: {
   surface: Surface
   variant: Variant
   blocks: Block[]
+  separator: Separator | undefined
   partIndex: number
   reader: DocxReader
   bodyPartRels: PartRels
@@ -133,6 +211,7 @@ function emitOnePart(args: {
     surface,
     variant,
     blocks,
+    separator,
     partIndex,
     bodyPartRels,
     contentTypes,
@@ -158,9 +237,9 @@ function emitOnePart(args: {
 
   let hasHyperlinks = false
   const ctx: EmitContext = {
-    emitImage: (src, w, h, alt, ownerDoc) => {
+    emitImage: (src, width, height, alt, ownerDoc) => {
       const { rId } = partRegistry.registerImage(src)
-      return partRegistry.buildDrawing(rId, w, h, alt, ownerDoc)
+      return partRegistry.buildDrawing(rId, width, height, alt, ownerDoc)
     },
     resolveStyle,
     emitHyperlink: (link, text, format, ownerDoc) => {
@@ -177,6 +256,10 @@ function emitOnePart(args: {
 
   for (const block of blocks) {
     root.appendChild(emitBlock(block, doc, ctx))
+  }
+
+  if (separator !== undefined) {
+    attachSeparator(root, surface === "header" ? "bottom" : "top", separator, doc)
   }
 
   // Stage XML + per-part binaries + per-part rels.
@@ -203,57 +286,138 @@ function emitOnePart(args: {
   }
 }
 
+/** Layer per-section overrides on top of the top-level header/footer
+ *  surfaces. Per-section overrides REPLACE the surface wholesale (parallels
+ *  `pageSetup.sections` semantics for paperSize / columns; the surface object
+ *  is the atomic unit because variants + separator have to stay coherent). */
+function buildEffectiveSections(
+  config: HeaderFooterConfig,
+  sectionCount: number,
+): EffectiveSection[] {
+  const result: EffectiveSection[] = []
+  for (let i = 0; i < sectionCount; i++) {
+    result.push({ header: config.header, footer: config.footer })
+  }
+  if (!config.sections) return result
+  for (const [key, override] of Object.entries(config.sections)) {
+    const indices = expandSectionSelector(key, sectionCount, "headerFooter.sections")
+    for (const idx1 of indices) {
+      const slot = result[idx1 - 1]!
+      if (override.header !== undefined) slot.header = override.header
+      if (override.footer !== undefined) slot.footer = override.footer
+    }
+  }
+  return result
+}
+
+interface PendingGroup {
+  sectionIndices: number[]
+  config: EffectiveSection
+}
+
+/** Bucket sections by JSON-equal effective config. Sections with identical
+ *  HF share one set of parts (no part-per-section explosion when 50 sections
+ *  share the same default header). JSON.stringify works because the
+ *  effective config objects are built deterministically (we know the field
+ *  order: header before footer; nested config came from a strictObject
+ *  schema, so its key order is stable across same-shaped inputs). */
+function groupSections(effective: EffectiveSection[]): PendingGroup[] {
+  const groups = new Map<string, PendingGroup>()
+  const order: string[] = []
+  for (let i = 0; i < effective.length; i++) {
+    const cfg = effective[i]!
+    const key = JSON.stringify(cfg)
+    let g = groups.get(key)
+    if (!g) {
+      g = { sectionIndices: [], config: cfg }
+      groups.set(key, g)
+      order.push(key)
+    }
+    g.sectionIndices.push(i + 1)
+  }
+  return order.map((k) => groups.get(k)!)
+}
+
 /** Emit every declared HF part, registering each in Content_Types and the
  *  body rels. The caller is responsible for: (a) flushing the body's own
  *  `PartRels` (since this function appends to it) and (b) flushing the
  *  shared `ContentTypes` (single flush at end of apply, like the body's
  *  asset registry — multi-registry race is avoided by the orchestrator
- *  owning the single flush). */
+ *  owning the single flush).
+ *
+ *  When `config.sections` partitions the document, each section group emits
+ *  its own parts; identical sections share parts (group dedup). When no
+ *  sections override is declared, every section falls into one group bound
+ *  to the top-level header/footer — preserves the pre-sections behaviour. */
 export async function applyHeaderFooter(
   reader: DocxReader,
+  documentDoc: Document,
   config: HeaderFooterConfig,
   bodyPartRels: PartRels,
   contentTypes: ContentTypes,
   replacements: WritableArchive,
   stylesDoc: Document | null,
 ): Promise<HeaderFooterReport> {
+  const body = firstChildNS(documentDoc.documentElement!, w, "body")
+  const sectPrs = body ? collectSectPrs(body) : []
+  const sectionCount = sectPrs.length
+
   const parts: HeaderFooterPartRecord[] = []
-  let hasFirst = false
+  const groups: HeaderFooterGroup[] = []
   let hasEven = false
   let partIndex = nextFreePartIndex(reader)
   const resolveStyle = buildStyleResolver(stylesDoc)
 
-  for (const surface of SURFACE_ORDER) {
-    const surfaceCfg = config[surface]
-    if (!surfaceCfg) continue
-    for (const variant of VARIANT_ORDER) {
-      const blocks = surfaceCfg[variant]
-      if (blocks === undefined) continue
-      if (variant === "first") hasFirst = true
-      if (variant === "even") hasEven = true
-
-      const record = emitOnePart({
-        surface,
-        variant,
-        blocks: blocks as Block[],
-        partIndex,
-        reader,
-        bodyPartRels,
-        contentTypes,
-        replacements,
-        resolveStyle,
-      })
-      parts.push(record)
-      partIndex++
-    }
+  if (sectionCount === 0) {
+    // Document has no sectPr (extremely rare — even blank.docx ships one).
+    // Without sections we can't bind anything; return an empty report and
+    // let the binding pass no-op cleanly.
+    return { parts, groups, hasEven }
   }
 
-  return { parts, hasFirst, hasEven }
+  const effective = buildEffectiveSections(config, sectionCount)
+  const pending = groupSections(effective)
+
+  for (const pg of pending) {
+    let hasFirst = false
+    const groupParts: HeaderFooterPartRecord[] = []
+    for (const surface of SURFACE_ORDER) {
+      const surfaceCfg = pg.config[surface]
+      if (!surfaceCfg) continue
+      const separator: Separator | undefined =
+        surface === "header"
+          ? (surfaceCfg as { underline?: Separator }).underline
+          : (surfaceCfg as { overline?: Separator }).overline
+      for (const variant of VARIANT_ORDER) {
+        const blocks = surfaceCfg[variant]
+        if (blocks === undefined) continue
+        if (variant === "first") hasFirst = true
+        if (variant === "even") hasEven = true
+
+        const record = emitOnePart({
+          surface,
+          variant,
+          blocks: blocks as Block[],
+          separator,
+          partIndex,
+          reader,
+          bodyPartRels,
+          contentTypes,
+          replacements,
+          resolveStyle,
+        })
+        parts.push(record)
+        groupParts.push(record)
+        partIndex++
+      }
+    }
+    groups.push({ sectionIndices: pg.sectionIndices, parts: groupParts, hasFirst })
+  }
+
+  return { parts, groups, hasEven }
 }
 
 /* ------------- sectPr binding ------------- */
-
-const w = NS.w
 
 /** Collect every sectPr in body order — paragraph-embedded sectPrs first
  *  (sections 1..N-1) then the body-trailing one (section N). Mirrors
@@ -320,18 +484,6 @@ export interface HeaderFooterBindingReport {
   titlePgApplied: boolean
 }
 
-/** Plug HF part records into every sectPr in `documentDoc`.
- *
- *   - clears pre-existing headerReference / footerReference children
- *   - appends one `<w:headerReference w:type="..." r:id="..."/>` per
- *     declared header variant, one `<w:footerReference>` per footer
- *     variant
- *   - sets `<w:titlePg/>` on every sectPr when any HF surface declared
- *     `first` (decision 7)
- *
- *  evenAndOddHeaders activation lives in settings.xml — see
- *  `setEvenAndOddHeadersFlag` in settings-mutation.
- */
 /* ------------- Header / Footer paragraph styles ------------- */
 
 /** Inject the built-in `Header` and `Footer` paragraph styles into
@@ -386,6 +538,16 @@ export function ensureHeaderFooterStyles(stylesDoc: Document): boolean {
 
 /* ------------- sectPr binding (continued) ------------- */
 
+/** Plug each section's HF part records into its sectPr.
+ *
+ *   - clears pre-existing headerReference / footerReference children
+ *   - appends one `<w:headerReference>` per header variant in the section's
+ *     group, one `<w:footerReference>` per footer variant
+ *   - sets `<w:titlePg/>` on the sectPr when this section's group declared
+ *     a `first` variant; clears otherwise
+ *
+ *  evenAndOddHeaders activation lives in settings.xml — see
+ *  `setEvenAndOddHeadersFlag` in settings-mutation. */
 export function applyHeaderFooterBinding(
   documentDoc: Document,
   report: HeaderFooterReport,
@@ -395,19 +557,31 @@ export function applyHeaderFooterBinding(
   const sectPrs = collectSectPrs(body)
   if (sectPrs.length === 0) return { sectionCount: 0, titlePgApplied: false }
 
+  // Section index (1-based) → group it belongs to. Sections not covered by
+  // any group (e.g. effective config was undefined/undefined) end up with no
+  // entry — their stale references still get stripped but nothing rebinds.
+  const sectionGroup = new Map<number, HeaderFooterGroup>()
+  for (const group of report.groups) {
+    for (const idx of group.sectionIndices) sectionGroup.set(idx, group)
+  }
+
   let titlePgApplied = false
-  for (const sectPr of sectPrs) {
+  for (let i = 0; i < sectPrs.length; i++) {
+    const sectPr = sectPrs[i]!
+    const group = sectionGroup.get(i + 1)
     stripExistingReferences(sectPr)
-    for (const part of report.parts) {
-      const ref = documentDoc.createElementNS(
-        w,
-        part.surface === "header" ? "w:headerReference" : "w:footerReference",
-      )
-      ref.setAttributeNS(w, "w:type", part.variant)
-      ref.setAttributeNS(NS.r, "r:id", part.rId)
-      insertChildInOrder(sectPr, ref, SECT_PR_CHILD_ORDER)
+    if (group) {
+      for (const part of group.parts) {
+        const ref = documentDoc.createElementNS(
+          w,
+          part.surface === "header" ? "w:headerReference" : "w:footerReference",
+        )
+        ref.setAttributeNS(w, "w:type", part.variant)
+        ref.setAttributeNS(NS.r, "r:id", part.rId)
+        insertChildInOrder(sectPr, ref, SECT_PR_CHILD_ORDER)
+      }
     }
-    if (setTitlePg(sectPr, documentDoc, report.hasFirst)) titlePgApplied = true
+    if (setTitlePg(sectPr, documentDoc, group?.hasFirst ?? false)) titlePgApplied = true
   }
   return { sectionCount: sectPrs.length, titlePgApplied }
 }

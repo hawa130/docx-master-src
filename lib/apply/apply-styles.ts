@@ -977,6 +977,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     ensureHeaderFooterStyles(stylesDoc)
     headerFooterReport = await applyHeaderFooter(
       reader,
+      documentDoc,
       config.headerFooter,
       bodyAssetRegistry.getPartRels(),
       bodyAssetRegistry.getContentTypes(),
