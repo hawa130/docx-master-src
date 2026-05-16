@@ -33,7 +33,12 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const CASES_DIR = join(HERE, "test", "fixtures", "math", "cases")
 const ERRORS_DIR = join(HERE, "test", "fixtures", "math", "errors")
 
-const files = (await readdir(CASES_DIR)).filter((f) => f.endsWith(".tex"))
+// .tex cases go through temml; .mml cases (for constructs temml can't
+// or won't emit, e.g. <mfenced separators="…">) feed the converter
+// directly.
+const files = (await readdir(CASES_DIR))
+  .filter((f) => f.endsWith(".tex") || f.endsWith(".mml"))
+  .filter((f) => !f.endsWith(".expected.omml"))
 files.sort()
 const errorFiles = (await readdir(ERRORS_DIR)).filter((f) => f.endsWith(".mml"))
 errorFiles.sort()
@@ -47,16 +52,15 @@ interface Result {
 
 const results: Result[] = []
 for (const f of files) {
-  const name = basename(f, ".tex")
+  const isMml = f.endsWith(".mml")
+  const name = basename(f, isMml ? ".mml" : ".tex")
   const notes: string[] = []
   let ok = true
   try {
-    const latex = (await readFile(join(CASES_DIR, f), "utf8")).trim()
-    const mathml = temml.renderToString(latex, {
-      xml: true,
-      displayMode: true,
-      throwOnError: true,
-    })
+    const source = (await readFile(join(CASES_DIR, f), "utf8")).trim()
+    const mathml = isMml
+      ? source
+      : temml.renderToString(source, { xml: true, displayMode: true, throwOnError: true })
     const omml = convertMathMLToOMML(mathml)
     const schemaErrors = await validateOMath(omml)
     if (schemaErrors.length > 0) {

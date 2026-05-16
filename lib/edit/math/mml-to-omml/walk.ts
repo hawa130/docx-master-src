@@ -446,18 +446,20 @@ function emitFenced(el: Element, doc: Document): Element {
   const close = attr(el, "close") ?? ")"
   const separators = attr(el, "separators") ?? ","
   const d = mEl(doc, "d")
+  // CT_DPr is a sequence (ECMA-376 §22.1.2.41): begChr → sepChr →
+  // endChr → grow → shp → ctrlPr. Append in that order.
   const dPr = mEl(doc, "dPr")
   const begChr = mEl(doc, "begChr")
   setMVal(begChr, open)
   dPr.appendChild(begChr)
-  const endChr = mEl(doc, "endChr")
-  setMVal(endChr, close)
-  dPr.appendChild(endChr)
   if (separators !== ",") {
     const sepChr = mEl(doc, "sepChr")
     setMVal(sepChr, separators.charAt(0))
     dPr.appendChild(sepChr)
   }
+  const endChr = mEl(doc, "endChr")
+  setMVal(endChr, close)
+  dPr.appendChild(endChr)
   d.appendChild(dPr)
   for (const child of elementChildren(el)) {
     const e = mEl(doc, "e")
