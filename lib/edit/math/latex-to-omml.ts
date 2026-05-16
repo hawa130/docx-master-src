@@ -31,6 +31,7 @@
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { dirname, join } from "node:path"
 import { mml2omml } from "mathml2omml"
+import { validateOMath } from "@lib/shared/docx-validate.ts"
 
 interface TemmlModule {
   renderToString: (
@@ -103,6 +104,18 @@ export async function prepareLatex(
         `MathML → OMML conversion failed for ${truncateLatex(latex)}: ${(err as Error).message}. ` +
           `Known fragile tokens — see references/equations.md "Known fragile LaTeX tokens"; use the omml escape hatch on the EquationBlock if the failure is unrecoverable.`,
         { cause: err },
+      )
+    }
+    // mml2omml occasionally emits schema-invalid OMML (e.g. <m:rPr> where
+    // the math schema rejects it). Catch it here so the throw carries the
+    // source LaTeX; post-write validation would surface a bare schema
+    // error against input_0.xml with no edit context.
+    const schemaErrors = await validateOMath(omml)
+    if (schemaErrors.length > 0) {
+      throw new Error(
+        `OOXML math schema validation failed for ${truncateLatex(latex)}: ${schemaErrors[0]}` +
+          (schemaErrors.length > 1 ? ` (+${schemaErrors.length - 1} more)` : "") +
+          ` — switch this equation to the omml escape hatch on the EquationBlock; see references/equations.md "Known fragile LaTeX tokens".`,
       )
     }
     ommlCache.set(key, omml)

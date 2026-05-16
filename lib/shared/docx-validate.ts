@@ -552,6 +552,35 @@ export async function validateDocxFile(filePath: string): Promise<ValidationErro
   return validateOoxmlParts(parts, entries)
 }
 
+/** Validate an `<m:oMath>...</m:oMath>` fragment against shared-math.xsd.
+ *  Catches mml2omml's schema-invalid output (e.g. stray `<m:rPr>`) before
+ *  it reaches document.xml. Returns one error per validator complaint;
+ *  empty array = valid. */
+export async function validateOMath(omml: string): Promise<string[]> {
+  const schemas = getSchemas()
+  const main = schemas.find((s) => s.fileName === "shared-math.xsd")
+  if (!main) return [`shared-math.xsd not found in bundled schemas`]
+  const preload = schemas.filter((s) => s.fileName !== "shared-math.xsd")
+  let result
+  try {
+    const validateXML = await getValidateXML()
+    result = await validateXML({
+      xml: [{ fileName: "math.xml", contents: omml }],
+      schema: [main],
+      preload,
+    })
+  } catch (err) {
+    return [`validator crashed: ${(err as Error)?.message ?? String(err)}`]
+  }
+  if (result.valid) return []
+  const out: string[] = []
+  for (const e of result.errors) {
+    if (IGNORED_XSD_ERROR_PATTERNS.some((re) => re.test(e.message))) continue
+    out.push(e.message)
+  }
+  return out
+}
+
 /* ============================================================
  * helpers
  * ========================================================== */
