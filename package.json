@@ -50,6 +50,7 @@
     "oxlint-tsgolint": "^0.22.1",
     "temml": "^0.13.2",
     "tsdown": "^0.21.10",
-    "typescript": "^5"
+    "typescript": "^5",
+    "xslt3": "^2.7.0"
   }
 }
