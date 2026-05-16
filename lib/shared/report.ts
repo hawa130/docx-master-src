@@ -425,11 +425,19 @@ export function printReport(args: {
   }
   if (args.styleResolutions.length > 0) {
     lines.push("=== Style Resolution (verify by reading) ===")
-    lines.push("  The script does not parse natural language. For styles with a")
-    lines.push("  user spec, compare it to the agent-resolved fields by eye —")
-    lines.push("  any mismatch means the agent's translation needs adjustment.")
-    lines.push("  Styles without a spec are still listed so the resolved fields")
-    lines.push("  are auditable.")
+    const hasAnySpec = args.styleResolutions.some((r) => r.userSpec !== null)
+    if (hasAnySpec) {
+      lines.push("  The script does not parse natural language. For styles with a")
+      lines.push("  user spec, compare it to the agent-resolved fields by eye —")
+      lines.push("  any mismatch means the agent's translation needs adjustment.")
+      lines.push("  Styles without a spec are still listed so the resolved fields")
+      lines.push("  are auditable.")
+    } else {
+      // No specs anywhere — one summary line beats restating "(none)" N times.
+      lines.push(
+        "  No `requirements` entries declared — Agent Resolved fields below reflect the structured `styles[]` declarations directly.",
+      )
+    }
     lines.push("")
     // The Δ-line legend is only useful when at least one styleResolution
     // has a prior state to diff against. All-fresh runs (every style is
@@ -445,10 +453,12 @@ export function printReport(args: {
     for (const r of args.styleResolutions) {
       const freshTag = r.priorState === null ? "  [fresh]" : ""
       lines.push(`  ${r.styleId}${freshTag}`)
-      if (r.userSpec !== null) {
-        lines.push(`    User specified: "${r.userSpec}"`)
-      } else {
-        lines.push(`    User specified: (none — no requirements entry)`)
+      if (hasAnySpec) {
+        if (r.userSpec !== null) {
+          lines.push(`    User specified: "${r.userSpec}"`)
+        } else {
+          lines.push(`    User specified: (none — no requirements entry)`)
+        }
       }
       lines.push(`    Agent resolved: ${formatResolvedFields(r.resolved)}`)
       if (r.priorState !== null) {
