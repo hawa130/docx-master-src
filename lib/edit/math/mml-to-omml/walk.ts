@@ -57,17 +57,20 @@ function flattenSingleChildWrappers(kids: Element[]): Element[] {
   return out
 }
 
-/** Wrap a list of MathML elements into a new OMML container `<m:e>` (or
- *  similar) and recurse. Used for n-ary operand and sub/sup limits. */
+/** Emit a list of MathML elements into an OMML container, with n-ary
+ *  fusion + single-child wrapper flattening applied to the list (same
+ *  as emitChildren but the kids come from a passed array rather than
+ *  an Element's children — used for n-ary operand/limit recursion). */
 function emitInto(host: Element, items: Element[], doc: Document): void {
-  for (const child of items) {
-    const nary = detectNary(items, items.indexOf(child))
-    if (nary !== null && items[items.indexOf(child)] === child) {
-      // Allow nested n-ary inside an operand/limit.
+  const kids = flattenSingleChildWrappers(items)
+  for (let i = 0; i < kids.length; i++) {
+    const nary = detectNary(kids, i)
+    if (nary !== null) {
       emitNary(nary, host, doc)
+      i += nary.consumed - 1
       continue
     }
-    emitElement(child, host, doc)
+    emitElement(kids[i]!, host, doc)
   }
 }
 
@@ -254,19 +257,6 @@ function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "bo
   if (which === "over") {
     const over = kids[1]!
     const overText = mmlText(over)
-    const isAccent = attr(el, "accent") === "true" || ACCENT_CHARS.has(overText)
-    if (isAccent) {
-      const acc = mEl(doc, "acc")
-      const accPr = mEl(doc, "accPr")
-      const chr = mEl(doc, "chr")
-      setMVal(chr, overText)
-      accPr.appendChild(chr)
-      acc.appendChild(accPr)
-      const e = mEl(doc, "e")
-      emitElement(kids[0]!, e, doc)
-      acc.appendChild(e)
-      return acc
-    }
     if (BAR_OVER_CHARS.has(overText)) {
       const bar = mEl(doc, "bar")
       const barPr = mEl(doc, "barPr")
@@ -278,6 +268,26 @@ function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "bo
       emitElement(kids[0]!, e, doc)
       bar.appendChild(e)
       return bar
+    }
+    // LaTeX accents (\hat, \vec, \tilde, \dot, ...) all render as
+    // <mover> with a single-character <mo> over the base. Treat any
+    // single-char operator in over position as an accent — matches
+    // the LaTeX-side intent and avoids enumerating every accent
+    // codepoint. accent="true" attribute (set by some authoring
+    // tools) is also honored.
+    const explicit = attr(el, "accent") === "true"
+    const isSingleCharMo = isMmlElement(over, "mo") && [...overText].length === 1
+    if (explicit || ACCENT_CHARS.has(overText) || isSingleCharMo) {
+      const acc = mEl(doc, "acc")
+      const accPr = mEl(doc, "accPr")
+      const chr = mEl(doc, "chr")
+      setMVal(chr, overText)
+      accPr.appendChild(chr)
+      acc.appendChild(accPr)
+      const e = mEl(doc, "e")
+      emitElement(kids[0]!, e, doc)
+      acc.appendChild(e)
+      return acc
     }
   }
   if (which === "under") {

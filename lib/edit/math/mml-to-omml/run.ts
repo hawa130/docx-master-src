@@ -1,18 +1,23 @@
 /**
  * <m:r> (math run) emission — the leaf carrier for every character of
- * mathematical text. Every run has:
+ * mathematical text. Per ECMA-376 §22.1.2.87 CT_R the child sequence is:
  *
- *   1. <w:rPr><w:rFonts w:ascii="Cambria Math" .../></w:rPr> — font.
- *      Word ignores any other font in math context; we emit this on
- *      every run to keep round-tripping into Word's own export shape.
- *   2. <m:rPr><m:sty m:val="…"/></m:rPr> — only when the style differs
- *      from what Word would default for the leaf kind:
- *        - mi length-1 → italic (no sty)
- *        - mi length>1 → plain (sty=p)
- *        - mn / mo / mtext / ms → plain (sty=p NOT needed; Cambria Math
- *          renders these plain by default — TEI omits it, we follow)
- *      An explicit `mathvariant` overrides the default.
- *   3. <m:t>text</m:t>
+ *   1. <m:rPr> (math run properties)               — must come first
+ *   2. EG_RPrMath, which includes <w:rPr>          — font selection
+ *   3. text content elements (<m:t>, <m:br>, …)
+ *
+ * Putting <w:rPr> before <m:rPr> is the exact bug the
+ * mathml2omml package shipped — libxml2 schema-validation rejected it.
+ *
+ *   - <m:rPr><m:sty m:val="…"/></m:rPr> — only when the style differs
+ *     from what Word would default for the leaf kind:
+ *       - mi length-1 → italic (no sty)
+ *       - mi length>1 → plain (sty=p)
+ *       - mn / mo / mtext / ms → plain (TEI omits sty here; we follow)
+ *   - <w:rPr><w:rFonts w:ascii="Cambria Math" .../></w:rPr> — every
+ *     run; matches Word's own export and keeps math text in the math
+ *     font regardless of paragraph font.
+ *   - <m:t>text</m:t>
  */
 
 import type { LeafKind } from "./style.ts"
@@ -31,31 +36,8 @@ export function buildRun(
 ): Element {
   const r = mEl(doc, "r")
 
-  const wRPr = wEl(doc, "rPr")
-  const rFonts = wEl(doc, "rFonts")
-  rFonts.setAttributeNS(
-    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    "w:ascii",
-    CAMBRIA,
-  )
-  rFonts.setAttributeNS(
-    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    "w:eastAsia",
-    CAMBRIA,
-  )
-  rFonts.setAttributeNS(
-    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    "w:hAnsi",
-    CAMBRIA,
-  )
-  rFonts.setAttributeNS(
-    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    "w:cs",
-    CAMBRIA,
-  )
-  wRPr.appendChild(rFonts)
-  r.appendChild(wRPr)
-
+  // 1. <m:rPr> (math run properties) — must come before <w:rPr> per
+  // CT_R's sequence ordering.
   const sty = resolveStyle(kind, text, mathvariant)
   if (sty !== undefined) {
     const mRPr = mEl(doc, "rPr")
@@ -65,6 +47,18 @@ export function buildRun(
     r.appendChild(mRPr)
   }
 
+  // 2. <w:rPr> with font selection.
+  const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  const wRPr = wEl(doc, "rPr")
+  const rFonts = wEl(doc, "rFonts")
+  rFonts.setAttributeNS(W, "w:ascii", CAMBRIA)
+  rFonts.setAttributeNS(W, "w:eastAsia", CAMBRIA)
+  rFonts.setAttributeNS(W, "w:hAnsi", CAMBRIA)
+  rFonts.setAttributeNS(W, "w:cs", CAMBRIA)
+  wRPr.appendChild(rFonts)
+  r.appendChild(wRPr)
+
+  // 3. <m:t> text content.
   const t = mEl(doc, "t")
   // OMML's <m:t> with default xml:space="default" trims whitespace.
   // Math text often includes meaningful spaces (e.g. \, → thin space),

@@ -111,15 +111,16 @@ export function detectNary(siblings: Element[], i: number): NaryMatch | null {
 
   if (chr === undefined) return null
 
-  // Walk forward to collect operand siblings, stopping at an infix
-  // binary operator (terminator), at another n-ary head, or end of
-  // list.
+  // Walk forward to collect operand siblings, stopping only at an infix
+  // binary operator (terminator) or end of list. A nested n-ary head is
+  // *included* in the operand — `\sum_i \int f` means the integral is
+  // the sum's operand, and the recursive emit pass fuses it inside the
+  // <m:e>.
   const operand: Element[] = []
   let j = i + 1
   while (j < siblings.length) {
     const next = siblings[j]!
     if (isMmlElement(next, "mo") && NARY_OPERAND_TERMINATORS.has(mmlText(next))) break
-    if (detectNary(siblings, j) !== null) break
     operand.push(next)
     j++
   }
