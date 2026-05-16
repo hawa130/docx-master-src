@@ -312,14 +312,25 @@ function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "bo
       return bar
     }
   }
-  // Fall through to limit shapes — symmetric with emitSubSup.
-  const tag = which === "under" ? "limLow" : which === "over" ? "limUpp" : "limLowUpp"
+  // Fall through to limit shapes. OMML has only `<m:limLow>` and
+  // `<m:limUpp>` (ECMA-376 §22.1.2.54 / §22.1.2.56); there is no
+  // combined element. For munderover (both) we nest a limLow inside a
+  // limUpp — the same shape Word emits when reading temml-style input.
+  if (which === "both") {
+    const outer = mEl(doc, "limUpp")
+    const innerE = mEl(doc, "e")
+    const inner = mEl(doc, "limLow")
+    appendWrapped(inner, "e", kids[0]!, doc)
+    appendWrapped(inner, "lim", kids[1]!, doc) // under
+    innerE.appendChild(inner)
+    outer.appendChild(innerE)
+    appendWrapped(outer, "lim", kids[2]!, doc) // over
+    return outer
+  }
+  const tag = which === "under" ? "limLow" : "limUpp"
   const out = mEl(doc, tag)
   appendWrapped(out, "e", kids[0]!, doc)
-  if (which === "under" || which === "both") appendWrapped(out, "lim", kids[1]!, doc)
-  if (which === "over" || which === "both") {
-    appendWrapped(out, "lim", kids[which === "both" ? 2 : 1]!, doc)
-  }
+  appendWrapped(out, "lim", kids[1]!, doc)
   return out
 }
 
