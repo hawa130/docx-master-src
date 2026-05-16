@@ -41,4 +41,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 !/test/fixtures/math/
 /test/fixtures/math/*
 !/test/fixtures/math/cases/
+!/test/fixtures/math/errors/
 !/test/fixtures/math/README.md

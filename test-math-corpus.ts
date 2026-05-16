@@ -31,10 +31,13 @@ const UPDATE = process.argv.includes("--update")
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const CASES_DIR = join(HERE, "test", "fixtures", "math", "cases")
+const ERRORS_DIR = join(HERE, "test", "fixtures", "math", "errors")
 
 const files = (await readdir(CASES_DIR)).filter((f) => f.endsWith(".tex"))
 files.sort()
-console.log(`Found ${files.length} cases in ${CASES_DIR}\n`)
+const errorFiles = (await readdir(ERRORS_DIR)).filter((f) => f.endsWith(".mml"))
+errorFiles.sort()
+console.log(`Found ${files.length} cases + ${errorFiles.length} error cases\n`)
 
 interface Result {
   name: string
@@ -80,6 +83,37 @@ for (const f of files) {
   } catch (err) {
     ok = false
     notes.push(`threw: ${(err as Error).message.slice(0, 160)}`)
+  }
+  results.push({ name, ok, notes })
+}
+
+// Negative tests — each .mml in errors/ feeds the converter directly
+// (not via temml, since malformed input would never come from temml
+// in practice — these guard against MathML from other producers and
+// unsupported elements). The error must mention the substring in
+// <case>.expected-error.txt.
+for (const f of errorFiles) {
+  const name = "error:" + basename(f, ".mml")
+  const notes: string[] = []
+  let ok = false
+  const mathml = (await readFile(join(ERRORS_DIR, f), "utf8")).trim()
+  const expectedErrPath = join(ERRORS_DIR, `${basename(f, ".mml")}.expected-error.txt`)
+  const expectedSubstring = existsSync(expectedErrPath)
+    ? (await readFile(expectedErrPath, "utf8")).trim()
+    : ""
+  try {
+    convertMathMLToOMML(mathml)
+    notes.push(`did not throw (expected substring "${expectedSubstring.slice(0, 50)}")`)
+  } catch (err) {
+    const message = (err as Error).message
+    if (expectedSubstring === "" || message.includes(expectedSubstring)) {
+      ok = true
+      notes.push(`threw with expected message`)
+    } else {
+      notes.push(
+        `threw but message lacks "${expectedSubstring.slice(0, 50)}"; got: ${message.slice(0, 120)}`,
+      )
+    }
   }
   results.push({ name, ok, notes })
 }

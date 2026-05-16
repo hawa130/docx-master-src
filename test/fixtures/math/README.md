@@ -24,6 +24,14 @@ step** — schema validity is necessary but not sufficient. After any
 change to a fixture's output, open the rendered .docx in Microsoft Word
 and confirm the equation renders as intended.
 
+## Negative tests — `errors/`
+
+Inputs that must throw. One `name.mml` per case (raw MathML, not LaTeX
+— these test error paths the converter has to handle directly, e.g.
+input from non-temml producers). Optional companion
+`name.expected-error.txt` whose trimmed contents must appear in the
+thrown error's message. If absent, any throw counts as pass.
+
 ## Adding a case
 
 1. Drop a `name.tex` into `cases/`.
