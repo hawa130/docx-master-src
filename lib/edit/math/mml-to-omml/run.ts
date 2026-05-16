@@ -23,6 +23,7 @@
 import type { LeafKind } from "./style.ts"
 import { resolveStyle } from "./style.ts"
 import { mEl, wEl, setMVal } from "./dom.ts"
+import { W_NS } from "./constants.ts"
 
 const CAMBRIA = "Cambria Math"
 
@@ -57,13 +58,12 @@ export function buildRun(
   }
 
   // 2. <w:rPr> with font selection.
-  const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
   const wRPr = wEl(doc, "rPr")
   const rFonts = wEl(doc, "rFonts")
-  rFonts.setAttributeNS(W, "w:ascii", CAMBRIA)
-  rFonts.setAttributeNS(W, "w:eastAsia", CAMBRIA)
-  rFonts.setAttributeNS(W, "w:hAnsi", CAMBRIA)
-  rFonts.setAttributeNS(W, "w:cs", CAMBRIA)
+  rFonts.setAttributeNS(W_NS, "w:ascii", CAMBRIA)
+  rFonts.setAttributeNS(W_NS, "w:eastAsia", CAMBRIA)
+  rFonts.setAttributeNS(W_NS, "w:hAnsi", CAMBRIA)
+  rFonts.setAttributeNS(W_NS, "w:cs", CAMBRIA)
   wRPr.appendChild(rFonts)
   r.appendChild(wRPr)
 

@@ -14,6 +14,7 @@
 
 import {
   elementChildren,
+  flattenSingleChildWrappers,
   isMmlElement,
   mmlText,
   mmlTextLiteral,
@@ -26,52 +27,15 @@ import { buildRun } from "./run.ts"
 import { detectNary, type NaryMatch } from "./nary.ts"
 import type { LeafKind } from "./style.ts"
 
-/** Emit the OMML children of `mmlParent` into `ommlParent`, applying
- *  n-ary fusion at mrow scope. Single-child transparent wrappers
- *  (mrow / mstyle / mpadded / menclose / maction with one element
- *  child) are flattened first — temml emits a wrapping <mrow> around
- *  every operator-with-limits, which would otherwise hide the n-ary
- *  head from its operand siblings and reproduce the empty-<m:e/> bug. */
-export function emitChildren(mmlParent: Element, ommlParent: Element, doc: Document): void {
-  const kids = flattenSingleChildWrappers(elementChildren(mmlParent))
-  for (let i = 0; i < kids.length; i++) {
-    const nary = detectNary(kids, i)
-    if (nary !== null) {
-      emitNary(nary, ommlParent, doc)
-      i += nary.consumed - 1
-      continue
-    }
-    emitElement(kids[i]!, ommlParent, doc)
-  }
-}
-
-const TRANSPARENT_WRAPPERS: ReadonlySet<string> = new Set([
-  "mrow",
-  "mstyle",
-  "mpadded",
-  "maction",
-  // menclose is NOT transparent — its `notation` attribute is semantic
-  // (cancel vs box vs circle are different statements). Dispatched
-  // through emitMenclose which either emits <m:borderBox> or throws.
-])
-
-function flattenSingleChildWrappers(kids: Element[]): Element[] {
-  const out: Element[] = []
-  for (const k of kids) {
-    if (TRANSPARENT_WRAPPERS.has(k.localName) && elementChildren(k).length === 1) {
-      out.push(...flattenSingleChildWrappers(elementChildren(k)))
-    } else {
-      out.push(k)
-    }
-  }
-  return out
-}
-
-/** Emit a list of MathML elements into an OMML container, with n-ary
- *  fusion + single-child wrapper flattening applied to the list (same
- *  as emitChildren but the kids come from a passed array rather than
- *  an Element's children — used for n-ary operand/limit recursion). */
-function emitInto(host: Element, items: Element[], doc: Document): void {
+/** Emit a list of MathML elements into an OMML container, applying
+ *  single-child wrapper flattening and n-ary fusion. Single-child
+ *  `<mrow>` / `<mpadded>` / `<mstyle>` / `<maction>` are unwrapped
+ *  first — temml wraps every operator-with-limits in such a grouping
+ *  mrow that would otherwise hide the fusion candidate from its
+ *  sibling operand. (menclose is deliberately NOT in the flatten set:
+ *  its `notation` attribute carries semantic that must reach
+ *  `emitMenclose`.) */
+export function emitSequence(items: Element[], host: Element, doc: Document): void {
   const kids = flattenSingleChildWrappers(items)
   for (let i = 0; i < kids.length; i++) {
     const nary = detectNary(kids, i)
@@ -82,6 +46,13 @@ function emitInto(host: Element, items: Element[], doc: Document): void {
     }
     emitElement(kids[i]!, host, doc)
   }
+}
+
+/** Emit `mmlParent`'s element children into `ommlParent`. Convenience
+ *  wrapper around emitSequence for the common "walk this element's
+ *  children" pattern. */
+export function emitChildren(mmlParent: Element, ommlParent: Element, doc: Document): void {
+  emitSequence(elementChildren(mmlParent), ommlParent, doc)
 }
 
 function emitNary(m: NaryMatch, parent: Element, doc: Document): void {
@@ -109,15 +80,15 @@ function emitNary(m: NaryMatch, parent: Element, doc: Document): void {
   nary.appendChild(naryPr)
 
   const sub = mEl(doc, "sub")
-  if (m.sub !== null) emitInto(sub, m.sub, doc)
+  if (m.sub !== null) emitSequence(m.sub, sub, doc)
   nary.appendChild(sub)
 
   const sup = mEl(doc, "sup")
-  if (m.sup !== null) emitInto(sup, m.sup, doc)
+  if (m.sup !== null) emitSequence(m.sup, sup, doc)
   nary.appendChild(sup)
 
   const e = mEl(doc, "e")
-  emitInto(e, m.operand, doc)
+  emitSequence(m.operand, e, doc)
   nary.appendChild(e)
 
   parent.appendChild(nary)
@@ -251,28 +222,24 @@ function emitLeaf(el: Element, kind: LeafKind, doc: Document): Element {
   return buildRun(doc, text, kind, attr(el, "mathvariant"))
 }
 
+/** Append a new `<m:NAME>` wrapper containing `source` (emitted) to
+ *  `parent`. Compresses the repeated three-line "create element,
+ *  recurse one source into it, append" pattern. */
+function appendWrapped(parent: Element, name: string, source: Element, doc: Document): void {
+  const el = mEl(doc, name)
+  emitElement(source, el, doc)
+  parent.appendChild(el)
+}
+
 /** msub / msup / msubsup → <m:sSub> / <m:sSup> / <m:sSubSup>. */
 function emitSubSup(el: Element, doc: Document, which: "sub" | "sup" | "both"): Element {
   const kids = elementChildren(el)
   const tag = which === "sub" ? "sSub" : which === "sup" ? "sSup" : "sSubSup"
   const out = mEl(doc, tag)
-  const e = mEl(doc, "e")
-  emitElement(kids[0]!, e, doc)
-  out.appendChild(e)
-  if (which === "sub" || which === "both") {
-    const sub = mEl(doc, "sub")
-    emitElement(kids[1]!, sub, doc)
-    out.appendChild(sub)
-  }
-  if (which === "sup") {
-    const sup = mEl(doc, "sup")
-    emitElement(kids[1]!, sup, doc)
-    out.appendChild(sup)
-  }
-  if (which === "both") {
-    const sup = mEl(doc, "sup")
-    emitElement(kids[2]!, sup, doc)
-    out.appendChild(sup)
+  appendWrapped(out, "e", kids[0]!, doc)
+  if (which === "sub" || which === "both") appendWrapped(out, "sub", kids[1]!, doc)
+  if (which === "sup" || which === "both") {
+    appendWrapped(out, "sup", kids[which === "both" ? 2 : 1]!, doc)
   }
   return out
 }
@@ -345,26 +312,13 @@ function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "bo
       return bar
     }
   }
-  // Fall through to limit shapes.
+  // Fall through to limit shapes — symmetric with emitSubSup.
   const tag = which === "under" ? "limLow" : which === "over" ? "limUpp" : "limLowUpp"
   const out = mEl(doc, tag)
-  const e = mEl(doc, "e")
-  emitElement(kids[0]!, e, doc)
-  out.appendChild(e)
-  if (which === "under" || which === "both") {
-    const lim = mEl(doc, "lim")
-    emitElement(kids[1]!, lim, doc)
-    out.appendChild(lim)
-  }
-  if (which === "over") {
-    const lim = mEl(doc, "lim")
-    emitElement(kids[1]!, lim, doc)
-    out.appendChild(lim)
-  }
-  if (which === "both") {
-    const lim = mEl(doc, "lim")
-    emitElement(kids[2]!, lim, doc)
-    out.appendChild(lim)
+  appendWrapped(out, "e", kids[0]!, doc)
+  if (which === "under" || which === "both") appendWrapped(out, "lim", kids[1]!, doc)
+  if (which === "over" || which === "both") {
+    appendWrapped(out, "lim", kids[which === "both" ? 2 : 1]!, doc)
   }
   return out
 }

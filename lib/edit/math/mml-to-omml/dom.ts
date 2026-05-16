@@ -7,6 +7,28 @@
 
 import { MML_NS, M_NS, W_NS } from "./constants.ts"
 
+/** MathML grouping wrappers that carry no semantic when they hold a
+ *  single child — the wrapper is purely for layout grouping. Flatten
+ *  before fusion passes so n-ary / fence detectors see operator and
+ *  operand as siblings. mpadded/mstyle attributes are deliberately
+ *  lost; see SCOPE.md "What OMML cannot express". */
+const TRANSPARENT_WRAPPERS: ReadonlySet<string> = new Set(["mrow", "mstyle", "mpadded", "maction"])
+
+/** Recursively unwrap single-child transparent wrappers from a list of
+ *  elements. The output preserves the order of meaningful siblings;
+ *  intermediate single-child mrows disappear. */
+export function flattenSingleChildWrappers(kids: Element[]): Element[] {
+  const out: Element[] = []
+  for (const k of kids) {
+    if (TRANSPARENT_WRAPPERS.has(k.localName) && elementChildren(k).length === 1) {
+      out.push(...flattenSingleChildWrappers(elementChildren(k)))
+    } else {
+      out.push(k)
+    }
+  }
+  return out
+}
+
 export function elementChildren(parent: Element): Element[] {
   const out: Element[] = []
   for (let n = parent.firstChild; n; n = n.nextSibling) {
