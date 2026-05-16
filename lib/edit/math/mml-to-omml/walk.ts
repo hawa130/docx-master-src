@@ -24,7 +24,6 @@ import {
 import { ACCENT_CHARS, BAR_OVER_CHARS, GROUP_CHR_MAP } from "./constants.ts"
 import { buildRun } from "./run.ts"
 import { detectNary, type NaryMatch } from "./nary.ts"
-import { detectSizedFence, type SizedFenceMatch } from "./sized-fence.ts"
 import type { LeafKind } from "./style.ts"
 
 /** Emit the OMML children of `mmlParent` into `ommlParent`, applying
@@ -36,12 +35,6 @@ import type { LeafKind } from "./style.ts"
 export function emitChildren(mmlParent: Element, ommlParent: Element, doc: Document): void {
   const kids = flattenSingleChildWrappers(elementChildren(mmlParent))
   for (let i = 0; i < kids.length; i++) {
-    const sized = detectSizedFence(kids, i)
-    if (sized !== null) {
-      emitSizedFence(sized, ommlParent, doc)
-      i += sized.consumed - 1
-      continue
-    }
     const nary = detectNary(kids, i)
     if (nary !== null) {
       emitNary(nary, ommlParent, doc)
@@ -79,12 +72,6 @@ function flattenSingleChildWrappers(kids: Element[]): Element[] {
 function emitInto(host: Element, items: Element[], doc: Document): void {
   const kids = flattenSingleChildWrappers(items)
   for (let i = 0; i < kids.length; i++) {
-    const sized = detectSizedFence(kids, i)
-    if (sized !== null) {
-      emitSizedFence(sized, host, doc)
-      i += sized.consumed - 1
-      continue
-    }
     const nary = detectNary(kids, i)
     if (nary !== null) {
       emitNary(nary, host, doc)
@@ -93,46 +80,6 @@ function emitInto(host: Element, items: Element[], doc: Document): void {
     }
     emitElement(kids[i]!, host, doc)
   }
-}
-
-function emitSizedFence(m: SizedFenceMatch, parent: Element, doc: Document): void {
-  // Build the <m:d> wrapping the body.
-  const d = mEl(doc, "d")
-  const dPr = mEl(doc, "dPr")
-  const begChr = mEl(doc, "begChr")
-  setMVal(begChr, m.begChr)
-  dPr.appendChild(begChr)
-  const endChr = mEl(doc, "endChr")
-  setMVal(endChr, m.endChr)
-  dPr.appendChild(endChr)
-  dPr.appendChild(mEl(doc, "grow"))
-  d.appendChild(dPr)
-  const e = mEl(doc, "e")
-  emitInto(e, m.body, doc)
-  d.appendChild(e)
-
-  if (m.script === "none") {
-    parent.appendChild(d)
-    return
-  }
-  // Lift the script wrappers from the closing delimiter so the
-  // delimiter group becomes the script base.
-  const tag = m.script === "sub" ? "sSub" : m.script === "sup" ? "sSup" : "sSubSup"
-  const sScript = mEl(doc, tag)
-  const baseE = mEl(doc, "e")
-  baseE.appendChild(d)
-  sScript.appendChild(baseE)
-  if (m.scriptSub !== null) {
-    const sub = mEl(doc, "sub")
-    emitElement(m.scriptSub, sub, doc)
-    sScript.appendChild(sub)
-  }
-  if (m.scriptSup !== null) {
-    const sup = mEl(doc, "sup")
-    emitElement(m.scriptSup, sup, doc)
-    sScript.appendChild(sup)
-  }
-  parent.appendChild(sScript)
 }
 
 function emitNary(m: NaryMatch, parent: Element, doc: Document): void {
@@ -289,7 +236,7 @@ export function emitElement(el: Element, parent: Element, doc: Document): void {
 function emitLeaf(el: Element, kind: LeafKind, doc: Document): Element {
   // mtext / ms preserve whitespace (MathML 3 §3.2.6) — leading/trailing
   // spaces in `\text{ ... }` carry the only typographic gap to the
-  // adjacent math runs. mi/mn/mo are stylized identifiers/numbers/ons
+  // adjacent math runs. mi/mn/mo are stylized identifiers/numbers/ops
   // where whitespace is incidental.
   const text = kind === "mtext" || kind === "ms" ? mmlTextLiteral(el) : mmlText(el)
   return buildRun(doc, text, kind, attr(el, "mathvariant"))
