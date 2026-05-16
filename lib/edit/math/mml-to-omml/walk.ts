@@ -35,7 +35,7 @@ import type { LeafKind } from "./style.ts"
  *  sibling operand. (menclose is deliberately NOT in the flatten set:
  *  its `notation` attribute carries semantic that must reach
  *  `emitMenclose`.) */
-export function emitSequence(items: Element[], host: Element, doc: Document): void {
+function emitSequence(items: Element[], host: Element, doc: Document): void {
   const kids = flattenSingleChildWrappers(items)
   for (let i = 0; i < kids.length; i++) {
     const nary = detectNary(kids, i)
@@ -96,7 +96,7 @@ function emitNary(m: NaryMatch, parent: Element, doc: Document): void {
 
 /** Dispatch one MathML element to its OMML emitter and append into
  *  `parent`. */
-export function emitElement(el: Element, parent: Element, doc: Document): void {
+function emitElement(el: Element, parent: Element, doc: Document): void {
   const ln = el.localName
   switch (ln) {
     case "mi":
