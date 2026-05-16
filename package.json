@@ -34,7 +34,9 @@
     "lint": "oxlint --type-aware --deny-warnings",
     "lint:fix": "oxlint --type-aware --fix",
     "fmt": "oxfmt --write .",
-    "fmt:check": "oxfmt --check ."
+    "fmt:check": "oxfmt --check .",
+    "test:math": "bun run test-math-corpus.ts",
+    "test:math:update": "bun run test-math-corpus.ts --update"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",
