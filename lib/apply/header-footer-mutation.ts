@@ -93,6 +93,11 @@ export interface HeaderFooterPartRecord {
    *  apply pipeline uses this to ensure the `Hyperlink` character style is
    *  injected into styles.xml even when no body edits[] declare one. */
   hasHyperlinks: boolean
+  /** Set when the surface declared a separator (`underline`/`overline`).
+   *  `true` when the engine successfully attached it; `false` when this
+   *  variant's endpoint had no paragraph and the separator was skipped.
+   *  `undefined` when no separator was declared on the surface. */
+  separatorAttached?: boolean
 }
 
 /** One group of sections sharing identical HF config — all emit / bind to
@@ -114,24 +119,28 @@ export interface HeaderFooterReport {
   /** Any group declared an `even` variant — drives
    *  `<w:evenAndOddHeaders/>` in settings.xml. */
   hasEven: boolean
+  /** Surfaces where a separator was declared but no variant in the
+   *  surface had a paragraph endpoint to attach it to — declaration
+   *  silently fell through. One human-readable line per occurrence. */
+  separatorWarnings: string[]
 }
 
 /** Attach a paragraph border to the endpoint paragraph of an HF part:
  *  header → last child `<w:p>` (bottom edge); footer → first child `<w:p>`
- *  (top edge). Endpoint must be a paragraph — table/image-only variants
- *  silently no-op (Word's HF parts conventionally end with a paragraph
- *  anyway, but enforcing here keeps the rule observable). If a `<w:pBdr>`
- *  already exists (e.g. variant ends with a `horizontal-rule` block), the
- *  user's HF-level separator wins on the relevant edge — duplicate edge
- *  children would be schema-invalid. */
+ *  (top edge). Returns `true` when attached, `false` when the endpoint is
+ *  not a `<w:p>` (table-only or empty variant) — caller aggregates
+ *  effectiveness across a surface's variants to decide whether to warn.
+ *  If a `<w:pBdr>` already exists (e.g. variant ends with a
+ *  `horizontal-rule` block), the user's HF-level separator wins on the
+ *  relevant edge — duplicate edge children would be schema-invalid. */
 function attachSeparator(
   root: Element,
   edge: "top" | "bottom",
   separator: Separator,
   ownerDoc: Document,
-): void {
+): boolean {
   const target = edge === "bottom" ? findLastChildEl(root, w, "p") : findFirstChildEl(root, w, "p")
-  if (!target) return
+  if (!target) return false
   const borderEdge: BorderEdge = separator === true ? "single" : separator
   let pPr = firstChildNS(target, w, "pPr")
   if (!pPr) {
@@ -146,6 +155,7 @@ function attachSeparator(
   const existingEdge = firstChildNS(pBdr, w, edge)
   if (existingEdge) pBdr.removeChild(existingEdge)
   pBdr.appendChild(buildBorderElement(`w:${edge}`, borderEdge, ownerDoc, 1))
+  return true
 }
 
 function findFirstChildEl(parent: Element, ns: string, local: string): Element | null {
@@ -258,8 +268,14 @@ function emitOnePart(args: {
     root.appendChild(emitBlock(block, doc, ctx))
   }
 
+  let separatorAttached: boolean | undefined
   if (separator !== undefined) {
-    attachSeparator(root, surface === "header" ? "bottom" : "top", separator, doc)
+    separatorAttached = attachSeparator(
+      root,
+      surface === "header" ? "bottom" : "top",
+      separator,
+      doc,
+    )
   }
 
   // Stage XML + per-part binaries + per-part rels.
@@ -283,6 +299,7 @@ function emitOnePart(args: {
     partName: partNameSlash,
     blockCount: blocks.length,
     hasHyperlinks,
+    separatorAttached,
   }
 }
 
@@ -364,6 +381,7 @@ export async function applyHeaderFooter(
 
   const parts: HeaderFooterPartRecord[] = []
   const groups: HeaderFooterGroup[] = []
+  const separatorWarnings: string[] = []
   let hasEven = false
   let partIndex = nextFreePartIndex(reader)
   const resolveStyle = buildStyleResolver(stylesDoc)
@@ -372,7 +390,7 @@ export async function applyHeaderFooter(
     // Document has no sectPr (extremely rare — even blank.docx ships one).
     // Without sections we can't bind anything; return an empty report and
     // let the binding pass no-op cleanly.
-    return { parts, groups, hasEven }
+    return { parts, groups, hasEven, separatorWarnings }
   }
 
   const effective = buildEffectiveSections(config, sectionCount)
@@ -388,6 +406,7 @@ export async function applyHeaderFooter(
         surface === "header"
           ? (surfaceCfg as { underline?: Separator }).underline
           : (surfaceCfg as { overline?: Separator }).overline
+      const surfaceRecords: HeaderFooterPartRecord[] = []
       for (const variant of VARIANT_ORDER) {
         const blocks = surfaceCfg[variant]
         if (blocks === undefined) continue
@@ -408,13 +427,39 @@ export async function applyHeaderFooter(
         })
         parts.push(record)
         groupParts.push(record)
+        surfaceRecords.push(record)
         partIndex++
+      }
+      // Separator declared but zero variants of this surface had a
+      // paragraph endpoint → user's declaration silently fell through.
+      // Surface a one-line warning so dry-run shows it; per-variant
+      // skips on empty `[]` (intentionally blank cover-page variant)
+      // are NOT warned individually because they're a legitimate config.
+      if (
+        separator !== undefined &&
+        surfaceRecords.length > 0 &&
+        surfaceRecords.every((r) => r.separatorAttached === false)
+      ) {
+        const groupTag = scopeTagForGroup(pg, sectionCount)
+        const field = surface === "header" ? "underline" : "overline"
+        separatorWarnings.push(
+          `${groupTag}${surface}.${field}: declared but no variant has a <w:p> endpoint (every variant ends in a table or is empty [])`,
+        )
       }
     }
     groups.push({ sectionIndices: pg.sectionIndices, parts: groupParts, hasFirst })
   }
 
-  return { parts, groups, hasEven }
+  return { parts, groups, hasEven, separatorWarnings }
+}
+
+/** Human-readable scope tag for a group's warning. Drops the prefix when
+ *  the group covers every section (no need to say "Sections 1-N: ..."
+ *  in single-group documents). */
+function scopeTagForGroup(pg: PendingGroup, sectionCount: number): string {
+  if (pg.sectionIndices.length === sectionCount) return ""
+  if (pg.sectionIndices.length === 1) return `Section ${pg.sectionIndices[0]}: `
+  return `Sections ${pg.sectionIndices.join(",")}: `
 }
 
 /* ------------- sectPr binding ------------- */

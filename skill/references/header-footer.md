@@ -1,6 +1,6 @@
 # Header / Footer
 
-Generates header and footer parts and binds them to every section. Sparse-by-design: omit the `headerFooter` block entirely to leave existing HF references untouched. When the block IS declared, every sectPr is rebound and any pre-existing HF parts become orphans in the archive (Word ignores unreferenced parts).
+Generates header and footer parts and binds them to every section. Sparse-by-design: omit the `headerFooter` block entirely to leave existing HF references untouched. When the block IS declared, every sectPr is rebound and any pre-existing HF parts become orphans in the archive (Word ignores them); new partNames allocate past the highest existing index — numbering does not compact.
 
 ## Shape
 
@@ -33,7 +33,7 @@ To blank only the first page, declare both `first: []` AND `default: [...]` — 
 
 Inside header / footer content, only these block types are allowed (rejected at config parse, including any nesting depth — table cells too):
 
-- `paragraph` — text, optionally styleId-bound. Inline nodes (text, fields, hyperlinks) work the same as in body edits.
+- `paragraph` — text, optionally styleId-bound. Inline nodes — `text`, `fields` (`page` / `numPages` / `date`), `styleRef`, `hyperlinks` — work the same as in body edits; shapes in [`edit.md`](edit.md) / [`cross-references.md`](cross-references.md).
 - `image`
 - `table` — common pattern for split layouts via a single-row borderless 3-column table.
 - `horizontal-rule`
@@ -53,7 +53,7 @@ Use the built-in `Header` / `Footer` styleId (engine auto-injects them when miss
 - `true` → thin black single line (0.5pt).
 - `BorderEdge` → same shape as table cell borders, see [`tables.md`](tables.md#borders).
 
-Silently skipped when the endpoint is a `table` (no `<w:p>` to attach to) or the variant is empty `[]`. If a variant ends with a `horizontal-rule`, the separator overwrites that rule's edge on the same side.
+Skipped when the endpoint position has no `<w:p>` to attach to — currently triggers on a `table` endpoint or an empty `[]` variant. Image endpoints attach normally (image renders inside `<w:p>`). If a variant ends with a `horizontal-rule`, the separator overwrites that rule's edge on the same side. When **every** variant of a surface skips, the dry-run report emits a `warning:` line so a declaration that fell through doesn't go unnoticed.
 
 ## Variant semantics
 

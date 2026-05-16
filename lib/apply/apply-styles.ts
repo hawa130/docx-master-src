@@ -30,7 +30,11 @@ import {
   upsertStyle,
 } from "@lib/apply/style-mutation.ts"
 import { previewEditOps, runEditOps, type EditsPreviewEntry } from "@lib/edit/edit-engine.ts"
-import { lintPanguInEdits, type PanguWarning } from "@lib/edit/pangu-lint.ts"
+import {
+  lintPanguInEdits,
+  lintPanguInHeaderFooter,
+  type PanguWarning,
+} from "@lib/edit/pangu-lint.ts"
 import { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 import { ensureHyperlinkCharStyle } from "@lib/edit/hyperlink.ts"
 import { simulateNumberingCounters, extractParagraphText } from "@lib/apply/numbering-counter.ts"
@@ -516,13 +520,20 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   let pendingBackfills: PendingRefBackfill[] = []
   let pendingCaptionFills: PendingCaptionFill[] = []
   let pendingCaptionResets: PendingCaptionReset[] = []
-  let panguWarnings: PanguWarning[] = []
+  const panguWarnings: PanguWarning[] = []
+  if (config.headerFooter) {
+    // Pangu-spacing lint runs on every author-supplied prose surface —
+    // `edits[]` and `headerFooter` are the two prose-bearing config
+    // paths today. Run HF first so source labels appear in declaration
+    // order in the report (HF is positionally above `edits[]`).
+    panguWarnings.push(...lintPanguInHeaderFooter(config.headerFooter))
+  }
   if (config.edits && config.edits.length > 0) {
     // Pangu-spacing lint: flag literal ASCII spaces between CJK and Latin/digit
     // glyphs in author-supplied text. Word's autoSpace inserts the gap at
     // render time; stacking a typed space on top renders too wide. Non-fatal:
     // the agent gets the warnings in the report and decides whether to scrub.
-    panguWarnings = lintPanguInEdits(config.edits)
+    panguWarnings.push(...lintPanguInEdits(config.edits))
     // Preview pass: resolve locators against the pre-edit document so the
     // report's "Edits Preview" + implicit-keep accounting use ORIGINAL paragraph
     // indices (the locators were authored against those). Cheap, non-mutating —

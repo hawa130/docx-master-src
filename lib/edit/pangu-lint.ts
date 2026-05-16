@@ -1,5 +1,5 @@
 /**
- * Pangu-spacing static lint for `edits[]` text content.
+ * Pangu-spacing static lint for author-supplied text content.
  *
  * "Pangu spacing" = an ASCII space typed between a CJK character and a
  * Latin / digit character (or vice versa) in Chinese prose. Word's own
@@ -9,12 +9,12 @@
  * prose hits this pattern routinely because the training corpus has
  * many CJK ↔ Latin pairs separated by a literal space.
  *
- * The lint walks every string-bearing field of every `edits[]` op
- * (Block.text on ParagraphBlock / CaptionBlock; CellContent strings on
- * cells; inline run text), runs two narrow regexes (CJK→Latin/digit and
- * the mirror), and returns a non-empty warning entry for each hit.
- * Wired into the dry-run and real-apply surfaces so the agent can scrub
- * the source. Not fatal — agents may need a literal space deliberately
+ * The lint walks every string-bearing field of `edits[]` ops and HF
+ * blocks (paragraph / caption text, image alt, table cells incl.
+ * nested Block[]), runs two narrow regexes (CJK→Latin/digit and the
+ * mirror), and returns a non-empty warning entry for each hit. Wired
+ * into the dry-run and real-apply surfaces so the agent can scrub the
+ * source. Not fatal — agents may need a literal space deliberately
  * (e.g. inside a quoted code identifier), so the engine just flags and
  * continues.
  *
@@ -25,10 +25,14 @@
  * we target and would broaden false positives.
  */
 
+import type { ApplyConfig } from "@lib/config/config-types.ts"
 import type { EditOp } from "@lib/config/edit-types.ts"
 
 export interface PanguWarning {
-  editIndex: number
+  /** Human-readable location: `edits[3]`, `header.default`,
+   *  `sections["2-3"].footer.first`, etc. Mirrors the config path so
+   *  the agent can grep the source. */
+  source: string
   /** Up to ~30 characters of context around the hit. */
   snippet: string
   /** The matched 3-character window (CJK + space + Latin/digit, or
@@ -58,24 +62,56 @@ export function lintPanguInEdits(edits: readonly EditOp[]): PanguWarning[] {
   const warnings: PanguWarning[] = []
   for (const [i, op] of edits.entries()) {
     const texts = collectStringsFromOp(op)
-    for (const text of texts) scanString(text, i, warnings)
+    for (const text of texts) scanString(text, `edits[${i}]`, warnings)
   }
   return warnings
 }
 
-function scanString(text: string, editIndex: number, out: PanguWarning[]): void {
-  // Per-op cap of 5 keeps reports legible when an agent pastes a long
-  // bilingual paragraph riddled with the pattern — we don't need every
-  // hit, the agent re-scans after fixing the first batch.
-  const PER_OP_CAP = 5
-  let perOpHits = 0
+/** Run the lint over a headerFooter config. Walks top-level header /
+ *  footer and every section override; source labels mirror the config
+ *  path (`header.default`, `sections["1"].footer.first`, ...). */
+export function lintPanguInHeaderFooter(
+  hf: NonNullable<ApplyConfig["headerFooter"]>,
+): PanguWarning[] {
+  const warnings: PanguWarning[] = []
+  const walkBlocks = (blocks: unknown, source: string): void => {
+    if (!Array.isArray(blocks)) return
+    const texts: string[] = []
+    for (const block of blocks) collectStringsFromBlock(block, texts)
+    for (const text of texts) scanString(text, source, warnings)
+  }
+  const walkSurface = (
+    surface: { default?: unknown; first?: unknown; even?: unknown },
+    label: string,
+  ): void => {
+    if (surface.default !== undefined) walkBlocks(surface.default, `${label}.default`)
+    if (surface.first !== undefined) walkBlocks(surface.first, `${label}.first`)
+    if (surface.even !== undefined) walkBlocks(surface.even, `${label}.even`)
+  }
+  if (hf.header) walkSurface(hf.header, "header")
+  if (hf.footer) walkSurface(hf.footer, "footer")
+  if (hf.sections) {
+    for (const [key, entry] of Object.entries(hf.sections)) {
+      if (entry.header) walkSurface(entry.header, `sections["${key}"].header`)
+      if (entry.footer) walkSurface(entry.footer, `sections["${key}"].footer`)
+    }
+  }
+  return warnings
+}
+
+function scanString(text: string, source: string, out: PanguWarning[]): void {
+  // Per-source cap of 5 keeps reports legible when an agent pastes a
+  // long bilingual paragraph riddled with the pattern — the agent
+  // re-scans after fixing the first batch.
+  const PER_SOURCE_CAP = 5
+  let hits = 0
   const recordHit = (match: RegExpExecArray): void => {
-    if (perOpHits >= PER_OP_CAP) return
-    perOpHits++
+    if (hits >= PER_SOURCE_CAP) return
+    hits++
     const start = Math.max(0, match.index - 12)
     const end = Math.min(text.length, match.index + match[0].length + 12)
     out.push({
-      editIndex,
+      source,
       snippet: text.slice(start, end),
       hit: match[0],
     })
@@ -142,11 +178,11 @@ function pushRichText(text: unknown, out: string[]): void {
 
 function pushTableRows(rows: unknown, out: string[]): void {
   if (!Array.isArray(rows)) return
+  // TableBlock schema: rows is `Cell[][]` — each row is itself the cell
+  // array, not a `{ cells: [...] }` wrapper.
   for (const row of rows) {
-    if (!row || typeof row !== "object") continue
-    const cells = (row as { cells?: unknown }).cells
-    if (!Array.isArray(cells)) continue
-    for (const cell of cells) pushCellContent(cell, out)
+    if (!Array.isArray(row)) continue
+    for (const cell of row) pushCellContent(cell, out)
   }
 }
 

@@ -189,7 +189,7 @@ export function printReport(args: {
    * literal-space) gaps in edits[] inserted text. Word's `autoSpace`
    * already inserts the visual gap between CJK and Latin glyphs;
    * stacking a manual ASCII space on top renders too wide. */
-  panguWarnings?: Array<{ editIndex: number; snippet: string; hit: string }>
+  panguWarnings?: Array<{ source: string; snippet: string; hit: string }>
   /** Per-section before/after for any `pageSetup` mutation. Absent when
    * pageSetup was not declared. */
   pageSetup?: PageSetupReport
@@ -252,6 +252,9 @@ export function printReport(args: {
       const extras: string[] = [`${p.blockCount} block(s)`]
       if (p.hasHyperlinks) extras.push("hyperlink")
       lines.push(`  ${p.surface}.${p.variant} → ${p.partName} (rId=${p.rId}, ${extras.join(", ")})`)
+    }
+    for (const warning of hf.separatorWarnings) {
+      lines.push(`  warning: ${warning}`)
     }
     lines.push("")
   }
@@ -523,13 +526,13 @@ export function printReport(args: {
   }
   if (args.panguWarnings && args.panguWarnings.length > 0) {
     const w = args.panguWarnings
-    lines.push("=== Possible Pangu spacing in inserted text ===")
+    lines.push("=== Possible Pangu spacing in author-supplied text ===")
     lines.push(
       "  Word's autoSpace handles CJK ↔ Latin/digit gaps; typed ASCII spaces stack on top and render too wide.",
     )
     const shown = w.slice(0, 5)
     for (const entry of shown) {
-      lines.push(`  edits[${entry.editIndex}]  ...${entry.snippet}...   (matched "${entry.hit}")`)
+      lines.push(`  ${entry.source}  ...${entry.snippet}...   (matched "${entry.hit}")`)
     }
     if (w.length > shown.length) {
       lines.push(`  (... ${w.length - shown.length} more not shown)`)
