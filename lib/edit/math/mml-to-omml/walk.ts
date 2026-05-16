@@ -1,0 +1,409 @@
+/**
+ * Main MathML → OMML walker.
+ *
+ * `emitChildren` is the recursion point: it iterates over an mrow-like
+ * scope, applies n-ary fusion lookahead, then dispatches each remaining
+ * element through `emitElement`. Per-element emitters call back into
+ * `emitChildren` for their own sub-scopes.
+ *
+ * Element mappings ported from TEI Stylesheets' mml2omml.xsl (BSD-2 /
+ * CC-BY-SA, © 2011–2020 TEI Consortium). N-ary fusion and the
+ * transparent passthrough for mpadded/mstyle are net-new — neither TEI
+ * nor mml2omml gets those right.
+ */
+
+import { elementChildren, isMmlElement, mmlText, mEl, setMVal, attr } from "./dom.ts"
+import { ACCENT_CHARS, BAR_OVER_CHARS } from "./constants.ts"
+import { buildRun } from "./run.ts"
+import { detectNary, type NaryMatch } from "./nary.ts"
+import type { LeafKind } from "./style.ts"
+
+/** Emit the OMML children of `mmlParent` into `ommlParent`, applying
+ *  n-ary fusion at mrow scope. Single-child transparent wrappers
+ *  (mrow / mstyle / mpadded / menclose / maction with one element
+ *  child) are flattened first — temml emits a wrapping <mrow> around
+ *  every operator-with-limits, which would otherwise hide the n-ary
+ *  head from its operand siblings and reproduce the empty-<m:e/> bug. */
+export function emitChildren(mmlParent: Element, ommlParent: Element, doc: Document): void {
+  const kids = flattenSingleChildWrappers(elementChildren(mmlParent))
+  for (let i = 0; i < kids.length; i++) {
+    const nary = detectNary(kids, i)
+    if (nary !== null) {
+      emitNary(nary, ommlParent, doc)
+      i += nary.consumed - 1
+      continue
+    }
+    emitElement(kids[i]!, ommlParent, doc)
+  }
+}
+
+const TRANSPARENT_WRAPPERS: ReadonlySet<string> = new Set([
+  "mrow",
+  "mstyle",
+  "mpadded",
+  "menclose",
+  "maction",
+])
+
+function flattenSingleChildWrappers(kids: Element[]): Element[] {
+  const out: Element[] = []
+  for (const k of kids) {
+    if (TRANSPARENT_WRAPPERS.has(k.localName) && elementChildren(k).length === 1) {
+      out.push(...flattenSingleChildWrappers(elementChildren(k)))
+    } else {
+      out.push(k)
+    }
+  }
+  return out
+}
+
+/** Wrap a list of MathML elements into a new OMML container `<m:e>` (or
+ *  similar) and recurse. Used for n-ary operand and sub/sup limits. */
+function emitInto(host: Element, items: Element[], doc: Document): void {
+  for (const child of items) {
+    const nary = detectNary(items, items.indexOf(child))
+    if (nary !== null && items[items.indexOf(child)] === child) {
+      // Allow nested n-ary inside an operand/limit.
+      emitNary(nary, host, doc)
+      continue
+    }
+    emitElement(child, host, doc)
+  }
+}
+
+function emitNary(m: NaryMatch, parent: Element, doc: Document): void {
+  const nary = mEl(doc, "nary")
+  const naryPr = mEl(doc, "naryPr")
+
+  const chr = mEl(doc, "chr")
+  setMVal(chr, m.chr)
+  naryPr.appendChild(chr)
+
+  const limLoc = mEl(doc, "limLoc")
+  setMVal(limLoc, m.limitsAboveBelow ? "undOvr" : "subSup")
+  naryPr.appendChild(limLoc)
+
+  if (m.sub === null) {
+    const subHide = mEl(doc, "subHide")
+    setMVal(subHide, "1")
+    naryPr.appendChild(subHide)
+  }
+  if (m.sup === null) {
+    const supHide = mEl(doc, "supHide")
+    setMVal(supHide, "1")
+    naryPr.appendChild(supHide)
+  }
+  nary.appendChild(naryPr)
+
+  const sub = mEl(doc, "sub")
+  if (m.sub !== null) emitInto(sub, m.sub, doc)
+  nary.appendChild(sub)
+
+  const sup = mEl(doc, "sup")
+  if (m.sup !== null) emitInto(sup, m.sup, doc)
+  nary.appendChild(sup)
+
+  const e = mEl(doc, "e")
+  emitInto(e, m.operand, doc)
+  nary.appendChild(e)
+
+  parent.appendChild(nary)
+}
+
+/** Dispatch one MathML element to its OMML emitter and append into
+ *  `parent`. */
+export function emitElement(el: Element, parent: Element, doc: Document): void {
+  const ln = el.localName
+  switch (ln) {
+    case "mi":
+    case "mn":
+    case "mo":
+    case "mtext":
+    case "ms":
+      parent.appendChild(emitLeaf(el, ln as LeafKind, doc))
+      return
+    case "mspace":
+      // mspace → an empty run with a single space. Word collapses
+      // empty <m:r> blocks, so emit nothing for zero-width spaces and
+      // a thin space otherwise. Simpler heuristic: always one space;
+      // refine if a fixture needs more.
+      parent.appendChild(buildRun(doc, " ", "mspace", undefined))
+      return
+    case "mrow":
+      // Transparent — emit children directly into parent. Fusion runs
+      // again on this child list so an inner mrow's n-ary fuses with
+      // siblings that happen to live in the same mrow.
+      emitChildren(el, parent, doc)
+      return
+    case "mpadded":
+    case "mstyle":
+    case "menclose":
+    case "maction":
+      // Transparent passthrough — these only affect rendering nuances
+      // (spacing, color, click handling) that have no clean OMML
+      // counterpart. Dropping the wrapper keeps the operand visible,
+      // which is the right tradeoff vs mml2omml's silent-drop and
+      // TEI's invisible-phantom paths.
+      emitChildren(el, parent, doc)
+      return
+    case "mphantom": {
+      const phant = mEl(doc, "phant")
+      const phantE = mEl(doc, "e")
+      emitChildren(el, phantE, doc)
+      phant.appendChild(phantE)
+      parent.appendChild(phant)
+      return
+    }
+    case "msub":
+      parent.appendChild(emitSubSup(el, doc, "sub"))
+      return
+    case "msup":
+      parent.appendChild(emitSubSup(el, doc, "sup"))
+      return
+    case "msubsup":
+      parent.appendChild(emitSubSup(el, doc, "both"))
+      return
+    case "munder":
+      parent.appendChild(emitUnderOver(el, doc, "under"))
+      return
+    case "mover":
+      parent.appendChild(emitUnderOver(el, doc, "over"))
+      return
+    case "munderover":
+      parent.appendChild(emitUnderOver(el, doc, "both"))
+      return
+    case "mfrac":
+      parent.appendChild(emitFrac(el, doc))
+      return
+    case "msqrt":
+      parent.appendChild(emitSqrt(el, doc))
+      return
+    case "mroot":
+      parent.appendChild(emitRoot(el, doc))
+      return
+    case "mfenced":
+      parent.appendChild(emitFenced(el, doc))
+      return
+    case "mtable":
+      parent.appendChild(emitTable(el, doc))
+      return
+    case "merror":
+      throw new Error(
+        `MathML <merror> in input — temml hit an error rendering this LaTeX. ` +
+          `Inspect the operand: ${(el.textContent ?? "").slice(0, 120)}`,
+      )
+    case "semantics":
+      // <semantics> wraps presentation MathML + annotation(s). Take the
+      // first child (presentation), discard annotations.
+      {
+        const first = elementChildren(el)[0]
+        if (first) emitElement(first, parent, doc)
+      }
+      return
+    case "annotation":
+    case "annotation-xml":
+      // Annotations carry the original LaTeX (temml puts it there).
+      // Drop on the OMML side.
+      return
+    default:
+      throw new Error(
+        `Unsupported MathML element <${el.localName}> in MathML→OMML conversion. ` +
+          `Switch this equation to the omml escape hatch on the EquationBlock; ` +
+          `see references/equations.md "Known fragile LaTeX tokens".`,
+      )
+  }
+}
+
+function emitLeaf(el: Element, kind: LeafKind, doc: Document): Element {
+  return buildRun(doc, mmlText(el), kind, attr(el, "mathvariant"))
+}
+
+/** msub / msup / msubsup → <m:sSub> / <m:sSup> / <m:sSubSup>. */
+function emitSubSup(el: Element, doc: Document, which: "sub" | "sup" | "both"): Element {
+  const kids = elementChildren(el)
+  const tag = which === "sub" ? "sSub" : which === "sup" ? "sSup" : "sSubSup"
+  const out = mEl(doc, tag)
+  const e = mEl(doc, "e")
+  emitElement(kids[0]!, e, doc)
+  out.appendChild(e)
+  if (which === "sub" || which === "both") {
+    const sub = mEl(doc, "sub")
+    emitElement(kids[1]!, sub, doc)
+    out.appendChild(sub)
+  }
+  if (which === "sup") {
+    const sup = mEl(doc, "sup")
+    emitElement(kids[1]!, sup, doc)
+    out.appendChild(sup)
+  }
+  if (which === "both") {
+    const sup = mEl(doc, "sup")
+    emitElement(kids[2]!, sup, doc)
+    out.appendChild(sup)
+  }
+  return out
+}
+
+/** munder / mover / munderover → <m:limLow> / <m:limUpp> / <m:limLowUpp>
+ *  when the over/under is an accent character → <m:acc>;
+ *  when over is bar-class → <m:bar>;
+ *  otherwise the limit/limit-low-upp shapes. */
+function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "both"): Element {
+  const kids = elementChildren(el)
+  // accent="true" or accent character → m:acc (mover only)
+  if (which === "over") {
+    const over = kids[1]!
+    const overText = mmlText(over)
+    const isAccent = attr(el, "accent") === "true" || ACCENT_CHARS.has(overText)
+    if (isAccent) {
+      const acc = mEl(doc, "acc")
+      const accPr = mEl(doc, "accPr")
+      const chr = mEl(doc, "chr")
+      setMVal(chr, overText)
+      accPr.appendChild(chr)
+      acc.appendChild(accPr)
+      const e = mEl(doc, "e")
+      emitElement(kids[0]!, e, doc)
+      acc.appendChild(e)
+      return acc
+    }
+    if (BAR_OVER_CHARS.has(overText)) {
+      const bar = mEl(doc, "bar")
+      const barPr = mEl(doc, "barPr")
+      const pos = mEl(doc, "pos")
+      setMVal(pos, "top")
+      barPr.appendChild(pos)
+      bar.appendChild(barPr)
+      const e = mEl(doc, "e")
+      emitElement(kids[0]!, e, doc)
+      bar.appendChild(e)
+      return bar
+    }
+  }
+  if (which === "under") {
+    const under = kids[1]!
+    if (BAR_OVER_CHARS.has(mmlText(under))) {
+      const bar = mEl(doc, "bar")
+      const barPr = mEl(doc, "barPr")
+      const pos = mEl(doc, "pos")
+      setMVal(pos, "bot")
+      barPr.appendChild(pos)
+      bar.appendChild(barPr)
+      const e = mEl(doc, "e")
+      emitElement(kids[0]!, e, doc)
+      bar.appendChild(e)
+      return bar
+    }
+  }
+  // Fall through to limit shapes.
+  const tag = which === "under" ? "limLow" : which === "over" ? "limUpp" : "limLowUpp"
+  const out = mEl(doc, tag)
+  const e = mEl(doc, "e")
+  emitElement(kids[0]!, e, doc)
+  out.appendChild(e)
+  if (which === "under" || which === "both") {
+    const lim = mEl(doc, "lim")
+    emitElement(kids[1]!, lim, doc)
+    out.appendChild(lim)
+  }
+  if (which === "over") {
+    const lim = mEl(doc, "lim")
+    emitElement(kids[1]!, lim, doc)
+    out.appendChild(lim)
+  }
+  if (which === "both") {
+    const lim = mEl(doc, "lim")
+    emitElement(kids[2]!, lim, doc)
+    out.appendChild(lim)
+  }
+  return out
+}
+
+function emitFrac(el: Element, doc: Document): Element {
+  const kids = elementChildren(el)
+  const f = mEl(doc, "f")
+  const fPr = mEl(doc, "fPr")
+  const linethickness = attr(el, "linethickness")
+  if (linethickness === "0" || linethickness === "0pt") {
+    const type = mEl(doc, "type")
+    setMVal(type, "noBar")
+    fPr.appendChild(type)
+    f.appendChild(fPr)
+  }
+  const num = mEl(doc, "num")
+  emitElement(kids[0]!, num, doc)
+  f.appendChild(num)
+  const den = mEl(doc, "den")
+  emitElement(kids[1]!, den, doc)
+  f.appendChild(den)
+  return f
+}
+
+function emitSqrt(el: Element, doc: Document): Element {
+  const rad = mEl(doc, "rad")
+  const radPr = mEl(doc, "radPr")
+  const degHide = mEl(doc, "degHide")
+  setMVal(degHide, "1")
+  radPr.appendChild(degHide)
+  rad.appendChild(radPr)
+  rad.appendChild(mEl(doc, "deg"))
+  const e = mEl(doc, "e")
+  emitChildren(el, e, doc)
+  rad.appendChild(e)
+  return rad
+}
+
+function emitRoot(el: Element, doc: Document): Element {
+  const kids = elementChildren(el)
+  const rad = mEl(doc, "rad")
+  const deg = mEl(doc, "deg")
+  emitElement(kids[1]!, deg, doc)
+  rad.appendChild(deg)
+  const e = mEl(doc, "e")
+  emitElement(kids[0]!, e, doc)
+  rad.appendChild(e)
+  return rad
+}
+
+function emitFenced(el: Element, doc: Document): Element {
+  const open = attr(el, "open") ?? "("
+  const close = attr(el, "close") ?? ")"
+  const separators = attr(el, "separators") ?? ","
+  const d = mEl(doc, "d")
+  const dPr = mEl(doc, "dPr")
+  const begChr = mEl(doc, "begChr")
+  setMVal(begChr, open)
+  dPr.appendChild(begChr)
+  const endChr = mEl(doc, "endChr")
+  setMVal(endChr, close)
+  dPr.appendChild(endChr)
+  if (separators !== ",") {
+    const sepChr = mEl(doc, "sepChr")
+    setMVal(sepChr, separators.charAt(0))
+    dPr.appendChild(sepChr)
+  }
+  d.appendChild(dPr)
+  for (const child of elementChildren(el)) {
+    const e = mEl(doc, "e")
+    emitElement(child, e, doc)
+    d.appendChild(e)
+  }
+  return d
+}
+
+function emitTable(el: Element, doc: Document): Element {
+  const m = mEl(doc, "m")
+  // m:mPr is optional; skip for now (Word will use defaults).
+  for (const tr of elementChildren(el)) {
+    if (!isMmlElement(tr, "mtr") && !isMmlElement(tr, "mlabeledtr")) continue
+    const mr = mEl(doc, "mr")
+    for (const td of elementChildren(tr)) {
+      if (!isMmlElement(td, "mtd")) continue
+      const e = mEl(doc, "e")
+      emitChildren(td, e, doc)
+      mr.appendChild(e)
+    }
+    m.appendChild(mr)
+  }
+  return m
+}
