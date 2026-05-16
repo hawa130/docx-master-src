@@ -109,7 +109,7 @@ Returns `prefix + chapter + counter + suffix` from the SEQ result (e.g. `"(2.3)"
 The MathML→OMML step (`mathml2omml`) chokes on a few inputs that temml accepts. When you hit one, switch that specific equation to the `omml` escape hatch (`{ "type": "equation", "omml": "<m:oMath>…</m:oMath>" }`) and leave the rest as LaTeX. Common offenders:
 
 - `\lVert x \rVert` — use `\|x\|` instead.
-- Anything that emits MathML `<mpadded>` (custom spacing macros, some `\mathrlap` / `\mathllap` shapes) — rewrite with explicit spacing primitives.
+- Anything that emits MathML `<mpadded>` (font-selection macros like `\mathrm{...}`, custom spacing macros, `\mathrlap` / `\mathllap` shapes) — use `\text{...}` for upright Roman, or explicit spacing primitives. mml2omml silently drops the wrapped subtree, so the error path catches it as "MathML → OMML conversion emitted warnings: Type not supported: mpadded".
 
 The runtime error names the offending `edits[N]` and prints the LaTeX source so the problem equation is easy to pinpoint.
 

@@ -96,14 +96,34 @@ export async function prepareLatex(
         cause: err,
       })
     }
+    // mml2omml degrades silently on unsupported MathML nodes (e.g. mpadded
+    // from \mathrm{}): it writes "Type not supported: X" to stderr and
+    // returns OMML with that subtree dropped. Result is schema-valid but
+    // visually wrong, so the math-schema check below won't catch it.
+    // Capture stderr around the call and treat any warning as a hard fail
+    // — the agent should know they need the omml escape hatch.
     let omml: string
+    let stderrCapture: string
     try {
-      omml = mml2omml(mathml)
+      ;({ result: omml, stderr: stderrCapture } = captureStderrSync(() => mml2omml(mathml)))
     } catch (err) {
       throw new Error(
         `MathML → OMML conversion failed for ${truncateLatex(latex)}: ${(err as Error).message}. ` +
           `Known fragile tokens — see references/equations.md "Known fragile LaTeX tokens"; use the omml escape hatch on the EquationBlock if the failure is unrecoverable.`,
         { cause: err },
+      )
+    }
+    if (stderrCapture.length > 0) {
+      const warnings = [
+        ...new Set(
+          stderrCapture
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean),
+        ),
+      ].join("; ")
+      throw new Error(
+        `MathML → OMML conversion emitted warnings for ${truncateLatex(latex)}: ${warnings} — the affected subtree was silently dropped, so the equation would render incomplete. Switch this equation to the omml escape hatch on the EquationBlock; see references/equations.md "Known fragile LaTeX tokens".`,
       )
     }
     // mml2omml occasionally emits schema-invalid OMML (e.g. <m:rPr> where
@@ -127,6 +147,26 @@ export async function prepareLatex(
 function truncateLatex(latex: string): string {
   const trimmed = latex.length > 80 ? latex.slice(0, 80) + "…" : latex
   return JSON.stringify(trimmed)
+}
+
+/** Run a synchronous fn with process.stderr.write redirected to an
+ *  in-memory buffer; return the fn's result plus captured stderr text.
+ *  Used to catch mml2omml's warn-and-degrade output that bypasses its
+ *  throw path. mml2omml is synchronous, so the global-state hijack stays
+ *  scoped to one call. */
+function captureStderrSync<T>(fn: () => T): { result: T; stderr: string } {
+  let captured = ""
+  const orig = process.stderr.write.bind(process.stderr)
+  process.stderr.write = ((chunk: unknown) => {
+    captured += typeof chunk === "string" ? chunk : String(chunk)
+    return true
+  }) as typeof process.stderr.write
+  try {
+    const result = fn()
+    return { result, stderr: captured }
+  } finally {
+    process.stderr.write = orig
+  }
 }
 
 /** Read a pre-resolved OMML string. Throws when the latex wasn't passed
