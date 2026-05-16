@@ -49,8 +49,10 @@ const TRANSPARENT_WRAPPERS: ReadonlySet<string> = new Set([
   "mrow",
   "mstyle",
   "mpadded",
-  "menclose",
   "maction",
+  // menclose is NOT transparent — its `notation` attribute is semantic
+  // (cancel vs box vs circle are different statements). Dispatched
+  // through emitMenclose which either emits <m:borderBox> or throws.
 ])
 
 function flattenSingleChildWrappers(kids: Element[]): Element[] {
@@ -156,7 +158,6 @@ export function emitElement(el: Element, parent: Element, doc: Document): void {
       return
     case "mpadded":
     case "mstyle":
-    case "menclose":
     case "maction":
       // Transparent passthrough — these only affect rendering nuances
       // (spacing, color, click handling) that have no clean OMML
@@ -164,6 +165,14 @@ export function emitElement(el: Element, parent: Element, doc: Document): void {
       // which is the right tradeoff vs mml2omml's silent-drop and
       // TEI's invisible-phantom paths.
       emitChildren(el, parent, doc)
+      return
+    case "menclose":
+      // menclose carries a `notation` attribute that's semantic, not
+      // decorative — `\cancel` (strike) vs `\boxed` (border) are
+      // different statements. Transparent passthrough silently
+      // discards the user's intent. Map what OMML supports; throw
+      // on what it doesn't.
+      parent.appendChild(emitMenclose(el, doc))
       return
     case "mphantom": {
       const phant = mEl(doc, "phant")
@@ -358,6 +367,46 @@ function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "bo
     out.appendChild(lim)
   }
   return out
+}
+
+function emitMenclose(el: Element, doc: Document): Element {
+  // ECMA-376 OMML has direct peers for three menclose notations:
+  //   - "box" / "roundedbox" → <m:borderBox>
+  //   - "top"                → <m:bar pos="top">   (\overline)
+  //   - "bottom"             → <m:bar pos="bot">   (\underline)
+  // Everything else (strike variants, circle, longdiv, …) has no
+  // clean OMML peer — throw with escape-hatch hint.
+  //
+  // notation is a space-separated list per MathML 3; we accept the
+  // single-notation cases (which is all temml emits in practice).
+  const notation = (attr(el, "notation") ?? "longdiv").trim().toLowerCase()
+  const flags = new Set(notation.split(/\s+/))
+
+  if ([...flags].every((f) => f === "box" || f === "roundedbox")) {
+    const box = mEl(doc, "borderBox")
+    const e = mEl(doc, "e")
+    emitChildren(el, e, doc)
+    box.appendChild(e)
+    return box
+  }
+  if (flags.size === 1 && (flags.has("top") || flags.has("bottom"))) {
+    const bar = mEl(doc, "bar")
+    const barPr = mEl(doc, "barPr")
+    const pos = mEl(doc, "pos")
+    setMVal(pos, flags.has("top") ? "top" : "bot")
+    barPr.appendChild(pos)
+    bar.appendChild(barPr)
+    const e = mEl(doc, "e")
+    emitChildren(el, e, doc)
+    bar.appendChild(e)
+    return bar
+  }
+  throw new Error(
+    `MathML <menclose notation="${notation}"> has no OMML equivalent ` +
+      `(only "box", "roundedbox", "top", "bottom" map cleanly). ` +
+      `Switch this equation to the omml escape hatch on the EquationBlock; ` +
+      `see references/equations.md "Known fragile LaTeX tokens".`,
+  )
 }
 
 function emitGroupChr(base: Element, chr: string, pos: "top" | "bot", doc: Document): Element {
