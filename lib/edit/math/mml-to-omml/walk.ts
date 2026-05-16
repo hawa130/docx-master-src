@@ -22,7 +22,7 @@ import {
   setMVal,
   attr,
 } from "./dom.ts"
-import { ACCENT_CHARS, BAR_OVER_CHARS, GROUP_CHR_MAP } from "./constants.ts"
+import { ACCENT_CHARS, BAR_OVER_CHARS, BAR_UNDER_CHARS, GROUP_CHR_MAP } from "./constants.ts"
 import { buildRun } from "./run.ts"
 import { detectNary, type NaryMatch } from "./nary.ts"
 import type { LeafKind } from "./style.ts"
@@ -299,7 +299,7 @@ function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "bo
   }
   if (which === "under") {
     const under = kids[1]!
-    if (BAR_OVER_CHARS.has(mmlText(under))) {
+    if (BAR_UNDER_CHARS.has(mmlText(under))) {
       const bar = mEl(doc, "bar")
       const barPr = mEl(doc, "barPr")
       const pos = mEl(doc, "pos")

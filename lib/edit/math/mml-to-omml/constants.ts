@@ -115,6 +115,14 @@ export const BAR_OVER_CHARS: ReadonlySet<string> = new Set([
   "‾", // ‾ overline
 ])
 
+/** Characters that as the `<munder>` child mean an under-bar
+ *  (m:bar pos="bot"). Symmetric with BAR_OVER_CHARS. */
+export const BAR_UNDER_CHARS: ReadonlySet<string> = new Set([
+  "_", // _ low line
+  "̲", // ̲ combining low line
+  "‗", // ‗ double low line
+])
+
 /** Bracket-class over/under characters that map to OMML <m:groupChr>
  *  (a grouping bracket sized to the base). Value is the position the
  *  bracket is rendered on. */
