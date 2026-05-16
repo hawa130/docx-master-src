@@ -42,7 +42,10 @@ targets throw — use `"label"` to cite captions by their number.
 
 When `label` / `number` hits an unbound target, apply refuses with a
 message naming the fix (bind via `numbering[]`, add `captionId`, or
-switch to `display: "full"` for a plain-text quote).
+switch to `display: "full"` for a plain-text quote). A source paragraph
+that `pattern_rules` / `bulk_rules` will bind counts as unbound here:
+rules run after `edits[]`, so the binding isn't visible at ref
+resolution — cite via `anchor` on a paragraph the same `edits[]` creates.
 
 ## Named anchors — ref paragraphs created in the same apply
 
