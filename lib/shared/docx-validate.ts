@@ -44,10 +44,10 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 
 function findSchemasDir(): string {
   // Built bundle: `<scripts>/_shared/schemas` (sibling of cli-helpers.js).
-  // Dev (running from lib/ directly): `<repo>/vendor/ooxml-schemas`.
+  // Dev (running from lib/shared/): `<repo>/vendor/ooxml-schemas`.
   const candidates = [
     join(MODULE_DIR, "schemas"),
-    join(MODULE_DIR, "..", "vendor", "ooxml-schemas"),
+    join(MODULE_DIR, "..", "..", "vendor", "ooxml-schemas"),
   ]
   for (const p of candidates) {
     if (existsSync(join(p, "ISO-IEC29500-4_2016", "wml.xsd"))) return p
