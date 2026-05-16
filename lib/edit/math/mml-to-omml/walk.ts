@@ -133,9 +133,17 @@ export function emitElement(el: Element, parent: Element, doc: Document): void {
       parent.appendChild(buildRun(doc, " ", "mspace", undefined))
       return
     case "mrow":
-      // Transparent — emit children directly into parent. Fusion runs
-      // again on this child list so an inner mrow's n-ary fuses with
-      // siblings that happen to live in the same mrow.
+      // Stretchy-fence detection: temml emits \left(…\right) as an
+      // mrow with `<mo fence form=prefix stretchy>` first and matching
+      // postfix mo last. Without recognizing this we'd render the
+      // parens as ordinary runs — Word doesn't scale them with the
+      // body. Fuse the whole thing into <m:d>.
+      if (isStretchyFenceMrow(el)) {
+        parent.appendChild(emitStretchyFence(el, doc))
+        return
+      }
+      // Plain mrow — emit children directly. Fusion (n-ary, nested
+      // fence) runs against the inner list.
       emitChildren(el, parent, doc)
       return
     case "mpadded":
@@ -398,6 +406,55 @@ function emitFenced(el: Element, doc: Document): Element {
     emitElement(child, e, doc)
     d.appendChild(e)
   }
+  return d
+}
+
+function isStretchyFenceMrow(mrow: Element): boolean {
+  const kids = elementChildren(mrow)
+  if (kids.length < 2) return false
+  const first = kids[0]!
+  const last = kids[kids.length - 1]!
+  return (
+    isMmlElement(first, "mo") &&
+    attr(first, "fence") === "true" &&
+    attr(first, "stretchy") === "true" &&
+    isMmlElement(last, "mo") &&
+    attr(last, "fence") === "true" &&
+    attr(last, "stretchy") === "true"
+  )
+}
+
+function emitStretchyFence(mrow: Element, doc: Document): Element {
+  const kids = elementChildren(mrow)
+  const open = kids[0]!
+  const close = kids[kids.length - 1]!
+  const body = kids.slice(1, -1)
+
+  const d = mEl(doc, "d")
+  const dPr = mEl(doc, "dPr")
+  const begChr = mEl(doc, "begChr")
+  setMVal(begChr, mmlText(open))
+  dPr.appendChild(begChr)
+  const endChr = mEl(doc, "endChr")
+  setMVal(endChr, mmlText(close))
+  dPr.appendChild(endChr)
+  // For a `\left.` (invisible delimiter) temml emits an empty <mo></mo>.
+  // OMML <m:begChr m:val=""/> renders as a vertical bar by Word default,
+  // not invisible. Detect empty and substitute the OMML "no delimiter"
+  // shape: omit begChr / endChr entirely (Word treats the omission as
+  // empty/invisible).
+  if (mmlText(open) === "") dPr.removeChild(begChr)
+  if (mmlText(close) === "") dPr.removeChild(endChr)
+  d.appendChild(dPr)
+
+  // Single <m:e> containing the body. Splitting on `<mo>,</mo>`
+  // separators (the OMML m:sepChr pattern) is an optimization for
+  // (a,b,c) tuple display — Word renders either form, the single-e
+  // form preserves the original spacing more faithfully.
+  const e = mEl(doc, "e")
+  for (const child of body) emitElement(child, e, doc)
+  d.appendChild(e)
+
   return d
 }
 
