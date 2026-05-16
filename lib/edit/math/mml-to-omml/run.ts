@@ -37,13 +37,22 @@ export function buildRun(
   const r = mEl(doc, "r")
 
   // 1. <m:rPr> (math run properties) — must come before <w:rPr> per
-  // CT_R's sequence ordering.
+  // CT_R's sequence ordering. Two flags can apply:
+  //   - <m:nor/>: marks the run as literal (non-math) text. Required
+  //     for <mtext> to prevent Word/LO from interpreting letter runs
+  //     as math identifiers (e.g. "and" was rendering as ∧ in LO
+  //     without nor — math-mode autocorrect kicked in).
+  //   - <m:sty m:val="…"/>: explicit style override.
   const sty = resolveStyle(kind, text, mathvariant)
-  if (sty !== undefined) {
+  const isLiteralText = kind === "mtext" || kind === "ms"
+  if (sty !== undefined || isLiteralText) {
     const mRPr = mEl(doc, "rPr")
-    const styEl = mEl(doc, "sty")
-    setMVal(styEl, sty)
-    mRPr.appendChild(styEl)
+    if (isLiteralText) mRPr.appendChild(mEl(doc, "nor"))
+    if (sty !== undefined) {
+      const styEl = mEl(doc, "sty")
+      setMVal(styEl, sty)
+      mRPr.appendChild(styEl)
+    }
     r.appendChild(mRPr)
   }
 
@@ -58,13 +67,20 @@ export function buildRun(
   wRPr.appendChild(rFonts)
   r.appendChild(wRPr)
 
-  // 3. <m:t> text content.
+  // 3. <m:t> text content. Literal-text runs (mtext, ms) are bound
+  // to need xml:space="preserve" because their leading/trailing space
+  // carries typographic intent (`\text{ if and only if }` would
+  // collide with adjacent math without it).
   const t = mEl(doc, "t")
   // OMML's <m:t> with default xml:space="default" trims whitespace.
-  // Math text often includes meaningful spaces (e.g. \, → thin space),
-  // so always tag preserve when text has any leading/trailing space.
-  if (text.length > 0 && (text.startsWith(" ") || text.endsWith(" "))) {
-    t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve")
+  // Math text often includes meaningful spaces (e.g. \, → thin space,
+  // \text{ if and only if }), so tag preserve whenever the text has
+  // leading or trailing whitespace, or whenever it's an mtext/ms run
+  // (literal text always wants preservation of internal spacing).
+  const needsPreserve =
+    text.length > 0 && (text.startsWith(" ") || text.endsWith(" ") || isLiteralText)
+  if (needsPreserve) {
+    t.setAttribute("xml:space", "preserve")
   }
   t.textContent = text
   r.appendChild(t)

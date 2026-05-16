@@ -25,9 +25,19 @@ export function isMmlElement(n: Node | null, localName?: string): n is Element {
 /** Concatenated text content of an Element, MathML-flavored — trims
  *  surrounding whitespace because MathML leaf text is conventionally
  *  exactly the symbol/identifier with no padding, but some serializers
- *  emit a stray newline inside <mo>+</mo>. */
+ *  emit a stray newline inside <mo>+</mo>.
+ *
+ *  Does NOT use this for `<mtext>` / `<ms>` — those preserve whitespace
+ *  per MathML 3 §3.2.6. Use `mmlTextLiteral` instead. */
 export function mmlText(el: Element): string {
   return (el.textContent ?? "").trim()
+}
+
+/** Whitespace-preserving text extraction for `<mtext>` / `<ms>` — the
+ *  surrounding spaces of `\text{ if and only if }` carry typographic
+ *  intent and must reach <m:t> verbatim. */
+export function mmlTextLiteral(el: Element): string {
+  return el.textContent ?? ""
 }
 
 /** Single named attribute, undefined when absent. Works for MathML

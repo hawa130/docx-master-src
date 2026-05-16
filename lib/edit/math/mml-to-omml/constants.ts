@@ -106,12 +106,27 @@ export const ACCENT_CHARS: ReadonlySet<string> = new Set([
   "⃡", // ⃡ combining left-right arrow above
 ])
 
-/** Characters that as the `<mover>` child mean an over-bar (m:bar). */
+/** Characters that as the `<mover>` child mean an over-bar (m:bar).
+ *  Bracket-class chars (⏞ ⏜ ⏝ ⏟) use m:groupChr instead — handled in
+ *  GROUP_CHR_MAP below. */
 export const BAR_OVER_CHARS: ReadonlySet<string> = new Set([
   "¯", // ¯ macron
   "̄", // ̄ combining macron
   "‾", // ‾ overline
-  "⏞", // ⏞ top curly bracket
+])
+
+/** Bracket-class over/under characters that map to OMML <m:groupChr>
+ *  (a grouping bracket sized to the base). Value is the position the
+ *  bracket is rendered on. */
+export const GROUP_CHR_MAP: ReadonlyMap<string, "top" | "bot"> = new Map([
+  ["⏞", "top"], // U+23DE TOP CURLY BRACKET (\overbrace)
+  ["⏟", "bot"], // U+23DF BOTTOM CURLY BRACKET (\underbrace)
+  ["⏜", "top"], // U+23DC TOP PARENTHESIS
+  ["⏝", "bot"], // U+23DD BOTTOM PARENTHESIS
+  ["⎴", "top"], // U+23B4 TOP SQUARE BRACKET (legacy)
+  ["⎵", "bot"], // U+23B5 BOTTOM SQUARE BRACKET (legacy)
+  ["︷", "top"], // U+FE37 PRESENTATION FORM (older fonts)
+  ["︸", "bot"], // U+FE38 PRESENTATION FORM (older fonts)
 ])
 
 /** mathvariant values → OMML `<m:sty m:val="…">`. Unknown variants drop

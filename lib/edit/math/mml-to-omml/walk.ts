@@ -12,8 +12,16 @@
  * nor mml2omml gets those right.
  */
 
-import { elementChildren, isMmlElement, mmlText, mEl, setMVal, attr } from "./dom.ts"
-import { ACCENT_CHARS, BAR_OVER_CHARS } from "./constants.ts"
+import {
+  elementChildren,
+  isMmlElement,
+  mmlText,
+  mmlTextLiteral,
+  mEl,
+  setMVal,
+  attr,
+} from "./dom.ts"
+import { ACCENT_CHARS, BAR_OVER_CHARS, GROUP_CHR_MAP } from "./constants.ts"
 import { buildRun } from "./run.ts"
 import { detectNary, type NaryMatch } from "./nary.ts"
 import type { LeafKind } from "./style.ts"
@@ -138,7 +146,7 @@ export function emitElement(el: Element, parent: Element, doc: Document): void {
       // postfix mo last. Without recognizing this we'd render the
       // parens as ordinary runs — Word doesn't scale them with the
       // body. Fuse the whole thing into <m:d>.
-      if (isStretchyFenceMrow(el)) {
+      if (isFenceMrow(el)) {
         parent.appendChild(emitStretchyFence(el, doc))
         return
       }
@@ -226,7 +234,12 @@ export function emitElement(el: Element, parent: Element, doc: Document): void {
 }
 
 function emitLeaf(el: Element, kind: LeafKind, doc: Document): Element {
-  return buildRun(doc, mmlText(el), kind, attr(el, "mathvariant"))
+  // mtext / ms preserve whitespace (MathML 3 §3.2.6) — leading/trailing
+  // spaces in `\text{ ... }` carry the only typographic gap to the
+  // adjacent math runs. mi/mn/mo are stylized identifiers/numbers/ops
+  // where whitespace is incidental.
+  const text = kind === "mtext" || kind === "ms" ? mmlTextLiteral(el) : mmlText(el)
+  return buildRun(doc, text, kind, attr(el, "mathvariant"))
 }
 
 /** msub / msup / msubsup → <m:sSub> / <m:sSup> / <m:sSubSup>. */
@@ -261,6 +274,16 @@ function emitSubSup(el: Element, doc: Document, which: "sub" | "sup" | "both"): 
  *  otherwise the limit/limit-low-upp shapes. */
 function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "both"): Element {
   const kids = elementChildren(el)
+  // \overbrace / \underbrace / paren / square-bracket grouping →
+  // <m:groupChr>. Detect on both over and under positions.
+  if (which === "over" || which === "under") {
+    const decorator = kids[1]!
+    const decText = mmlText(decorator)
+    const pos = GROUP_CHR_MAP.get(decText)
+    if (pos !== undefined && (which === "over" ? pos === "top" : pos === "bot")) {
+      return emitGroupChr(kids[0]!, decText, pos, doc)
+    }
+  }
   // accent="true" or accent character → m:acc (mover only)
   if (which === "over") {
     const over = kids[1]!
@@ -337,6 +360,27 @@ function emitUnderOver(el: Element, doc: Document, which: "under" | "over" | "bo
   return out
 }
 
+function emitGroupChr(base: Element, chr: string, pos: "top" | "bot", doc: Document): Element {
+  const g = mEl(doc, "groupChr")
+  const gPr = mEl(doc, "groupChrPr")
+  const chrEl = mEl(doc, "chr")
+  setMVal(chrEl, chr)
+  gPr.appendChild(chrEl)
+  const posEl = mEl(doc, "pos")
+  setMVal(posEl, pos)
+  gPr.appendChild(posEl)
+  // m:vertJc controls which end of the base the chr attaches to.
+  // "bot" → bracket below base (underbrace); "top" → above (overbrace).
+  const vertJc = mEl(doc, "vertJc")
+  setMVal(vertJc, pos)
+  gPr.appendChild(vertJc)
+  g.appendChild(gPr)
+  const e = mEl(doc, "e")
+  emitElement(base, e, doc)
+  g.appendChild(e)
+  return g
+}
+
 function emitFrac(el: Element, doc: Document): Element {
   const kids = elementChildren(el)
   const f = mEl(doc, "f")
@@ -409,7 +453,12 @@ function emitFenced(el: Element, doc: Document): Element {
   return d
 }
 
-function isStretchyFenceMrow(mrow: Element): boolean {
+function isFenceMrow(mrow: Element): boolean {
+  // Detects both stretchy `\left…\right` and non-stretchy `\binom`-style
+  // pairs. The fence attribute alone is enough — temml sets it on every
+  // matched delimiter. Stretchy vs not is signaled by `m:grow` in the
+  // OMML output (we always emit grow; renderers ignore it when the body
+  // is short).
   const kids = elementChildren(mrow)
   if (kids.length < 2) return false
   const first = kids[0]!
@@ -417,10 +466,8 @@ function isStretchyFenceMrow(mrow: Element): boolean {
   return (
     isMmlElement(first, "mo") &&
     attr(first, "fence") === "true" &&
-    attr(first, "stretchy") === "true" &&
     isMmlElement(last, "mo") &&
-    attr(last, "fence") === "true" &&
-    attr(last, "stretchy") === "true"
+    attr(last, "fence") === "true"
   )
 }
 
@@ -432,19 +479,21 @@ function emitStretchyFence(mrow: Element, doc: Document): Element {
 
   const d = mEl(doc, "d")
   const dPr = mEl(doc, "dPr")
+  // For `\left.` (invisible delimiter) temml emits an empty <mo></mo>.
+  // The empty string must be emitted *explicitly* as `m:val=""` — omitting
+  // begChr/endChr falls back to the OMML default `(` / `)`, which renders
+  // wrongly for `\begin{cases}` and other half-open shapes (Word/LO would
+  // close `{ ... }` with `)` because endChr defaulted).
   const begChr = mEl(doc, "begChr")
   setMVal(begChr, mmlText(open))
   dPr.appendChild(begChr)
   const endChr = mEl(doc, "endChr")
   setMVal(endChr, mmlText(close))
   dPr.appendChild(endChr)
-  // For a `\left.` (invisible delimiter) temml emits an empty <mo></mo>.
-  // OMML <m:begChr m:val=""/> renders as a vertical bar by Word default,
-  // not invisible. Detect empty and substitute the OMML "no delimiter"
-  // shape: omit begChr / endChr entirely (Word treats the omission as
-  // empty/invisible).
-  if (mmlText(open) === "") dPr.removeChild(begChr)
-  if (mmlText(close) === "") dPr.removeChild(endChr)
+  // Stretchy → m:grow tells Word to scale the delimiter to the body
+  // height. Without it, some renderers (LibreOffice) keep the delimiter
+  // at base size even when the body is tall.
+  dPr.appendChild(mEl(doc, "grow"))
   d.appendChild(dPr)
 
   // Single <m:e> containing the body. Splitting on `<mo>,</mo>`
