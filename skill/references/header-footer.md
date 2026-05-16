@@ -53,7 +53,7 @@ Use the built-in `Header` / `Footer` styleId (engine auto-injects them when miss
 - `true` → thin black single line (0.5pt).
 - `BorderEdge` → same shape as table cell borders, see [`tables.md`](tables.md#borders).
 
-Skipped when the endpoint position has no `<w:p>` to attach to — currently triggers on a `table` endpoint or an empty `[]` variant. Image endpoints attach normally (image renders inside `<w:p>`). If a variant ends with a `horizontal-rule`, the separator overwrites that rule's edge on the same side. When **every** variant of a surface skips, the dry-run report emits a `warning:` line so a declaration that fell through doesn't go unnoticed.
+Skipped when the endpoint position has no `<w:p>` to attach to. Image endpoints attach normally (image renders inside `<w:p>`). If a variant ends with a `horizontal-rule`, the separator overwrites that rule's edge on the same side. When **every** variant of a surface skips, the dry-run report emits a `warning:` line so a declaration that fell through doesn't go unnoticed.
 
 ## Variant semantics
 

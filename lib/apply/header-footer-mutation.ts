@@ -459,7 +459,7 @@ export async function applyHeaderFooter(
 function scopeTagForGroup(pg: PendingGroup, sectionCount: number): string {
   if (pg.sectionIndices.length === sectionCount) return ""
   if (pg.sectionIndices.length === 1) return `Section ${pg.sectionIndices[0]}: `
-  return `Sections ${pg.sectionIndices.join(",")}: `
+  return `Sections ${pg.sectionIndices.join(", ")}: `
 }
 
 /* ------------- sectPr binding ------------- */
