@@ -189,7 +189,8 @@ function emitElement(el: Element, parent: Element, doc: Document): void {
     case "merror":
       throw new Error(
         `MathML <merror> in input — temml hit an error rendering this LaTeX. ` +
-          `Inspect the operand: ${(el.textContent ?? "").slice(0, 120)}`,
+          `Inspect the operand: ${(el.textContent ?? "").slice(0, 120)}. ` +
+          `Fix the LaTeX, or switch this equation to the omml escape hatch on the EquationBlock.`,
       )
     case "semantics":
       // <semantics> wraps presentation MathML + annotation(s). Take the
