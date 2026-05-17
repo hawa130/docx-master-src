@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Regression harness for the in-tree MathML → OMML converter. For each
- * `.tex` in `test/fixtures/math/cases/`:
+ * `.tex` in `tests/fixtures/math/cases/`:
  *
  *   1. Render to MathML via temml.
  *   2. Convert MathML → OMML via the in-tree converter.
@@ -11,7 +11,7 @@
  *
  * Exits non-zero on any schema error or expected-diff mismatch.
  * Word visual verification stays a manual step — see
- * `test/fixtures/math/README.md`.
+ * `tests/fixtures/math/README.md`.
  *
  * Why this is written as top-level await rather than `async function main()`:
  * Bun's worker_threads ↔ async-function-await interaction silently exits
@@ -30,8 +30,8 @@ import { validateOMath } from "@lib/shared/docx-validate.ts"
 const UPDATE = process.argv.includes("--update")
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const CASES_DIR = join(HERE, "test", "fixtures", "math", "cases")
-const ERRORS_DIR = join(HERE, "test", "fixtures", "math", "errors")
+const CASES_DIR = join(HERE, "fixtures", "math", "cases")
+const ERRORS_DIR = join(HERE, "fixtures", "math", "errors")
 
 // .tex cases go through temml; .mml cases (for constructs temml can't
 // or won't emit, e.g. <mfenced separators="…">) feed the converter

@@ -17,7 +17,7 @@ Future extensions add new config blocks inside `apply`, not new sub-commands.
 
 - `skill/` — publishable skill bundle source: `SKILL.md` (agent-facing contract), `references/` (on-demand detail), `tools/` (TS source for agent-callable CLIs; one file = one `tsdown.config.ts` entry)
 - `lib/` — non-tool TS modules grouped by concern (xml / parse / config / apply / edit / shared). Reachable via `@lib/*` alias. Imported by tools, never built as a script entry. `ls lib/` for the current breakdown.
-- `test/fixtures/` — sample .docx files for manual testing
+- `tests/` — committed test corpus and runner (`math-corpus.ts` + `fixtures/math/{cases,errors}`)
 - `dist/` — build output (gitignored): `docx-master/` staged bundle + `docx-master.zip`
 - `build-skill.ts` — packages the staged dir into the .skill zip
 
@@ -127,7 +127,7 @@ LLMs are bad at byte-level work; scripts must guarantee these and never bend the
 - **Word locale-translates built-in identifier names — emit non-name forms or refuse** — field codes that name a Word built-in (STYLEREF, REF, and future style references) silently fail in non-EN Word UIs. Emit prefers a numeric/identifier form (e.g. `STYLEREF N`), falls back to a custom name (not translated), refuses for built-in non-numeric identifiers. Built-in identifier table: `lib/parse/builtin-styles.ts`.
 - **Error messages name the locus + list all applicable fixes; no dead-end suggestions** — every `throw` identifies where it failed (config path, source paragraph index, LaTeX source, etc.) and lists every fix the failure shape allows. A partial list or a shape-wrong suggestion is worse than no suggestion.
 
-When changing any of these, verify against `test/fixtures/` and inspect the output zip.
+When changing any of these, verify against sample .docx inputs and inspect the output zip.
 
 ## Implementation workflow
 

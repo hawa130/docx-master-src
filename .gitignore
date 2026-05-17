@@ -33,13 +33,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-/test/*
-# Regression corpus for the in-tree MathML→OMML converter — these are
-# inputs the math pipeline must keep handling, so they ship with the code.
-!/test/fixtures/
-/test/fixtures/*
-!/test/fixtures/math/
-/test/fixtures/math/*
-!/test/fixtures/math/cases/
-!/test/fixtures/math/errors/
-!/test/fixtures/math/README.md
+*local*
