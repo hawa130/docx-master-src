@@ -110,13 +110,14 @@ Use the `omml` escape hatch when:
 
 **Throws at apply time** — error names `edits[N]` + LaTeX source:
 
-- `\cancel{}` / `\bcancel{}` / `\xcancel{}` — strike notations have no OMML peer. `\boxed{}`, `\overline{}`, `\underline{}` work.
+- Strike-through macros (`\cancel`, `\bcancel`, `\xcancel`, `\sout`) — `<menclose>` strike notations have no OMML peer. `\fbox{}`, `\overline{}`, `\underline{}` work.
 
 **Renders approximately** — no error, visual differs from LaTeX:
 
 - `\big` / `\Big` / `\bigg` / `\Bigg` standalone delimiters — default size.
 - Graded spacing (`\!`, `\,`, `\;`, `\quad`, `\hspace{}`) — collapsed to one space.
 - Overlap macros (`\rlap`, `\llap`, `\mathrlap`, `\mathllap`) — overlap lost.
+- Decorative wrappers (`\boxed`, `\colorbox`, `\mathbackground`) — border/background lost.
 
 ## What's not supported
 
