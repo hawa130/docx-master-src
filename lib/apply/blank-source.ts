@@ -24,7 +24,7 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
  *  whether this module gets inlined into the apply.js entry or split
  *  into `_shared/`, `import.meta.url` resolves to a different output
  *  file, so we look both next to the resolved location and one hop up.
- *  Throws on miss with a regen hint. */
+ *  Throws on miss. */
 export function getBlankTemplatePath(): string {
   const candidates = [
     join(MODULE_DIR, "_assets", "blank.docx"),
@@ -35,9 +35,5 @@ export function getBlankTemplatePath(): string {
   for (const p of candidates) {
     if (existsSync(p)) return p
   }
-  throw new Error(
-    `bundled blank.docx not found. Looked in: ${candidates.join(", ")}. ` +
-      `Run \`bun run build-blank-template.ts\` to regenerate it under ` +
-      `lib/apply/_assets/, then \`bun run build:skill\` to stage it into dist/.`,
-  )
+  throw new Error(`bundled blank.docx not found. Looked in: ${candidates.join(", ")}.`)
 }

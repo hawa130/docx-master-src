@@ -73,10 +73,7 @@ if (existsSync(stagedNotice)) rmSync(stagedNotice)
 const blankSrc = join(ROOT, "lib", "apply", "_assets", "blank.docx")
 const blankDst = join(SCRIPTS_DIR, "_assets", "blank.docx")
 if (!existsSync(blankSrc)) {
-  console.error(
-    `blank.docx template missing at ${relative(ROOT, blankSrc)} — ` +
-      `run \`bun run build-blank-template.ts\` first.`,
-  )
+  console.error(`blank.docx template missing at ${relative(ROOT, blankSrc)} — corrupted checkout?`)
   process.exit(1)
 }
 mkdirSync(dirname(blankDst), { recursive: true })
