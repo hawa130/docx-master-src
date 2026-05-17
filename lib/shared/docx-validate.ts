@@ -553,8 +553,8 @@ export async function validateDocxFile(filePath: string): Promise<ValidationErro
 }
 
 /** Validate an `<m:oMath>...</m:oMath>` fragment against shared-math.xsd.
- *  Catches mml2omml's schema-invalid output (e.g. stray `<m:rPr>`) before
- *  it reaches document.xml. Returns one error per validator complaint;
+ *  Defense in depth against schema-invalid converter output before it
+ *  reaches document.xml. Returns one error per validator complaint;
  *  empty array = valid. */
 export async function validateOMath(omml: string): Promise<string[]> {
   const schemas = getSchemas()

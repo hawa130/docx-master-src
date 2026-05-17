@@ -106,15 +106,19 @@ Returns `prefix + chapter + counter + suffix` from the SEQ result (e.g. `"(2.3)"
 
 ## Known fragile LaTeX tokens
 
-The MathML→OMML step (`mathml2omml`) chokes on a few inputs that temml accepts. When you hit one, switch that specific equation to the `omml` escape hatch (`{ "type": "equation", "omml": "<m:oMath>…</m:oMath>" }`) and leave the rest as LaTeX. Common offenders:
+Use the `omml` escape hatch when:
 
-- `\lVert x \rVert` — use `\|x\|` instead.
-- Anything that emits MathML `<mpadded>` (font-selection macros like `\mathrm{...}`, custom spacing macros, `\mathrlap` / `\mathllap` shapes) — use `\text{...}` for upright Roman, or explicit spacing primitives. mml2omml silently drops the wrapped subtree, so the error path catches it as "MathML → OMML conversion emitted warnings: Type not supported: mpadded".
+**Throws at apply time** — error names `edits[N]` + LaTeX source:
 
-The runtime error names the offending `edits[N]` and prints the LaTeX source so the problem equation is easy to pinpoint.
+- `\cancel{}` / `\bcancel{}` / `\xcancel{}` — strike notations have no OMML peer. `\boxed{}`, `\overline{}`, `\underline{}` work.
+
+**Renders approximately** — no error, visual differs from LaTeX:
+
+- `\big` / `\Big` / `\bigg` / `\Bigg` standalone delimiters — default size.
+- Graded spacing (`\!`, `\,`, `\;`, `\quad`, `\hspace{}`) — collapsed to one space.
+- Overlap macros (`\rlap`, `\llap`, `\mathrlap`, `\mathllap`) — overlap lost.
 
 ## What's not supported
 
-- **n-ary operator structural bug.** `\sum_{i=1}^{n} i^2`, `\int_0^1 x\,dx`, `\prod_{k=1}^{n} a_k` render with a dashed empty box (`<m:e/>`) before the operand. Word's calculation is right but visuals are wrong. Comes from `mathml2omml` (LGPL); fix waits on a self-built MathML→OMML translator.
 - **LaTeX `\tag{}` / `\label{}` / `equation` environment.** Use the `captionId` + `anchor` pattern instead.
 - **Editing an existing equation's LaTeX in place.** Locators target paragraphs, not OMML subtrees. To change an equation, `replace` the whole paragraph (or `delete` then `insert-after`).

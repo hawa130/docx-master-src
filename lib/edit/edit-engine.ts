@@ -289,7 +289,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
 
   // Pre-resolve every LaTeX expression to OMML before the synchronous emit
   // chain runs. Per-edit dispatch keeps the rethrown error pointing at the
-  // offending `edits[N]` index — without this the temml / mml2omml stack
+  // offending `edits[N]` index — without this the temml / mml-to-omml stack
   // bubbles up with the latex source but no caller context.
   for (const [i, op] of edits.entries()) {
     const frag = fragmentOf(op)
