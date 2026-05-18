@@ -153,13 +153,56 @@ for (const p of PROVIDERS) {
   cpSync(STAGE_DIR, dest, { recursive: true })
 }
 
-// dist/plugin/ mirror, used by .claude-plugin/marketplace.json's
-// `source: "./dist/plugin"` reference. Lives under dist/ alongside every
-// other build artifact so a single gitignore line covers them all.
+// dist/plugin/ doubles as (a) the local-install plugin source referenced by
+// the top-level .claude-plugin/marketplace.json (`source: "./dist/plugin"`),
+// and (b) a complete image of the publish repo root, ready to be pushed to
+// hawa130/docx-master at release time. Both consumers expect skills under
+// ./skills/ and the manifest under ./.claude-plugin/.
 const PLUGIN_DIR = join(ROOT, "dist", "plugin", "skills", SKILL_NAME)
 rmSync(PLUGIN_DIR, { recursive: true, force: true })
 mkdirSync(PLUGIN_DIR, { recursive: true })
 cpSync(STAGE_DIR, PLUGIN_DIR, { recursive: true })
+
+// Render .claude-plugin/{marketplace,plugin}.json templates into the publish
+// image. The top-level copies point into dist/ so local `claude plugin
+// install ./` works from this dev repo; the rendered copies use the flat
+// layout the publish repo will have (.claude-plugin/ and skills/ as siblings
+// at the repo root). Only path fields are rewritten — version, description,
+// homepage, repository remain canonical in the source files.
+const PLUGIN_MANIFEST_SRC = join(ROOT, ".claude-plugin")
+const PLUGIN_MANIFEST_DST = join(ROOT, "dist", "plugin", ".claude-plugin")
+mkdirSync(PLUGIN_MANIFEST_DST, { recursive: true })
+
+const marketplaceTpl = JSON.parse(
+  readFileSync(join(PLUGIN_MANIFEST_SRC, "marketplace.json"), "utf-8"),
+) as { plugins: Array<{ source: string; version: string }> }
+const firstPlugin = marketplaceTpl.plugins[0]
+if (!firstPlugin) {
+  throw new Error("marketplace.json: plugins[] is empty")
+}
+firstPlugin.source = "."
+
+const pluginTpl = JSON.parse(
+  readFileSync(join(PLUGIN_MANIFEST_SRC, "plugin.json"), "utf-8"),
+) as { skills: string; version: string }
+pluginTpl.skills = "./skills/"
+
+// CI injects DOCX_MASTER_VERSION from the git tag (e.g. `v0.2.0` → `0.2.0`).
+// Local builds leave source manifests' version untouched.
+const versionOverride = process.env.DOCX_MASTER_VERSION
+if (versionOverride) {
+  firstPlugin.version = versionOverride
+  pluginTpl.version = versionOverride
+}
+
+writeFileSync(
+  join(PLUGIN_MANIFEST_DST, "marketplace.json"),
+  JSON.stringify(marketplaceTpl, null, 2) + "\n",
+)
+writeFileSync(
+  join(PLUGIN_MANIFEST_DST, "plugin.json"),
+  JSON.stringify(pluginTpl, null, 2) + "\n",
+)
 
 // 5. Report
 const zipSize = statSync(ZIP_PATH).size
@@ -170,6 +213,7 @@ for (const p of PROVIDERS) {
   console.log(`✓ ${p.display.padEnd(16)} ${dest}/`)
 }
 console.log(`✓ Plugin mirror   ${relative(ROOT, PLUGIN_DIR)}/`)
+console.log(`✓ Plugin manifest ${relative(ROOT, PLUGIN_MANIFEST_DST)}/`)
 console.log("")
 console.log("Contents:")
 listTree(STAGE_DIR, "  ")

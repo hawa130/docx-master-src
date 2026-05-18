@@ -12,7 +12,10 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  PUBLISH_REPO: hawa130/docx-master
 
 jobs:
   release:
@@ -38,6 +41,7 @@ jobs:
             *) echo "::error::invalid tag: $RESOLVED"; exit 1 ;;
           esac
           echo "tag=$RESOLVED" >> "$GITHUB_OUTPUT"
+          echo "version=${RESOLVED#v}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,42 +70,81 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Build skill bundle + per-harness fan-out
+      - name: Build skill bundle
+        env:
+          DOCX_MASTER_VERSION: ${{ steps.tag.outputs.version }}
         run: bun run build:skill
 
-      # Each per-harness directory (dist/<harness>/<configDir>/...) is zipped
-      # from its root so `unzip <asset>.zip` at the install target reproduces
-      # the config-directory tree directly — no extra `mv` step for users.
-      - name: Package per-harness zips
+      # Clone the publish repo. Tolerates the empty-repo first-run case by
+      # creating `main` locally when no branches exist yet.
+      - name: Clone publish repo
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          cd dist
-          for key in claude-code cursor codex gemini opencode github; do
-            if [ ! -d "$key" ]; then
-              echo "::error::missing dist/$key — did build:skill complete?"
-              exit 1
+          git clone "https://x-access-token:${PUBLISH_TOKEN}@github.com/${PUBLISH_REPO}.git" publish
+          cd publish
+          if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git checkout -b main
+          else
+            git checkout main 2>/dev/null || git checkout -b main
+          fi
+
+      # Mirror the build output into the publish repo:
+      # - dist/plugin/* flattens to publish root so .claude-plugin/ and
+      #   skills/ sit at the repo top (Claude plugin marketplace + skills.sh
+      #   discover them at standard locations).
+      # - Other dist/<harness>/ trees come along as-is for users who prefer
+      #   to clone the publish repo and cp a harness-specific subtree.
+      # - dist/*.zip is skipped — the universal zip is uploaded as a release
+      #   asset, not committed.
+      # - README + LICENSE are sourced from src so they stay in sync.
+      - name: Sync build output to publish repo
+        run: |
+          set -euo pipefail
+          # Wipe publish/ contents except .git
+          find publish -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          # Flatten dist/plugin/* to publish root
+          rsync -a dist/plugin/ publish/
+          # Copy remaining dist subdirs (excludes plugin/ and any zips)
+          for d in dist/*/; do
+            name=$(basename "$d")
+            if [ "$name" != "plugin" ]; then
+              rsync -a "$d" "publish/$name/"
             fi
-            (cd "$key" && zip -qr "../docx-master-${key}.zip" .)
-            echo "  ✓ docx-master-${key}.zip"
           done
+          # README + LICENSE from src
+          cp README.md README.zh-CN.md LICENSE publish/
 
-      - name: List release assets
-        run: ls -lh dist/*.zip
+      - name: Commit & push to publish repo
+        working-directory: publish
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No content changes; tagging existing HEAD."
+          else
+            git commit -m "release: $TAG"
+          fi
+          git push origin HEAD:main
+          # Force-tag is intentional: re-running the workflow for the same
+          # tag (via workflow_dispatch) should re-publish the snapshot.
+          git tag -f "$TAG"
+          git push origin "$TAG" --force
 
-      - name: Create GitHub release
+      - name: Create release on publish repo
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ env.PUBLISH_REPO }}
+          token: ${{ secrets.PUBLISH_REPO_TOKEN }}
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: |
-            dist/docx-master.zip
-            dist/docx-master-claude-code.zip
-            dist/docx-master-cursor.zip
-            dist/docx-master-codex.zip
-            dist/docx-master-gemini.zip
-            dist/docx-master-opencode.zip
-            dist/docx-master-github.zip
+          files: dist/docx-master.zip
