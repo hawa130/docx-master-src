@@ -14,15 +14,15 @@
     "ooxml",
     "word"
   ],
-  "homepage": "https://github.com/hawa130/docx-master",
+  "homepage": "https://github.com/hawa130/docx-master-src",
   "bugs": {
-    "url": "https://github.com/hawa130/docx-master/issues"
+    "url": "https://github.com/hawa130/docx-master-src/issues"
   },
   "license": "Apache-2.0",
   "author": "hawa130",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hawa130/docx-master.git"
+    "url": "git+https://github.com/hawa130/docx-master-src.git"
   },
   "type": "module",
   "module": "index.ts",

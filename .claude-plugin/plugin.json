@@ -5,6 +5,6 @@
   "author": {
     "name": "hawa130"
   },
-  "repository": "https://github.com/hawa130/docx-master",
+  "repository": "https://github.com/hawa130/docx-master-src",
   "skills": "./dist/plugin/skills/"
 }

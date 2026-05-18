@@ -17,7 +17,7 @@
       },
       "source": "./dist/plugin",
       "category": "productivity",
-      "homepage": "https://github.com/hawa130/docx-master",
+      "homepage": "https://github.com/hawa130/docx-master-src",
       "tags": ["docx", "word", "ooxml", "office", "skills", "automation"]
     }
   ]
