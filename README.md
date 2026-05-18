@@ -5,7 +5,7 @@
 
 The Word document automation agents have been waiting for. One skill, 15 tools, and a sparse-by-design config language that mutates `.docx` OOXML directly — restyle, renumber, edit, audit — without the fragile round-trip through Markdown or HTML.
 
-> **Quick start:** `cp -r dist/docx-master ~/.claude/skills/` (or grab the [latest release](https://github.com/hawa130/docx-master/releases) and drop it into your harness of choice).
+> **Quick start:** `npx skills add hawa130/docx-master` (or grab the [latest release](https://github.com/hawa130/docx-master/releases) zip and drop it into your harness's skills directory).
 
 ## Peer Word skills
 
@@ -120,29 +120,27 @@ The original file is never modified. Every write produces a fresh file; if valid
 
 ## Installation
 
-Grab the zip for your harness from the [latest release](https://github.com/hawa130/docx-master/releases) and unpack it into the directory the harness loads skills from. Every release publishes:
+Easiest: the [`skills` CLI](https://skills.sh) routes the bundle into the right directory for your harness.
 
-| Asset | Unpacks to | For |
-|---|---|---|
-| `docx-master.zip` | `docx-master/` | Universal — any harness that loads Markdown skills |
-| `docx-master-claude-code.zip` | `.claude/skills/docx-master/` | Claude Code |
-| `docx-master-cursor.zip` | `.cursor/skills/docx-master/` | Cursor |
-| `docx-master-codex.zip` | `.agents/skills/docx-master/` | Codex CLI |
-| `docx-master-gemini.zip` | `.gemini/skills/docx-master/` | Gemini CLI |
-| `docx-master-opencode.zip` | `.opencode/skills/docx-master/` | OpenCode |
-| `docx-master-github.zip` | `.github/skills/docx-master/` | GitHub Copilot |
+```bash
+# Project-local (committed to your repo)
+npx skills add hawa130/docx-master
 
-Pick one of the per-harness zips and unzip it at the right scope:
+# User-wide
+npx skills add hawa130/docx-master -g
+
+# Target a specific harness
+npx skills add hawa130/docx-master -a claude-code
+```
+
+Or grab `docx-master.zip` from the [latest release](https://github.com/hawa130/docx-master/releases) and unzip into whichever skills directory your harness loads from:
 
 ```bash
 # Claude Code, user-wide
-cd ~ && unzip ~/Downloads/docx-master-claude-code.zip
-
-# Claude Code, project-local
-cd your-project && unzip ~/Downloads/docx-master-claude-code.zip
-
-# Or the universal bundle, dropped into whichever skills directory applies
 unzip ~/Downloads/docx-master.zip -d ~/.claude/skills/
+
+# Cursor, project-local
+unzip ~/Downloads/docx-master.zip -d your-project/.cursor/skills/
 ```
 
 Harness-specific gotchas:
@@ -191,7 +189,7 @@ Every write produces a fresh, schema-validated copy — the input file is never 
 | `skill/tools/` | TS source for the 15 CLIs |
 | `lib/` | Non-tool TS modules (xml / parse / config / apply / edit / shared) |
 | `tests/` | Math regression corpus + runner (`bun run test:math`) |
-| `build-skill.ts` | Stages `dist/docx-master/` + zip + per-provider fan-out |
+| `build-skill.ts` | Stages `dist/plugin/skills/docx-master/` (the publish-repo image) + zip + rendered `.claude-plugin/` manifest |
 | `CLAUDE.md` | Working-on-the-project guide for contributors / future agents |
 
 ## Building from source

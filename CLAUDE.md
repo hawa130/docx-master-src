@@ -18,8 +18,8 @@ Future extensions add new config blocks inside `apply`, not new sub-commands.
 - `skill/` — publishable skill bundle source: `SKILL.md` (agent-facing contract), `references/` (on-demand detail), `tools/` (TS source for agent-callable CLIs; one file = one `tsdown.config.ts` entry)
 - `lib/` — non-tool TS modules grouped by concern (xml / parse / config / apply / edit / shared). Reachable via `@lib/*` alias. Imported by tools, never built as a script entry. `ls lib/` for the current breakdown.
 - `tests/` — committed test corpus and runner (`math-corpus.ts` + `fixtures/math/{cases,errors}`)
-- `dist/` — build output (gitignored): `docx-master/` staged bundle + `docx-master.zip`
-- `build-skill.ts` — packages the staged dir into the .skill zip
+- `dist/` — build output (gitignored): `plugin/` (publish-repo image with `.claude-plugin/` + `skills/docx-master/`) and `docx-master.zip`
+- `build-skill.ts` — packages the staged dir into the zip + renders the publish-repo plugin manifest
 
 All `lib/` and `skill/tools/` imports go through `@lib/*` (declared in `tsconfig.json` paths + `tsdown.config.ts`), including lib-to-lib. No relative paths — group-prefixed imports survive moves between groups. `skill/tools/` is CLI entry-points only; anything imported but never invoked goes in `lib/`.
 
@@ -36,7 +36,7 @@ All `lib/` and `skill/tools/` imports go through `@lib/*` (declared in `tsconfig
 | Format (oxfmt; markdown excluded) | `bun run fmt` |
 | Format check (no write) | `bun run fmt:check` |
 
-No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/docx-master/` reflects the change before claiming done.
+No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/plugin/skills/docx-master/` reflects the change before claiming done.
 
 ## Dependency policy
 
@@ -49,11 +49,11 @@ When `bun add` fails the age gate, check why the package was published so recent
 1. Create `skill/tools/<file>.ts`. Use `@lib/...` for everything — OOXML primitives, skill engine helpers, config schema, CLI scaffolding all live under one alias.
 2. Add a `<scriptName>: "<file>.ts"` entry to the `tools` map in `tsdown.config.ts`.
 3. If the tool is a sub-command surface the agent should route to, add a row to the SKILL.md tool table.
-4. `bun run build:skill` produces `dist/docx-master/` and `dist/docx-master.zip`.
+4. `bun run build:skill` produces `dist/plugin/` (the publish-repo image) and `dist/docx-master.zip`.
 
 ## Periodic audits via `skill-creator`
 
-After a multi-commit feature push or before a release, spawn a `general-purpose` subagent that invokes the `skill-creator` skill in **read-only** mode (no file edits), pointed at `skill/` + `dist/docx-master/`.
+After a multi-commit feature push or before a release, spawn a `general-purpose` subagent that invokes the `skill-creator` skill in **read-only** mode (no file edits), pointed at `skill/` + `dist/plugin/skills/docx-master/`.
 
 skill-creator's checklists (Anatomy of a Skill / Progressive Disclosure / Writing Patterns / Description Optimization) catch:
 

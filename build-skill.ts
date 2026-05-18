@@ -3,7 +3,13 @@
  * Stage SKILL.md + references/ from top-level `skill/` alongside tsdown's
  * scripts/ output, then zip into `dist/docx-master.zip`.
  *
- * Run AFTER `tsdown` (which produces `dist/docx-master/scripts/`) — the
+ * The staged bundle lives at `dist/plugin/skills/docx-master/`, which is
+ * also the canonical location consumed by Claude Code's plugin marketplace
+ * (`.claude-plugin/marketplace.json` → `source: "./dist/plugin"`) AND the
+ * exact structure pushed to the publish repo `hawa130/docx-master` by the
+ * release workflow. One staged copy serves every consumer; no fan-out.
+ *
+ * Run AFTER `tsdown` (which writes `<STAGE_DIR>/scripts/`) — the
  * `bun run build:skill` script chains both.
  */
 import {
@@ -22,7 +28,8 @@ import JSZip from "jszip"
 const ROOT = import.meta.dirname
 const SKILL_NAME = "docx-master"
 const SKILL_SRC = join(ROOT, "skill")
-const STAGE_DIR = join(ROOT, "dist", SKILL_NAME)
+const PUBLISH_DIR = join(ROOT, "dist", "plugin")
+const STAGE_DIR = join(PUBLISH_DIR, "skills", SKILL_NAME)
 const ZIP_PATH = join(ROOT, "dist", `${SKILL_NAME}.zip`)
 const SCRIPTS_DIR = join(STAGE_DIR, "scripts")
 
@@ -119,58 +126,15 @@ cpSync(join(temmlSrc, "package.json"), join(temmlDst, "package.json"))
 // 3. Zip the staged dir
 await zipDir(STAGE_DIR, ZIP_PATH, SKILL_NAME)
 
-// 4. Fan out to per-harness directories.
-//
-// docx-master's SKILL.md frontmatter (name + description) is universal across
-// every harness that loads Markdown skills. The only thing that differs is
-// where each harness expects skills to live. We stage one identical copy of
-// the bundle into each provider's config directory so users can `cp -r` the
-// matching tree into their project without learning the layout themselves.
-//
-// Layout produced under dist/:
-//   claude-code/.claude/skills/docx-master/
-//   cursor/.cursor/skills/docx-master/
-//   codex/.agents/skills/docx-master/      (Codex repo skills, also used user-wide)
-//   gemini/.gemini/skills/docx-master/
-//   opencode/.opencode/skills/docx-master/
-//   github/.github/skills/docx-master/
-//
-// `plugin/skills/docx-master/` at the repo root mirrors the bundle for Claude
-// Code's marketplace install path (see .claude-plugin/marketplace.json).
-const PROVIDERS = [
-  { dir: "claude-code", config: ".claude", display: "Claude Code" },
-  { dir: "cursor", config: ".cursor", display: "Cursor" },
-  { dir: "codex", config: ".agents", display: "Codex CLI" },
-  { dir: "gemini", config: ".gemini", display: "Gemini CLI" },
-  { dir: "opencode", config: ".opencode", display: "OpenCode" },
-  { dir: "github", config: ".github", display: "GitHub Copilot" },
-]
-
-for (const p of PROVIDERS) {
-  const dest = join(ROOT, "dist", p.dir, p.config, "skills", SKILL_NAME)
-  rmSync(dest, { recursive: true, force: true })
-  mkdirSync(dest, { recursive: true })
-  cpSync(STAGE_DIR, dest, { recursive: true })
-}
-
-// dist/plugin/ doubles as (a) the local-install plugin source referenced by
-// the top-level .claude-plugin/marketplace.json (`source: "./dist/plugin"`),
-// and (b) a complete image of the publish repo root, ready to be pushed to
-// hawa130/docx-master at release time. Both consumers expect skills under
-// ./skills/ and the manifest under ./.claude-plugin/.
-const PLUGIN_DIR = join(ROOT, "dist", "plugin", "skills", SKILL_NAME)
-rmSync(PLUGIN_DIR, { recursive: true, force: true })
-mkdirSync(PLUGIN_DIR, { recursive: true })
-cpSync(STAGE_DIR, PLUGIN_DIR, { recursive: true })
-
-// Render .claude-plugin/{marketplace,plugin}.json templates into the publish
-// image. The top-level copies point into dist/ so local `claude plugin
-// install ./` works from this dev repo; the rendered copies use the flat
-// layout the publish repo will have (.claude-plugin/ and skills/ as siblings
-// at the repo root). Only path fields are rewritten — version, description,
-// homepage, repository remain canonical in the source files.
+// 4. Render .claude-plugin/{marketplace,plugin}.json templates into the
+// publish image (dist/plugin/.claude-plugin/). The top-level source copies
+// point into dist/ so local `claude plugin install ./` works from this dev
+// repo; the rendered copies use the flat layout the publish repo will have
+// (.claude-plugin/ and skills/ as siblings at the repo root). Only path
+// fields are rewritten — version, description, homepage, repository remain
+// canonical in the source files.
 const PLUGIN_MANIFEST_SRC = join(ROOT, ".claude-plugin")
-const PLUGIN_MANIFEST_DST = join(ROOT, "dist", "plugin", ".claude-plugin")
+const PLUGIN_MANIFEST_DST = join(PUBLISH_DIR, ".claude-plugin")
 mkdirSync(PLUGIN_MANIFEST_DST, { recursive: true })
 
 const marketplaceTpl = JSON.parse(
@@ -206,14 +170,10 @@ writeFileSync(
 
 // 5. Report
 const zipSize = statSync(ZIP_PATH).size
-console.log(`✓ Skill bundle:  ${relative(ROOT, STAGE_DIR)}/`)
-console.log(`✓ Skill archive: ${relative(ROOT, ZIP_PATH)} (${formatBytes(zipSize)})`)
-for (const p of PROVIDERS) {
-  const dest = join("dist", p.dir, p.config, "skills", SKILL_NAME)
-  console.log(`✓ ${p.display.padEnd(16)} ${dest}/`)
-}
-console.log(`✓ Plugin mirror   ${relative(ROOT, PLUGIN_DIR)}/`)
+console.log(`✓ Skill bundle:   ${relative(ROOT, STAGE_DIR)}/`)
 console.log(`✓ Plugin manifest ${relative(ROOT, PLUGIN_MANIFEST_DST)}/`)
+console.log(`✓ Publish image:  ${relative(ROOT, PUBLISH_DIR)}/`)
+console.log(`✓ Skill archive:  ${relative(ROOT, ZIP_PATH)} (${formatBytes(zipSize)})`)
 console.log("")
 console.log("Contents:")
 listTree(STAGE_DIR, "  ")

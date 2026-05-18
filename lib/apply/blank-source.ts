@@ -4,7 +4,7 @@
  *
  *   1. Dev mode (running TS directly from the repo) — sits at
  *      `lib/apply/_assets/blank.docx` relative to the repo root.
- *   2. Bundled mode (running from `dist/docx-master/scripts/...`) —
+ *   2. Bundled mode (running from `dist/plugin/skills/docx-master/scripts/...`) —
  *      `build-skill.ts` copies the asset into `<scripts>/_assets/blank.docx`
  *      so a single basename-relative lookup resolves to the same file.
  *

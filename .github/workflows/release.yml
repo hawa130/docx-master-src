@@ -90,29 +90,16 @@ jobs:
             git checkout main 2>/dev/null || git checkout -b main
           fi
 
-      # Mirror the build output into the publish repo:
-      # - dist/plugin/* flattens to publish root so .claude-plugin/ and
-      #   skills/ sit at the repo top (Claude plugin marketplace + skills.sh
-      #   discover them at standard locations).
-      # - Other dist/<harness>/ trees come along as-is for users who prefer
-      #   to clone the publish repo and cp a harness-specific subtree.
-      # - dist/*.zip is skipped — the universal zip is uploaded as a release
-      #   asset, not committed.
-      # - README + LICENSE are sourced from src so they stay in sync.
+      # Mirror dist/plugin/ to the publish repo root. dist/plugin/ is the
+      # canonical publish-repo image: .claude-plugin/ + skills/docx-master/.
+      # README + LICENSE come from src so they stay in sync.
       - name: Sync build output to publish repo
         run: |
           set -euo pipefail
           # Wipe publish/ contents except .git
           find publish -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-          # Flatten dist/plugin/* to publish root
+          # dist/plugin/* → publish root
           rsync -a dist/plugin/ publish/
-          # Copy remaining dist subdirs (excludes plugin/ and any zips)
-          for d in dist/*/; do
-            name=$(basename "$d")
-            if [ "$name" != "plugin" ]; then
-              rsync -a "$d" "publish/$name/"
-            fi
-          done
           # README + LICENSE from src
           cp README.md README.zh-CN.md LICENSE publish/
 
