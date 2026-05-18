@@ -23,6 +23,17 @@ Otherwise, treat a document as two kinds of paragraphs:
 
 Tools surface visible facts; classification and judgment are yours.
 
+**Standardize-shape blocks are the foundation; other ops layer on top.** `styles` / `numbering` / `captions` / `theme` / `template` install the canonical anchors `edits[]` `styleId` + MDF, `pattern_rules` fingerprints, `InlineRef` / STYLEREF all bind to. Non-canonical input — in source chrome OR fill content — routes through the matching block in the same config, never preserved as output:
+
+| Non-canonical signal | Route through |
+|---|---|
+| Typed structural prefix (headings, lists) | `styles[]` heading/list + `numbering` + `pattern_rules.stripMatch` |
+| Typed caption / equation number | `captions` + `CaptionBlock` / `EquationBlock` |
+| Typed in-prose counter | `InlineRef` in the paragraph's `text` |
+| Same-role chrome inconsistent (no extractable exemplar) | `styles[]` with `overrides`, not `fromParagraph` |
+| One styleId overloaded with multiple roles | Fresh semantic styleIds + `pattern_rules` / `assignments` |
+| Missing anchor for a role the fills introduce | `styles[]` Mode B (direct fields) |
+
 ## Target state
 
 A well-formed Word document expresses structure through **styles + numbering + sections + SEQ fields**, not typed text mimicking structure. When designing the reshape:
@@ -64,7 +75,7 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
    - **Content chrome formatting** — what direct `pPr` / `rPr` content paragraphs carry. This IS the document's typographic convention; preserve it by not redeclaring those attributes on the re-tagging styles.
    - **Typed structural prefixes** — heading shapes (`第N章`, `一、`, `1.1`, `（一）`) feed `pattern_rules`; caption shapes (`图 2.1`) and in-prose counters (`如图 3.2`) feed caption / cross-ref migration via `edits[]` (different mechanism).
    - **Form-fill paragraphs** — text shaped like `label + whitespace gap` or `label + ____ underscore placeholder`. The blank is usually a separate run with `<w:u/>`. Note indices for Step 2.
-   - **Source content** (fill tasks) — what the user-provided content actually carries.
+   - **Source content** (fill tasks) — the structural outline of what will land: which semantic roles appear (Heading 1..N, BodyText, ListNumber/Bullet, Caption, inline cross-refs), heading depth, list / figure / table / equation presence.
 2. **Design ONE config.** Plan styles first based on the content's structural outline; route in one config. Six config blocks (`styles` / `numbering` / `pattern_rules` / `bulk_rules` / `assignments` / `exclude` / `edits`) detailed in [standardize.md §1–§3](references/standardize.md) and [edit.md](references/edit.md). Reactive additions accrete debt.
 3. **Dry-run.** `apply --dry-run` first. The change report's signals (Style Resolution / Sample Affected / Implicit-keep failure / unmatched stripPrefix) — see [standardize.md §5](references/standardize.md).
 4. **Apply.** Output is a fresh docx; the original is never modified.

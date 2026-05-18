@@ -2,7 +2,7 @@
 
 `edits` is a sub-block of `apply`'s config — surgical content + format changes at specific locations: replace / insert / delete paragraphs, swap a table cell, embed an image, restyle a paragraph or range. Optional Word tracked-changes mode.
 
-Inserts that introduce structural roles (prose body, list items, sub-headings) need the matching style installed in `styles[]` so Blocks bind via `styleId` rather than ad-hoc per-op format. `numbering` and `pattern_rules` slot in alongside when the task spans new structure + chrome retags.
+Before writing `edits[]`, inventory the roles the inserted content will introduce (Heading 1..N, BodyText, ListNumber/Bullet, Caption, cross-refs) and install the matching `styles[]` / `numbering` / `captions` entries first, so each Block binds via `styleId` instead of ad-hoc per-op format. `pattern_rules` slots in alongside when the task spans new structure + chrome retags.
 
 ## Reconnaissance first
 
