@@ -401,9 +401,10 @@ export function printReport(args: {
         const samples = info.samples.map((s) => `"${s}"`).join(" / ")
         lines.push(`  ${styleId} (no numbering binding): ${info.count} paragraphs  e.g. ${samples}`)
       }
-      lines.push("    → If these are list items, declare a list-bound style (e.g. ListNumber)")
-      lines.push("      and let the numbering scheme emit the marker. Keep the typed form")
-      lines.push("      only when the user prompt explicitly asked for typed prefixes.")
+      lines.push("    → Declare a list / heading style bound to a numbering scheme;")
+      lines.push("      drop the typed prefix from `text` and let lvlText emit the marker.")
+      lines.push("      User-supplied content with typed prefixes is input shape, not a")
+      lines.push("      directive to preserve them.")
     }
     lines.push("")
   }

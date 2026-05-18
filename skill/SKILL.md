@@ -23,16 +23,7 @@ Otherwise, treat a document as two kinds of paragraphs:
 
 Tools surface visible facts; classification and judgment are yours.
 
-**Standardize-shape blocks are the foundation; other ops layer on top.** `styles` / `numbering` / `captions` / `theme` / `template` install the canonical anchors `edits[]` `styleId` + MDF, `pattern_rules` fingerprints, `InlineRef` / STYLEREF all bind to. Non-canonical input — in source chrome OR fill content — routes through the matching block in the same config, never preserved as output:
-
-| Non-canonical signal | Route through |
-|---|---|
-| Typed structural prefix (headings, lists) | `styles[]` heading/list + `numbering` + `pattern_rules.stripMatch` |
-| Typed caption / equation number | `captions` + `CaptionBlock` / `EquationBlock` |
-| Typed in-prose counter | `InlineRef` in the paragraph's `text` |
-| Same-role chrome inconsistent (no extractable exemplar) | `styles[]` with `overrides`, not `fromParagraph` |
-| One styleId overloaded with multiple roles | Fresh semantic styleIds + `pattern_rules` / `assignments` |
-| Missing anchor for a role the fills introduce | `styles[]` Mode B (direct fields) |
+**Standardize-shape blocks install the canonical anchors every other op binds to** — `edits[]` `styleId` + MDF, `pattern_rules` fingerprints, `InlineRef` / STYLEREF resolution. Every paragraph the agent writes is canonical: typed structural signals (heading / list / caption prefixes, in-prose counters) never appear as literal text in the emit; install the matching anchor (`numbering` / `captions` / bookmark) and let it render the signal. Source chrome the task doesn't restructure stays as-is. User-supplied content that arrives with typed prefixes is input shape, not a directive to preserve them — strip and re-emit through the anchor unless the user explicitly requested literal typed form.
 
 ## Target state
 
