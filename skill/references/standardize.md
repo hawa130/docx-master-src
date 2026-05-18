@@ -43,6 +43,8 @@ If a role has any paragraph already playing it in the source, the entry **MUST**
 
 **Indent unit preservation.** Source's `w:firstLineChars` / `w:hangingChars` (Word's "首行缩进 N 字符") extracts as `"Nchar"` and auto-scales with font size; fixed twips give `"Npt"`. Don't manually convert "char" values to pt — locks indent to one font size.
 
+**`FigureImage` line height.** `exact` lineRule clips the inline drawing to that height. If `fromParagraph` extracts one, override to a multiplier or `{ atLeast: <length> }`.
+
 ### Empty-slot styles
 
 For roles with **no source paragraph** playing them yet — e.g., `ListNumber` in a doc that's never had a numbered list — explicit top-level fields are required. Declare only user-named attributes + locale defaults the empty slot needs:
