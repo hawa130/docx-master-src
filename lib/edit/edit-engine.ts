@@ -289,7 +289,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
 
   // Pre-resolve every LaTeX expression to OMML before the synchronous emit
   // chain runs. Per-edit dispatch keeps the rethrown error pointing at the
-  // offending `edits[N]` index — without this the temml / mml2omml stack
+  // offending `edits[N]` index — without this the temml / mml-to-omml stack
   // bubbles up with the latex source but no caller context.
   for (const [i, op] of edits.entries()) {
     const frag = fragmentOf(op)
@@ -447,7 +447,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
           throw new Error(
             `InlineRef: ${where} is not bound to a numbering scheme. ` +
               `display="${display}" requires an auto-numbered target (Word's \\n / \\r switches render from the numbering binding). ` +
-              `Either bind the target's pStyle to a numbering[] level, or set display: "full" to use the paragraph's body text instead.`,
+              `Fix one of: bind the target's pStyle to a numbering[] level; for a caption-class target use a CaptionBlock or EquationBlock with captionId (a *Caption styleId on a plain paragraph is not a caption); or use display: "full" for plain body text.`,
           )
         }
       }

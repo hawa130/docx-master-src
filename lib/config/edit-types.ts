@@ -27,6 +27,7 @@
 import type * as z from "zod/mini"
 import type {
   BlockSchema,
+  BorderEdgeSchema,
   EditConfigSchema,
   EditOpSchema,
   FragmentSchema,
@@ -45,6 +46,7 @@ export type RunFormat = z.infer<typeof RunFormatSchema>
 export type ParagraphFormat = z.infer<typeof ParagraphFormatSchema>
 export type RichText = z.infer<typeof RichTextSchema>
 export type Block = z.infer<typeof BlockSchema>
+export type BorderEdge = z.infer<typeof BorderEdgeSchema>
 export type Fragment = z.infer<typeof FragmentSchema>
 export type EditOp = z.infer<typeof EditOpSchema>
 export type EditConfig = z.infer<typeof EditConfigSchema>

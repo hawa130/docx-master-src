@@ -1,8 +1,6 @@
 /**
  * LaTeX → OMML pipeline.
  *
- * Two-stage conversion, isolated here so v2 can swap the MML→OMML half:
- *
  *   stage 1: Temml renders LaTeX → MathML XML string. MIT-licensed, browser
  *            + Node. `xml: true` keeps the renderer DOM-free. Loaded via
  *            dynamic import + fallback because tsdown corrupts the
@@ -10,14 +8,9 @@
  *            build-skill.ts copies the runtime into `_shared/temml/`. Same
  *            pattern as xmllint-wasm.
  *
- *   stage 2: mathml2omml translates MathML → OMML (`<m:oMath>...` string).
- *            LGPL-3.0; bundled into the dist for v1. Replacement target in
- *            v2 — see references/equations.md "Not supported".
- *
- * Known mathml2omml bugs we live with at v1:
- *   - n-ary operators (Σ, ∫, ∏) emit an empty `<m:e/>` with the operand
- *     shifted to a sibling. Renders in Word as a dashed placeholder box
- *     before the operand. No workaround at this layer.
+ *   stage 2: in-tree MathML → OMML converter (`@lib/edit/math/mml-to-omml`).
+ *            Synchronous; throws on unsupported MathML elements with a
+ *            pointer to the `omml` escape hatch.
  *
  * Synchronization model:
  *   The emit chain is synchronous (one call per Block, recursive into
@@ -30,7 +23,8 @@
 
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { dirname, join } from "node:path"
-import { mml2omml } from "mathml2omml"
+import { convertMathMLToOMML } from "@lib/edit/math/mml-to-omml/index.ts"
+import { validateOMath } from "@lib/shared/docx-validate.ts"
 
 interface TemmlModule {
   renderToString: (
@@ -95,14 +89,29 @@ export async function prepareLatex(
         cause: err,
       })
     }
+    // The in-tree converter throws on unsupported MathML elements with its
+    // own escape-hatch guidance. Wrap only to attach the LaTeX source for
+    // edit-index pinpointing.
     let omml: string
     try {
-      omml = mml2omml(mathml)
+      omml = convertMathMLToOMML(mathml)
     } catch (err) {
       throw new Error(
-        `MathML → OMML conversion failed for ${truncateLatex(latex)}: ${(err as Error).message}. ` +
-          `Known fragile tokens — see references/equations.md "Known fragile LaTeX tokens"; use the omml escape hatch on the EquationBlock if the failure is unrecoverable.`,
+        `MathML → OMML conversion failed for ${truncateLatex(latex)}: ${(err as Error).message}`,
         { cause: err },
+      )
+    }
+    // Defense in depth — the corpus validates 35 fixtures, but real-world
+    // LaTeX through temml can take paths the corpus didn't cover. Catch
+    // schema errors here so the throw carries the source LaTeX; post-write
+    // validation would surface a bare schema error against input_0.xml
+    // with no edit context.
+    const schemaErrors = await validateOMath(omml)
+    if (schemaErrors.length > 0) {
+      throw new Error(
+        `OOXML math schema validation failed for ${truncateLatex(latex)}: ${schemaErrors[0]}` +
+          (schemaErrors.length > 1 ? ` (+${schemaErrors.length - 1} more)` : "") +
+          ` — switch this equation to the omml escape hatch on the EquationBlock; see references/equations.md "Known fragile LaTeX tokens".`,
       )
     }
     ommlCache.set(key, omml)

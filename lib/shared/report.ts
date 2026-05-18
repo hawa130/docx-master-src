@@ -189,7 +189,7 @@ export function printReport(args: {
    * literal-space) gaps in edits[] inserted text. Word's `autoSpace`
    * already inserts the visual gap between CJK and Latin glyphs;
    * stacking a manual ASCII space on top renders too wide. */
-  panguWarnings?: Array<{ editIndex: number; snippet: string; hit: string }>
+  panguWarnings?: Array<{ source: string; snippet: string; hit: string }>
   /** Per-section before/after for any `pageSetup` mutation. Absent when
    * pageSetup was not declared. */
   pageSetup?: PageSetupReport
@@ -242,7 +242,7 @@ export function printReport(args: {
     const hf = args.headerFooter
     const bind = args.headerFooterBinding
     const flags: string[] = []
-    if (hf.hasFirst) flags.push("titlePg")
+    if (hf.groups.some((g) => g.hasFirst)) flags.push("titlePg")
     if (hf.hasEven) flags.push("evenAndOddHeaders")
     const flagSuffix = flags.length > 0 ? ` (flags: ${flags.join(", ")})` : ""
     lines.push(
@@ -252,6 +252,9 @@ export function printReport(args: {
       const extras: string[] = [`${p.blockCount} block(s)`]
       if (p.hasHyperlinks) extras.push("hyperlink")
       lines.push(`  ${p.surface}.${p.variant} → ${p.partName} (rId=${p.rId}, ${extras.join(", ")})`)
+    }
+    for (const warning of hf.separatorWarnings) {
+      lines.push(`  warning: ${warning}`)
     }
     lines.push("")
   }
@@ -422,11 +425,19 @@ export function printReport(args: {
   }
   if (args.styleResolutions.length > 0) {
     lines.push("=== Style Resolution (verify by reading) ===")
-    lines.push("  The script does not parse natural language. For styles with a")
-    lines.push("  user spec, compare it to the agent-resolved fields by eye —")
-    lines.push("  any mismatch means the agent's translation needs adjustment.")
-    lines.push("  Styles without a spec are still listed so the resolved fields")
-    lines.push("  are auditable.")
+    const hasAnySpec = args.styleResolutions.some((r) => r.userSpec !== null)
+    if (hasAnySpec) {
+      lines.push("  The script does not parse natural language. For styles with a")
+      lines.push("  user spec, compare it to the agent-resolved fields by eye —")
+      lines.push("  any mismatch means the agent's translation needs adjustment.")
+      lines.push("  Styles without a spec are still listed so the resolved fields")
+      lines.push("  are auditable.")
+    } else {
+      // No specs anywhere — one summary line beats restating "(none)" N times.
+      lines.push(
+        "  No `requirements` entries declared — Agent Resolved fields below reflect the structured `styles[]` declarations directly.",
+      )
+    }
     lines.push("")
     // The Δ-line legend is only useful when at least one styleResolution
     // has a prior state to diff against. All-fresh runs (every style is
@@ -442,10 +453,12 @@ export function printReport(args: {
     for (const r of args.styleResolutions) {
       const freshTag = r.priorState === null ? "  [fresh]" : ""
       lines.push(`  ${r.styleId}${freshTag}`)
-      if (r.userSpec !== null) {
-        lines.push(`    User specified: "${r.userSpec}"`)
-      } else {
-        lines.push(`    User specified: (none — no requirements entry)`)
+      if (hasAnySpec) {
+        if (r.userSpec !== null) {
+          lines.push(`    User specified: "${r.userSpec}"`)
+        } else {
+          lines.push(`    User specified: (none — no requirements entry)`)
+        }
       }
       lines.push(`    Agent resolved: ${formatResolvedFields(r.resolved)}`)
       if (r.priorState !== null) {
@@ -523,13 +536,13 @@ export function printReport(args: {
   }
   if (args.panguWarnings && args.panguWarnings.length > 0) {
     const w = args.panguWarnings
-    lines.push("=== Possible Pangu spacing in inserted text ===")
+    lines.push("=== Possible Pangu spacing in author-supplied text ===")
     lines.push(
       "  Word's autoSpace handles CJK ↔ Latin/digit gaps; typed ASCII spaces stack on top and render too wide.",
     )
     const shown = w.slice(0, 5)
     for (const entry of shown) {
-      lines.push(`  edits[${entry.editIndex}]  ...${entry.snippet}...   (matched "${entry.hit}")`)
+      lines.push(`  ${entry.source}  ...${entry.snippet}...   (matched "${entry.hit}")`)
     }
     if (w.length > shown.length) {
       lines.push(`  (... ${w.length - shown.length} more not shown)`)

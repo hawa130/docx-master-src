@@ -44,10 +44,10 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 
 function findSchemasDir(): string {
   // Built bundle: `<scripts>/_shared/schemas` (sibling of cli-helpers.js).
-  // Dev (running from lib/ directly): `<repo>/vendor/ooxml-schemas`.
+  // Dev (running from lib/shared/): `<repo>/vendor/ooxml-schemas`.
   const candidates = [
     join(MODULE_DIR, "schemas"),
-    join(MODULE_DIR, "..", "vendor", "ooxml-schemas"),
+    join(MODULE_DIR, "..", "..", "vendor", "ooxml-schemas"),
   ]
   for (const p of candidates) {
     if (existsSync(join(p, "ISO-IEC29500-4_2016", "wml.xsd"))) return p
@@ -550,6 +550,35 @@ export async function validateDocxFile(filePath: string): Promise<ValidationErro
     if (text !== null) parts.set(e, text)
   }
   return validateOoxmlParts(parts, entries)
+}
+
+/** Validate an `<m:oMath>...</m:oMath>` fragment against shared-math.xsd.
+ *  Defense in depth against schema-invalid converter output before it
+ *  reaches document.xml. Returns one error per validator complaint;
+ *  empty array = valid. */
+export async function validateOMath(omml: string): Promise<string[]> {
+  const schemas = getSchemas()
+  const main = schemas.find((s) => s.fileName === "shared-math.xsd")
+  if (!main) return [`shared-math.xsd not found in bundled schemas`]
+  const preload = schemas.filter((s) => s.fileName !== "shared-math.xsd")
+  let result
+  try {
+    const validateXML = await getValidateXML()
+    result = await validateXML({
+      xml: [{ fileName: "math.xml", contents: omml }],
+      schema: [main],
+      preload,
+    })
+  } catch (err) {
+    return [`validator crashed: ${(err as Error)?.message ?? String(err)}`]
+  }
+  if (result.valid) return []
+  const out: string[] = []
+  for (const e of result.errors) {
+    if (IGNORED_XSD_ERROR_PATTERNS.some((re) => re.test(e.message))) continue
+    out.push(e.message)
+  }
+  return out
 }
 
 /* ============================================================

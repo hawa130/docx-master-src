@@ -190,7 +190,7 @@ Every write produces a fresh, schema-validated copy — the input file is never 
 | `skill/references/` | On-demand detail; loaded only when relevant |
 | `skill/tools/` | TS source for the 15 CLIs |
 | `lib/` | Non-tool TS modules (xml / parse / config / apply / edit / shared) |
-| `test/fixtures/` | Sample `.docx` files for manual verification |
+| `tests/` | Math regression corpus + runner (`bun run test:math`) |
 | `build-skill.ts` | Stages `dist/docx-master/` + zip + per-provider fan-out |
 | `CLAUDE.md` | Working-on-the-project guide for contributors / future agents |
 
@@ -213,7 +213,7 @@ bun run fmt:check
 
 All of `dist/` is gitignored — regenerated on each build. Per-harness zips for releases are produced by the [release workflow](.github/workflows/release.yml).
 
-There are no automated tests yet — verify changes against `test/fixtures/*.docx` and inspect the produced bundle.
+Math conversion has a regression corpus (`bun run test:math`). For other features verify changes against local .docx samples and inspect the produced bundle.
 
 ## Supported harnesses
 

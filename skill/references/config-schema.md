@@ -251,7 +251,7 @@ Use when the user wants the doc's underlying font scheme changed ("把这份文�
 
 ## Page setup
 
-Mutates `<w:sectPr>` children — paper size, orientation, margins, columns. Sparse-by-design: only declared fields change; undeclared `<w:sectPr>` attributes (headerReference, type, docGrid, …) stay intact. Top-level fields apply to every section; `sections.<selector>` overrides specific sections.
+Mutates `<w:sectPr>` children — paper size, orientation, margins, columns, page-number format. Sparse-by-design: only declared fields change; undeclared `<w:sectPr>` attributes (headerReference, type, docGrid, …) stay intact. Top-level fields apply to every section; `sections.<selector>` overrides specific sections.
 
 ```jsonc
 pageSetup: {
@@ -264,9 +264,13 @@ pageSetup: {
     gutter: "0cm",
   },
   columns: 2,                         // equal-width count; see column forms below
+  pgNumType: {                        // page number numerals + restart per section
+    fmt: "decimal",                   // "decimal" | "upperRoman" | "lowerRoman" | "upperLetter" | "lowerLetter"
+    start: 1                          // optional; omit to continue from previous section
+  },
   sections: {                         // only when some sections differ from defaults
-    "1":   { orientation: "portrait" },
-    "2-3": { orientation: "landscape" },
+    "1":   { pgNumType: { fmt: "lowerRoman" } },
+    "2-3": { pgNumType: { fmt: "decimal", start: 1 } },
   },
 }
 ```
@@ -288,7 +292,7 @@ Multiple selectors overlapping on the same section layer in object key order: la
 
 ### Field semantics
 
-- **margins** are per-edge merged: declaring `top` doesn't touch other edges. Omitted edges keep the source value (or the top-level default when overriding in a section).
+- **margins** and **pgNumType** are per-field merged: declaring `top` (or `fmt`) doesn't touch the other fields. Omitted fields keep the source value (or the top-level default when overriding in a section).
 - **orientation alone** reads current pgSz w/h and swaps as needed. Sections with no existing pgSz reject orientation-only — declare `paperSize` alongside.
 - **columns** is replaced wholesale when declared. To leave columns untouched, omit the field.
 

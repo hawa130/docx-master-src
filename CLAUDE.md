@@ -17,7 +17,7 @@ Future extensions add new config blocks inside `apply`, not new sub-commands.
 
 - `skill/` — publishable skill bundle source: `SKILL.md` (agent-facing contract), `references/` (on-demand detail), `tools/` (TS source for agent-callable CLIs; one file = one `tsdown.config.ts` entry)
 - `lib/` — non-tool TS modules grouped by concern (xml / parse / config / apply / edit / shared). Reachable via `@lib/*` alias. Imported by tools, never built as a script entry. `ls lib/` for the current breakdown.
-- `test/fixtures/` — sample .docx files for manual testing
+- `tests/` — committed test corpus and runner (`math-corpus.ts` + `fixtures/math/{cases,errors}`)
 - `dist/` — build output (gitignored): `docx-master/` staged bundle + `docx-master.zip`
 - `build-skill.ts` — packages the staged dir into the .skill zip
 
@@ -94,6 +94,8 @@ When SKILL.md presents "intent → path / tool / option" mappings, the LLM patte
 
 Same with concrete Bad/Good code or text excerpts in skill docs: they freeze the rule to *this* document's terms, and the agent applies it as a literal match instead of recognizing the underlying category. State the rule in general terms, then illustrate only when the failure shape isn't derivable from the rule. If a reader can't picture the failure without the example, the rule isn't general enough yet — fix the rule, don't add another example.
 
+Corollary: **describe the class, never enumerate the instances**. Enumerations grow with every new instance and rot when one is removed; rules cover the open set for free.
+
 ### Verification must check against intent, not interpretation
 
 If a check grades the system's output against the same system's interpretation of the input, it's a tautology and passes regardless of correctness. Real verification compares against ground truth: human-readable side-by-side (e.g. Style Resolution shows raw user text + resolved fields for visual review), or output re-parsed against an independent invariant (apply_styles validates by re-reading the produced docx).
@@ -123,8 +125,9 @@ LLMs are bad at byte-level work; scripts must guarantee these and never bend the
 - **Shared-part writes go through a single accumulator** — any OOXML part mutated by multiple subsystems (today: `[Content_Types].xml`, `word/_rels/document.xml.rels`) routes through one accumulator that flushes once at end of apply. Direct `replacements.set` for these paths is rejected at the `WritableArchive` boundary. All mutators run before flush. — `lib/xml/writable-archive.ts`
 - **Don't co-locate engine state with user content in the same OOXML container** — Word features extract text by container boundary (paragraph, cell, run) and don't reliably honor vanish/hidden flags at extraction time. STYLEREF / TOC / REF / search / copy-paste all leak hidden state out. Engine scaffolding goes in a sibling container marked with `_`-prefix styleId; indexing walkers skip these, engine walkers don't.
 - **Word locale-translates built-in identifier names — emit non-name forms or refuse** — field codes that name a Word built-in (STYLEREF, REF, and future style references) silently fail in non-EN Word UIs. Emit prefers a numeric/identifier form (e.g. `STYLEREF N`), falls back to a custom name (not translated), refuses for built-in non-numeric identifiers. Built-in identifier table: `lib/parse/builtin-styles.ts`.
+- **Error messages name the locus + list all applicable fixes; no dead-end suggestions** — every `throw` identifies where it failed (config path, source paragraph index, LaTeX source, etc.) and lists every fix the failure shape allows. A partial list or a shape-wrong suggestion is worse than no suggestion.
 
-When changing any of these, verify against `test/fixtures/` and inspect the output zip.
+When changing any of these, verify against sample .docx inputs and inspect the output zip.
 
 ## Implementation workflow
 

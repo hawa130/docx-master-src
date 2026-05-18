@@ -388,7 +388,16 @@ function buildTcBorders(b: BordersCustom, ownerDoc: Document): Element {
   return el
 }
 
-function buildBorderElement(qname: string, edge: BorderEdge, ownerDoc: Document): Element {
+/** Builds one OOXML border edge element (e.g. `<w:top>`, `<w:bottom>`) from
+ * a config-shape `BorderEdge`. Shared between table borders (tblBorders /
+ * tcBorders, space=0) and paragraph borders (pBdr, space=1 — text needs a
+ * gap from the line). */
+export function buildBorderElement(
+  qname: string,
+  edge: BorderEdge,
+  ownerDoc: Document,
+  space = 0,
+): Element {
   const el = ownerDoc.createElementNS(w, qname)
   if (edge === "none") {
     el.setAttributeNS(w, "w:val", "nil")
@@ -416,7 +425,7 @@ function buildBorderElement(qname: string, edge: BorderEdge, ownerDoc: Document)
   if (style === "thick") style = "single"
   el.setAttributeNS(w, "w:val", style)
   el.setAttributeNS(w, "w:sz", String(Math.max(2, sizeEighthPt)))
-  el.setAttributeNS(w, "w:space", "0")
+  el.setAttributeNS(w, "w:space", String(space))
   el.setAttributeNS(w, "w:color", color)
   return el
 }

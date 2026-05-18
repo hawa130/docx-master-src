@@ -17,6 +17,7 @@ import { firstChildNS, getChildren } from "@lib/xml/xml-utils.ts"
 import { SECT_PR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import type { ApplyConfig } from "@lib/config/config-types.ts"
 import { type Length, toTwips } from "@lib/shared/units.ts"
+import { expandSectionSelector } from "@lib/apply/section-selector.ts"
 
 const w = NS.w
 
@@ -26,6 +27,7 @@ type Orientation = "portrait" | "landscape"
 type PaperSize = NonNullable<SectionFields["paperSize"]>
 type Margins = NonNullable<SectionFields["margins"]>
 type Columns = NonNullable<SectionFields["columns"]>
+type PgNumType = NonNullable<SectionFields["pgNumType"]>
 
 /** Paper size constants in twips. Portrait orientation (width < height).
  *  Engine swaps when orientation is landscape. */
@@ -90,30 +92,6 @@ function collectSectPrs(body: Element): Element[] {
   return out
 }
 
-/** Expand a section selector to a list of 1-based indices, bounded by
- *  `sectionCount`. Throws on out-of-range. Syntactic validity is enforced
- *  earlier by `PageSetupSectionsSchema`'s refine. */
-function expandSelector(key: string, sectionCount: number): number[] {
-  const range = key.match(/^(\d+)-(\d+)$/)
-  if (range) {
-    const lo = parseInt(range[1]!, 10)
-    const hi = parseInt(range[2]!, 10)
-    if (lo < 1 || hi > sectionCount || lo > hi) {
-      throw new Error(
-        `pageSetup.sections: range "${key}" out of bounds. Document has ${sectionCount} section(s); valid 1..${sectionCount}.`,
-      )
-    }
-    return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
-  }
-  const n = parseInt(key, 10)
-  if (n < 1 || n > sectionCount) {
-    throw new Error(
-      `pageSetup.sections: section ${n} out of bounds. Document has ${sectionCount} section(s); valid 1..${sectionCount}.`,
-    )
-  }
-  return [n]
-}
-
 /** Build the effective per-section config by layering per-section overrides
  *  on top of the top-level defaults. Margins merge field-wise; paperSize /
  *  orientation / columns replace wholesale. Returns one entry per section
@@ -124,14 +102,19 @@ function buildEffectiveConfigs(config: PageSetupConfig, sectionCount: number): S
     orientation: config.orientation,
     margins: config.margins,
     columns: config.columns,
+    pgNumType: config.pgNumType,
   }
   const effective: SectionFields[] = []
   for (let i = 0; i < sectionCount; i++) {
-    effective.push({ ...defaults, margins: defaults.margins ? { ...defaults.margins } : undefined })
+    effective.push({
+      ...defaults,
+      margins: defaults.margins ? { ...defaults.margins } : undefined,
+      pgNumType: defaults.pgNumType ? { ...defaults.pgNumType } : undefined,
+    })
   }
   if (!config.sections) return effective
   for (const [key, override] of Object.entries(config.sections)) {
-    const indices = expandSelector(key, sectionCount)
+    const indices = expandSectionSelector(key, sectionCount, "pageSetup.sections")
     for (const idx1 of indices) {
       const slot = effective[idx1 - 1]!
       if (override.paperSize !== undefined) slot.paperSize = override.paperSize
@@ -139,6 +122,9 @@ function buildEffectiveConfigs(config: PageSetupConfig, sectionCount: number): S
       if (override.columns !== undefined) slot.columns = override.columns
       if (override.margins !== undefined) {
         slot.margins = { ...(slot.margins ?? {}), ...override.margins }
+      }
+      if (override.pgNumType !== undefined) {
+        slot.pgNumType = { ...(slot.pgNumType ?? {}), ...override.pgNumType }
       }
     }
   }
@@ -345,6 +331,28 @@ function colsElementsEqual(a: Element, b: Element): boolean {
   return true
 }
 
+/** Build / replace `<w:pgNumType>` on a sectPr. Idempotent on identical
+ *  attribute sets so re-runs don't bump touchedCount. */
+function mutatePgNumType(
+  sectPr: Element,
+  pgNumType: PgNumType | undefined,
+  doc: Document,
+): boolean {
+  if (pgNumType === undefined) return false
+  const existing = firstChildNS(sectPr, w, "pgNumType")
+  const curFmt = existing?.getAttributeNS(w, "fmt") ?? null
+  const curStart = existing?.getAttributeNS(w, "start") ?? null
+  const wantFmt = pgNumType.fmt ?? null
+  const wantStart = pgNumType.start !== undefined ? String(pgNumType.start) : null
+  if (existing && curFmt === wantFmt && curStart === wantStart) return false
+  if (existing) sectPr.removeChild(existing)
+  const el = doc.createElementNS(w, "w:pgNumType")
+  if (wantFmt !== null) el.setAttributeNS(w, "w:fmt", wantFmt)
+  if (wantStart !== null) el.setAttributeNS(w, "w:start", wantStart)
+  insertChildInOrder(sectPr, el, SECT_PR_CHILD_ORDER)
+  return true
+}
+
 /** Apply pageSetup to every relevant sectPr in the document. Returns a
  *  per-section before/after snapshot for the dry-run report. */
 export function applyPageSetup(documentDoc: Document, config: PageSetupConfig): PageSetupReport {
@@ -367,7 +375,8 @@ export function applyPageSetup(documentDoc: Document, config: PageSetupConfig): 
     const a = mutatePgSz(sectPr, fields.paperSize, fields.orientation, documentDoc)
     const b = mutatePgMar(sectPr, fields.margins, documentDoc)
     const c = mutateCols(sectPr, fields.columns, documentDoc)
-    const changed = a || b || c
+    const d = mutatePgNumType(sectPr, fields.pgNumType, documentDoc)
+    const changed = a || b || c || d
 
     const after = snapshotSection(sectPr)
     if (changed) touched++
