@@ -1,14 +1,16 @@
 # `audit`
 
-Read-only conformance check against a user-provided spec. Output is a violation list with `#NNN` references, never a new docx. Fixes happen in a separate `apply` call after the user reviews the report.
+Read-only conformance check. Output is a violation list with `#NNN` references, never a new docx. Fixes happen in a separate `apply` call after the user reviews the report.
 
-## Where the spec comes from
+## Spec
 
-Audit requires a spec — without one, the task is "describe the document", not audit. Common sources:
+Audit always runs against a **baseline**: Word canonical (SKILL.md "Target state") — mechanisms present in the doc must be canonical (one styleId per role, auto-numbering not typed, SEQ-backed captions, REF cross-refs, no orphan defs); absent mechanisms generate no signal. User-provided spec **layers on top** (adds / overrides specific items); never replaces the baseline. Sources of additional spec:
 
-1. **The user's prompt** — rules typed in the request. Highest priority; overrides every axis below.
-2. **A reference docx** the user names as "the format we want to match" — reverse-engineer its styles + numbering and treat that as the spec.
-3. **An external standard** the user names (school template, journal guideline) — load the user-provided copy of it; don't fabricate from training memory.
+1. **The user's prompt** — rules typed in the request. Override / extend baseline.
+2. **A reference docx** the user names as "the format we want to match" — reverse-engineer its styles + numbering and treat as additional spec items.
+3. **An external standard** the user names (school template, journal guideline) — load the user-provided copy; don't fabricate from training memory.
+
+Without an explicit user spec, baseline alone is the spec — the report is still an audit, not "describe the document".
 
 ## Workflow
 
@@ -36,7 +38,13 @@ Tools: `overview` for the visual-style summary + direct-format-per-fingerprint, 
 
 Anything that mimics a mechanism's output via literal characters is a candidate: numbering markers (`一、` / `1.1` / `第N章`), cross-reference counters in prose (`如图 3.2 所示`), caption numbers (`图 2-1`), TOC entries, page numbers in footers, footnote markers (`[1]`), multi-blank-paragraph spacing, tab-aligned column layout, underscore strings for fill-in blanks.
 
-Tools: `overview` skeleton reveals typed prefix shapes; `find_paragraphs --regex` scans for typed counters (figure / table / chapter cites) — coverage view; `find_text` pinpoints the exact run / offset inside a hit; `inspect_caption` lists SEQ-backed identifiers (anything caption-shaped not listed there is typed); `migrate_captions` finds manually-numbered caption paragraphs explicitly.
+**Report every hit; group by context — never filter by intent.** Whether a typed prefix should be retagged is a *fix-time* decision belonging to the user / next stage, not an audit-time filter. Context dimensions worth grouping by so the consumer can decide:
+
+- **Form-architecture chrome** — chrome paragraph followed by empty placeholder slots (a label heading a fill region). Often intentional stable label; standardize typically excludes via `exclude` or skips.
+- **Instructional chrome** — typed-numbered paragraph whose own body IS the content (numbered instructions, notes). Form designer's content; usually preserved.
+- **Author content with typed prefix** — chrome paragraph followed by its own body paragraphs (author typed `第三章 引言\n\n本章介绍...`). Default retag candidate per [standardize.md §3 chrome/content prefixes](standardize.md).
+
+Tools: `overview` skeleton reveals typed prefix shapes; `find_paragraphs --regex` scans for typed counters (figure / table / chapter cites) — coverage view; `find_text` pinpoints the exact run / offset inside a hit; `inspect_neighbors` distinguishes the three context groups above; `inspect_caption` lists SEQ-backed identifiers (anything caption-shaped not listed there is typed); `migrate_captions` finds manually-numbered caption paragraphs explicitly.
 
 ### Axis 3 — is heading hierarchy and numbering correctly wired?
 
