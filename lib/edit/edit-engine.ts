@@ -64,6 +64,7 @@ import {
 import { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 import { emitHyperlinkNode, ensureHyperlinkCharStyle } from "@lib/edit/hyperlink.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
+import { WIdAllocator } from "@lib/edit/wid-allocator.ts"
 import {
   emitRefField,
   switchesForDisplay,
@@ -189,6 +190,11 @@ export interface RunEditOpsInput {
   reader: DocxReader
   edits: EditOp[]
   trackChanges: boolean
+  /** Author written to revision markup's `w:author` attribute. Ignored
+   * when `trackChanges` is false. No internal default — caller passes
+   * what the user supplied; omitted ⇒ empty string ⇒ Word shows
+   * "Unknown Author". Never synthesize a tool-brand default. */
+  author?: string
   /** Live styles.xml with this apply's numbering bindings applied —
    * used by InlineRef to verify the target paragraph's style cascade
    * resolves to a numId. Optional: when absent, the check falls back
@@ -241,7 +247,7 @@ export interface RunEditOpsOutput {
  * own replacement map) plus the applied-ops report.
  */
 export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutput> {
-  const { documentDoc, parsedParagraphs, reader, edits, trackChanges, stylesDoc } = input
+  const { documentDoc, parsedParagraphs, reader, edits, trackChanges, author, stylesDoc } = input
 
   const resolverCtx = buildResolverContext(documentDoc, parsedParagraphs)
   const blockers = detectBlockers(documentDoc, resolverCtx.indexByElement)
@@ -304,10 +310,15 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
     }
   }
 
-  const trackContext = makeTrackContext(trackChanges)
+  // One shared `w:id` allocator for the whole apply — both BookmarkAllocator
+  // (bookmarkStart/End) and TrackContext (ins/del/rPrChange/pPrChange) draw
+  // from this so the document-wide ID space stays collision-free, both
+  // against source IDs and across subsystems.
+  const idAllocator = new WIdAllocator(documentDoc)
+  const trackContext = makeTrackContext(trackChanges, idAllocator, { author })
   const stale = new Set<Element>()
   const imageRegistry = input.imageRegistry ?? (await DocxAssetRegistry.open(reader))
-  const bookmarkAllocator = new BookmarkAllocator(documentDoc)
+  const bookmarkAllocator = new BookmarkAllocator(documentDoc, idAllocator)
 
   // Pre-scan declared anchors so forward refs (a ref citing an anchor in a
   // later edit, or in a later Block of the same op) resolve correctly.

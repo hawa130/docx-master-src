@@ -25,6 +25,7 @@
  */
 
 import type * as z from "zod/mini"
+import type { WIdAllocator } from "@lib/edit/wid-allocator.ts"
 import type {
   BlockSchema,
   BorderEdgeSchema,
@@ -87,6 +88,12 @@ export interface ResolvedEdit {
  * <w:rPrChange> / <w:pPrChange> needs. Author is intentionally empty (we
  * don't fabricate identity); date is fixed per-run for a deterministic
  * change-set fingerprint.
+ *
+ * `nextId` delegates to a `WIdAllocator` shared with the apply's
+ * BookmarkAllocator — revision IDs share the document-wide `w:id` space
+ * with bookmarks, comments, moves and pPrChange/rPrChange, so allocating
+ * from a private counter collides with source IDs and with the
+ * bookmark allocator.
  */
 export interface TrackContext {
   enabled: boolean
@@ -95,13 +102,19 @@ export interface TrackContext {
   date: string
 }
 
-export function makeTrackContext(enabled: boolean, isoDate?: string): TrackContext {
-  let counter = 0
+export function makeTrackContext(
+  enabled: boolean,
+  idAllocator: WIdAllocator,
+  options?: { author?: string; isoDate?: string },
+): TrackContext {
   return {
     enabled,
-    nextId: () => ++counter,
-    author: "",
-    date: isoDate ?? new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+    nextId: () => idAllocator.next(),
+    // Empty string fallback: ECMA-376 §17.13 requires `w:author` to be
+    // present on every revision element, but accepts empty value. We never
+    // synthesize a tool-brand default — unattributed beats fabricated.
+    author: options?.author ?? "",
+    date: options?.isoDate ?? new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
   }
 }
 

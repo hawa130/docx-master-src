@@ -646,12 +646,27 @@ export const EditOpSchema = z.discriminatedUnion("op", [
 
 /* ------------- top-level edit config ------------- */
 
-export const EditConfigSchema = z.strictObject({
-  source: NonEmptyString,
-  output: NonEmptyString,
-  edits: z.array(EditOpSchema).check(z.minLength(1)),
-  trackChanges: z.optional(z.boolean()),
-})
+export const EditConfigSchema = z
+  .strictObject({
+    source: NonEmptyString,
+    output: NonEmptyString,
+    edits: z.array(EditOpSchema).check(z.minLength(1)),
+    trackChanges: z.optional(z.boolean()),
+    /** See ApplyConfigSchema.author — same semantics: written to revision
+     * markup's `w:author` attribute when trackChanges is on; omitted means
+     * Word shows "Unknown Author". Never defaulted to a tool brand. */
+    author: z.optional(NonEmptyString),
+  })
+  .check(
+    z.refine((cfg) => !(cfg.author !== undefined && cfg.author.trim() === ""), {
+      error:
+        "author: must be non-empty / non-whitespace when set. To leave revisions unattributed, omit the field entirely (Word will display 'Unknown Author').",
+    }),
+    z.refine((cfg) => !(cfg.author !== undefined && cfg.trackChanges !== true), {
+      error:
+        "author: only meaningful when `trackChanges: true`. Either enable trackChanges or remove the author field.",
+    }),
+  )
 
 /* ------------- error formatting ------------- */
 

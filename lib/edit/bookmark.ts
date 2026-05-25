@@ -40,6 +40,7 @@
  */
 
 import { NS } from "@lib/parse/types.ts"
+import { WIdAllocator } from "@lib/edit/wid-allocator.ts"
 import { getChildren, wAttr } from "@lib/xml/xml-utils.ts"
 
 export interface BookmarkAssignment {
@@ -80,7 +81,12 @@ export interface Reservation {
 }
 
 export class BookmarkAllocator {
-  private nextId: number
+  /** Document-wide `w:id` allocator, shared with TrackContext when both run
+   * in the same apply so bookmark IDs and revision IDs don't collide with
+   * each other or with pre-existing IDs in the source. Constructed
+   * internally when not provided — single-purpose call sites (caption-only
+   * pipelines, ad-hoc bookmark work) don't need to coordinate. */
+  private readonly idAllocator: WIdAllocator
   /** Tracks every name in use across all three sources: source bookmarks
    * (including non-paragraph-level ones not surfaced in `nameIndex`),
    * bound records, and pending reservations. Used for collision detection
@@ -96,19 +102,14 @@ export class BookmarkAllocator {
    * don't need a numPr binding. */
   private rangeBookmarks = new Set<string>()
 
-  constructor(documentDoc: Document) {
-    this.nextId = 0
+  constructor(documentDoc: Document, idAllocator?: WIdAllocator) {
+    this.idAllocator = idAllocator ?? new WIdAllocator(documentDoc)
     this.usedNames = new Set()
     const root = documentDoc.documentElement
     if (root) {
       const starts = root.getElementsByTagNameNS(NS.w, "bookmarkStart")
       for (let i = 0; i < starts.length; i++) {
         const el = starts[i]!
-        const idAttr = wAttr(el, "id")
-        if (idAttr) {
-          const n = parseInt(idAttr, 10)
-          if (Number.isFinite(n) && n >= this.nextId) this.nextId = n + 1
-        }
         const name = wAttr(el, "name")
         if (!name) continue
         this.usedNames.add(name)
@@ -134,7 +135,7 @@ export class BookmarkAllocator {
   getOrAllocate(pEl: Element): BookmarkAssignment {
     const cached = this.byElement.get(pEl)
     if (cached) return cached
-    const id = this.nextId++
+    const id = this.idAllocator.next()
     const name = this.allocName()
     const assignment: BookmarkAssignment = { id, name }
     this.byElement.set(pEl, assignment)
@@ -209,7 +210,7 @@ export class BookmarkAllocator {
       )
     }
     this.reservations.delete(name)
-    const id = this.nextId++
+    const id = this.idAllocator.next()
     this.usedNames.add(name)
     const assignment: BookmarkAssignment = { id, name }
     this.byElement.set(pEl, assignment)
@@ -252,7 +253,7 @@ export class BookmarkAllocator {
       )
     }
     this.reservations.delete(name)
-    const id = this.nextId++
+    const id = this.idAllocator.next()
     this.usedNames.add(name)
     this.rangeBookmarks.add(name)
     return { id, name }

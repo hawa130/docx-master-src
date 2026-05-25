@@ -595,11 +595,25 @@ export const ApplyConfigSchema = z
     exclude: z.optional(z.array(z.number())),
     edits: z.optional(z.array(EditOpSchema)),
     trackChanges: z.optional(z.boolean()),
+    /** Author name written to `<w:ins>` / `<w:del>` / `<w:rPrChange>` /
+     * `<w:pPrChange>`'s `w:author` attribute when `trackChanges: true`.
+     * No default — when omitted, an empty string is written (Word displays
+     * "Unknown Author"). Set to claim authorship for review handoff;
+     * never defaulted to a tool brand. */
+    author: z.optional(NonEmptyString),
   })
   .check(
     z.refine((cfg) => !(cfg.template !== undefined && cfg.source === undefined), {
       error:
         "template: incompatible with blank-source mode (omitted `source`). Blank-source starts a clean document; template-import is a delta operation that transplants styles into an existing host with its own style cascade — combining them is conceptually inconsistent. Declare `source` when you want template-import, or drop `template` to use blank-source without the transplant.",
+    }),
+    z.refine((cfg) => !(cfg.author !== undefined && cfg.author.trim() === ""), {
+      error:
+        "author: must be non-empty / non-whitespace when set. To leave revisions unattributed, omit the field entirely (Word will display 'Unknown Author').",
+    }),
+    z.refine((cfg) => !(cfg.author !== undefined && cfg.trackChanges !== true), {
+      error:
+        "author: only meaningful when `trackChanges: true`. Either enable trackChanges or remove the author field.",
     }),
   )
 

@@ -562,6 +562,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       reader,
       edits: config.edits,
       trackChanges: config.trackChanges ?? false,
+      author: config.author,
       stylesDoc,
       sections: parsed.sections,
       captions: resolvedCaptions.byIdentifier,

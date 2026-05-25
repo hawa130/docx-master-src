@@ -134,7 +134,9 @@ Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` ru
 
 ## Track-changes mode
 
-`"trackChanges": true` emits edits as Word revision markup: text changes via `<w:ins>` / `<w:del>`, format changes via `<w:rPrChange>` / `<w:pPrChange>` snapshots. The user accepts / rejects in Word's Review tab. Author info is intentionally blank — this is a review affordance, not an authorship claim. Paragraphs that *already* contain tracked changes are blocked; ask the user to accept / reject existing revisions first.
+`"trackChanges": true` emits edits as Word revision markup: text changes via `<w:ins>` / `<w:del>`, format changes via `<w:rPrChange>` / `<w:pPrChange>` snapshots. The user accepts / rejects in Word's Review tab. Paragraphs that *already* contain tracked changes are blocked; ask the user to accept / reject existing revisions first.
+
+`"author"` (optional, only meaningful with `trackChanges: true`) — non-empty string written to the `w:author` attribute of every emitted `<w:ins>` / `<w:del>` / `*Change`. Omitted ⇒ empty value ⇒ Word displays "Unknown Author". Never default this to a tool brand; only set it when the user explicitly names who's authoring the review.
 
 ## Cell-fill strategy
 
