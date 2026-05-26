@@ -194,9 +194,9 @@ export function applyListRestartPass(
  * (`numbering.restart: true` in a ParagraphBlock).
  *
  * Looks up the abstractNumId from the paragraph's current numId in
- * numberingDoc, forks it with `<w:startOverride val="1"/>`, rewrites the
- * paragraph's `<w:numPr>` to use the new numId, and returns the new numId
- * string so subsequent paragraphs can continue on the same fork.
+ * numberingDoc, forks it with `<w:startOverride val="1"/>`, and rewrites the
+ * paragraph's `<w:numPr>` to use the new numId. Restart applies only to this
+ * paragraph; subsequent paragraphs continue with their own declared numbering.
  *
  * Throws when numId doesn't resolve in numberingDoc — schema-valid input but
  * doctree-inconsistent (caller passed a numId not installed in the doc).
@@ -206,7 +206,7 @@ export function applyParagraphLevelRestart(
   numberingDoc: Document,
   numId: string,
   level: number,
-): string {
+): void {
   const w = NS.w
   const root = numberingDoc.documentElement!
   let abstractNumId: string | null = null
@@ -225,5 +225,4 @@ export function applyParagraphLevelRestart(
   }
   const newNumId = forkNumWithStartOverride(numberingDoc, abstractNumId, level)
   setParagraphNumPr(pEl, newNumId, level)
-  return newNumId
 }

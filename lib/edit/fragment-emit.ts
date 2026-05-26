@@ -356,13 +356,14 @@ export interface EmitContext {
    * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
    * + an anchor in input = engine error at emit. */
   adoptAnchor?: (name: string, pEl: Element) => void
-  /** Fork a fresh `<w:num>` for a `ParagraphBlock.numbering.restart: true`
-   * paragraph. The callback mints the fork in numberingDoc, rewrites the
-   * paragraph's `<w:numPr>` to the new numId, and returns the new numId.
-   * Absent ctx.forkNumRestart + `numbering.restart: true` in input = engine
-   * error at emit. The returned numId supersedes the numId from the block for
-   * the purpose of writing `<w:numPr>` — the callback owns that write. */
-  forkNumRestart?: (pEl: Element, numId: string, level: number) => string
+  /** Called when a paragraph block has `numbering.restart: true`. Mints
+   * a fresh numId cloned from the source scheme with startOverride=1,
+   * and writes <w:numPr> on the paragraph element directly. The restart
+   * applies only to this paragraph — subsequent paragraphs in the same
+   * fragment continue with their declared numbering as-is. For
+   * "restart-and-continue" semantics across multiple paragraphs, use
+   * scheme-level `restart: "byHeading"` or `{ atStyleChange }`. */
+  forkNumRestart?: (p: Element, numId: string, level: number) => void
   /** Resolves a `styleId` to a rich `StyleInfo` (display name +
    * outlineLevel + isBuiltInLocalizable). Required for InlineStyleRef
    * nodes — `emitInlineStyleRef` picks one of three locale-safe field
