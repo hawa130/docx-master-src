@@ -11,10 +11,10 @@ export interface TableSummary {
   classification: TableClassification
   rows: number
   cols: number
-  /** First-row cell text snippets, truncated. Empty array if the
-   * first row has no cells or all cells are empty. Renderer uses
-   * this as the source of truth for row1 display — agent decides
-   * whether row1 is "headers" or "first data row" based on context. */
+  /** First-row cell text snippets per cell, trimmed and untruncated.
+   * Each entry corresponds to one <w:tc> in the first row in document order;
+   * cells with no text yield empty strings. Empty array if the first row
+   * has no cells. The overview renderer truncates per-cell at display time. */
   row1Texts: string[]
   /** Short label naming which classifier signal fired. One of:
    *   - "singleTcStack" — every row has 1 <w:tc> AND totalParas > 3 (S1)
