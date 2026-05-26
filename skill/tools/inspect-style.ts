@@ -37,10 +37,17 @@ async function main() {
     }
     const label = sum.label
     const matches = doc.paragraphs.filter((p) => p.fingerprint === label)
-    const styleIds = Array.from(new Set(matches.map((p) => p.styleId)))
 
     // Scan data-table cells for paragraphs that share the same fingerprint.
+    // Must come before styleIds so cell styleIds are included in the union.
     const cellMatches = findDataCellMatches(doc, sum.rawFingerprint)
+
+    // Referenced pStyles: union of indexed-paragraph styleIds and cell-paragraph
+    // styleIds. A fingerprint that appears only in data-table cells would yield
+    // an empty list if we sourced styleIds from `matches` alone.
+    const styleIds = Array.from(
+      new Set([...matches.map((p) => p.styleId), ...cellMatches.map((c) => c.styleId)]),
+    )
 
     const totalCount = matches.length + cellMatches.length
 
