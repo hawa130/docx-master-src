@@ -173,6 +173,11 @@ export function printReport(args: {
     lvlText: string
     suff: "tab" | "space" | "nothing"
   }>
+  /** scheme → numId allocation table. One entry per installed scheme in
+   * declaration order. `explicit=true` means the config set numId; `false`
+   * means the engine auto-allocated. Shown whenever at least one scheme was
+   * installed (dry-run and real apply). */
+  numberingAllocation: Array<{ schemeIndex: number; numId: string; explicit: boolean }>
   templateImport: ImportResult | null
   /** dry-run only: per-op preview of edits[] (locator-resolved, not mutated). */
   editsPreview: EditsPreviewEntry[]
@@ -317,6 +322,19 @@ export function printReport(args: {
     }
     lines.push("  → Verify these indices still match — if document order shifted,")
     lines.push("    exclude entries silently aim at the wrong paragraphs.")
+    lines.push("")
+  }
+  // Numbering scheme → numId allocation table. Shows which numId each declared
+  // scheme was assigned, and whether the id was pinned by config or allocated
+  // by the engine. Lets the agent verify that block-level `numbering: { numId }`
+  // references will land on the intended scheme.
+  if (args.numberingAllocation.length > 0) {
+    lines.push("=== Numbering schemes ===")
+    for (const entry of args.numberingAllocation) {
+      const label = `scheme[${entry.schemeIndex}]`
+      const tag = entry.explicit ? "(explicit)" : "(allocated)"
+      lines.push(`  ${label.padEnd(12)} → numId=${entry.numId} ${tag}`)
+    }
     lines.push("")
   }
   // Auto-numbering bindings: which lvlText each numbered style will gain at

@@ -435,6 +435,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     }>
     numId: string
     abstractNumId: string
+    /** true when scheme.numId was set explicitly in config; false = engine allocated. */
+    numIdExplicit: boolean
   }> = []
   if (config.numbering) {
     const numberingSchemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
@@ -445,6 +447,26 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       if (sid) existingStyleIds.add(sid)
     }
     const validNumberingTargets = new Set([...declaredIds, ...existingStyleIds])
+
+    // First pass: collect explicit numIds and detect collisions before mutating.
+    const claimedNumIds = new Set<number>()
+    for (const [schemeIdx, scheme] of numberingSchemes.entries()) {
+      if (scheme.numId === undefined) continue
+      const path = numberingSchemes.length === 1 ? "numbering" : `numbering[${schemeIdx}]`
+      if (claimedNumIds.has(scheme.numId)) {
+        const prev = numberingSchemes.findIndex(
+          (s, i) => i < schemeIdx && s.numId === scheme.numId,
+        )
+        const prevPath = numberingSchemes.length === 1 ? "numbering" : `numbering[${prev}]`
+        throw new Error(
+          `${path}.numId ${scheme.numId} conflicts with ${prevPath}.numId ${scheme.numId} — ` +
+            `two schemes cannot share the same numId. ` +
+            `Set a different numId on one of them, or remove numId to let the engine allocate.`,
+        )
+      }
+      claimedNumIds.add(scheme.numId)
+    }
+
     for (const [schemeIdx, scheme] of numberingSchemes.entries()) {
       if (scheme.levels.length === 0) continue
       const path = numberingSchemes.length === 1 ? "numbering" : `numbering[${schemeIdx}]`
@@ -484,7 +506,10 @@ export async function applyStyles(source: string, output: string, config: ApplyC
           )
         }
       }
-      const { numId, abstractNumId } = injectNumbering(numberingDoc, scheme)
+      const { numId, abstractNumId } = injectNumbering(numberingDoc, scheme, {
+        claimedNumIds,
+        requestedNumId: scheme.numId,
+      })
       for (const lvl of scheme.levels) {
         attachNumberingToStyle(stylesDoc, lvl.styleId, numId, lvl.level)
       }
@@ -496,6 +521,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         })),
         numId,
         abstractNumId,
+        numIdExplicit: scheme.numId !== undefined,
       })
     }
   }
@@ -1206,6 +1232,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     manualNumberingDetected,
     excludeSamples,
     numberingBindings,
+    numberingAllocation: installedSchemes.map((s, i) => ({
+      schemeIndex: i,
+      numId: s.numId,
+      explicit: s.numIdExplicit,
+    })),
     templateImport,
     editsPreview,
     captionsPreview,

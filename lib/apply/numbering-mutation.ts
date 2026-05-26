@@ -33,6 +33,7 @@ export function resolveSuff(
 export function injectNumbering(
   numberingDoc: Document,
   config: NumberingConfig,
+  opts: { claimedNumIds?: Set<number>; requestedNumId?: number } = {},
 ): { numId: string; abstractNumId: string } {
   const w = NS.w
   const root = numberingDoc.documentElement!
@@ -44,7 +45,20 @@ export function injectNumbering(
     parseInt(wAttr(e, "numId") || "0", 10),
   )
   const nextAbs = (existingAbsIds.length ? Math.max(...existingAbsIds) : -1) + 1
-  const nextNum = (existingNumIds.length ? Math.max(...existingNumIds) : 0) + 1
+
+  let nextNum: number
+  if (opts.requestedNumId !== undefined) {
+    // Explicit numId: use as-is. Collision detection already happened in the
+    // caller before any injectNumbering call.
+    nextNum = opts.requestedNumId
+  } else {
+    // Auto-allocate: start from max + 1 and skip any id claimed by an
+    // explicit-numId scheme (which may not be in the DOM yet).
+    const claimed = opts.claimedNumIds ?? new Set<number>()
+    let candidate = (existingNumIds.length ? Math.max(...existingNumIds) : 0) + 1
+    while (claimed.has(candidate)) candidate++
+    nextNum = candidate
+  }
 
   const abs = numberingDoc.createElementNS(w, "w:abstractNum")
   abs.setAttributeNS(w, "w:abstractNumId", String(nextAbs))

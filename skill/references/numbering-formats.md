@@ -100,6 +100,12 @@ Level 0: 1. / 2. / 3.                   numFmt=decimal  lvlText="%1."  suff="spa
 ```
 Items restart whenever a paragraph bound to the named styleId appears in the document before a list item. Use when the chapter boundary is a custom style that doesn't carry `outlineLvl`.
 
+## Explicit `numId` on a scheme
+
+By default, the engine allocates fresh numIds for declared schemes. To pin a scheme to a specific id — so block-level `numbering: { numId }` references resolve predictably — set `"numId": N` on the scheme. The dry-run report includes a scheme → numId allocation table showing which id each scheme was assigned and whether it was pinned or allocated.
+
+Collision: two schemes requesting the same `numId` cause apply to throw, naming both conflicting entries.
+
 ## lvlText Syntax
 
 - `%N` = counter at level N (1-indexed)

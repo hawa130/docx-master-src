@@ -155,6 +155,11 @@ export const NumLevelSchema = z
   )
 
 export const NumberingSchema = z.strictObject({
+  /** Optional explicit numId. When set, the engine pins this scheme to that
+   * id (clones / creates as needed). Use to make block-level
+   * `numbering: { numId: K }` references resolve deterministically.
+   * Two schemes requesting the same numId cause apply to throw. */
+  numId: z.optional(z.number().check(z.gte(1))),
   levels: z.array(NumLevelSchema).check(z.minLength(1)),
 })
 
