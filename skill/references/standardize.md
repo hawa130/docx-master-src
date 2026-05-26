@@ -265,7 +265,7 @@ The flip side: **a narrow-scope request reduces to declaring less, not switching
 
 - **Letter vs hash labels.** `[A]`, `[B]` sort by frequency this run (volatile across edits); the summary also shows a 6-char content hash next to each letter (`A [c4f9]: ...`). `bulk_rules.fingerprint` and `inspect_style` both accept either — letters for in-session iteration, hashes in configs that survive doc revisions.
 - **Numbered ≠ unnumbered fingerprints.** Hash includes whether a paragraph carries a numbering reference; visually identical paragraphs split when one is auto-numbered and the other isn't.
-- **Layout vs data tables.** Layout tables inline into the skeleton between `--- LAYOUT TABLE ---` markers; data and form tables summarize as one non-paragraph block.
+- **Layout vs data tables.** Layout tables inline into the skeleton between `--- LAYOUT TABLE ---` markers; data tables summarize as one non-paragraph block.
 - **Empty paragraph compression.** Consecutive empties compress (`--- empty ×N ---`); skeleton text truncates to ~40 chars — use `inspect_range` for full text.
 
 ---

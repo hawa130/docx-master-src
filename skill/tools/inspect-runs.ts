@@ -53,7 +53,7 @@ async function main() {
         `Paragraph #${targetIdx} not found. Document has ${max} indexed paragraphs (1..${doc.paragraphs[max - 1]?.index ?? 0}). Closest: #${closest}.`,
       )
       console.error(
-        "Note: paragraphs inside data/form tables are not indexed and cannot be referenced.",
+        "Note: paragraphs inside data tables are not indexed and cannot be referenced.",
       )
       process.exit(1)
     }
@@ -75,7 +75,7 @@ async function main() {
 /**
  * Walks the body in the same order as DocumentParser to assign indices,
  * returning the <w:p> element that matches the target paragraph index.
- * Includes paragraphs inside layout tables; skips data/form tables.
+ * Includes paragraphs inside layout tables; skips data tables.
  */
 function findParagraphElement(doc: Document, targetIdx: number): Element | null {
   const body = firstChildNS(doc.documentElement!, NS.w, "body")

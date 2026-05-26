@@ -9,7 +9,7 @@
  * indexed paragraphs (body + layout-table cells, per DocumentParser). A
  * `range` whose endpoints sit in different containers (one in body, one in a
  * cell) is rejected — replace/insert/delete across structural boundaries
- * has no clean OOXML semantics. Data/form table cells are unindexed and
+ * has no clean OOXML semantics. Data table cells are unindexed and
  * thus only reachable via a `cell` locator.
  */
 
@@ -36,7 +36,7 @@ interface IndexedPara {
 }
 
 /** Walk the document in DocumentParser order and return every indexed
- * paragraph with its element + container. Skips paragraphs inside data/form
+ * paragraph with its element + container. Skips paragraphs inside data
  * tables (they're unindexed; reachable only via cell locator). Also skips
  * engine-managed scaffolding paragraphs — those carry a styleId starting
  * with `_` (currently `_HiddenChapterCounter`, holds the hidden chapter
@@ -66,7 +66,7 @@ export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
             }
           }
         }
-        // data/form: leave untouched — unindexed.
+        // data: leave untouched — unindexed.
       }
     }
   }
@@ -77,9 +77,9 @@ export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
 /* ------------- table walk (for cell locator) ------------- */
 
 interface TableRef {
-  /** 1-based top-level table position (document order). Includes layout, data,
-   * form alike — cell locator addresses any table by position so the
-   * agent can target data/form tables that paragraph indices skip. */
+  /** 1-based top-level table position (document order). Includes layout and
+   * data alike — cell locator addresses any table by position so the
+   * agent can target data tables that paragraph indices skip. */
   tableIndex: number
   element: Element
 }

@@ -77,7 +77,7 @@ async function main() {
         `Paragraph #${targetIdx} not found. Document has ${max} indexed paragraphs (${range}). Closest: #${closest.index}.`,
       )
       console.error(
-        "Note: paragraphs inside data/form tables are not indexed and cannot be referenced.",
+        "Note: paragraphs inside data tables are not indexed and cannot be referenced.",
       )
       process.exit(1)
     }

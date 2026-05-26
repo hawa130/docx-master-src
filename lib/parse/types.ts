@@ -33,7 +33,7 @@ export interface ComputedParaStyle {
   numLevel?: number
 }
 
-export type TableClassification = "layout" | "data" | "form"
+export type TableClassification = "layout" | "data"
 
 export interface ParsedParagraph {
   index: number
@@ -118,6 +118,7 @@ export type DocumentElement =
       rows: number
       cols: number
       headers: string[]
+      firstRowLooksLikeHeader: boolean
       sectionIndex: number
       paragraphs: ParsedParagraph[] // only populated for layout tables
     }

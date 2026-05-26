@@ -300,7 +300,7 @@ The dry-run report includes per-section before → after — verify the selector
 
 ## Paragraph mapping
 
-Paragraphs are 1-based, matching `#001`, `#002` labels in the overview skeleton. Paragraphs inside layout tables are included in the numbering; paragraphs inside data tables and form tables are not indexed.
+Paragraphs are 1-based, matching `#001`, `#002` labels in the overview skeleton. Paragraphs inside layout tables are included in the numbering; paragraphs inside data tables are not indexed.
 
 ```jsonc
 exclude: [1, 2, 3],                    // never touch — overrides everything else

@@ -36,6 +36,7 @@ type RawItem =
       rows: number
       cols: number
       headers: string[]
+      firstRowLooksLikeHeader: boolean
       sectionIndex: number
       // for layout tables: include paragraphs (as raw items)
       innerParagraphs?: ParsedParagraph[]
@@ -115,6 +116,7 @@ export class DocumentParser {
             rows: summary.rows,
             cols: summary.cols,
             headers: summary.headers,
+            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
             sectionIndex: this.currentSection,
             innerParagraphs: innerParas,
           })
@@ -131,6 +133,7 @@ export class DocumentParser {
             rows: summary.rows,
             cols: summary.cols,
             headers: summary.headers,
+            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
             sectionIndex: this.currentSection,
           })
         }
@@ -193,6 +196,7 @@ export class DocumentParser {
             rows: summary.rows,
             cols: summary.cols,
             headers: summary.headers,
+            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
             sectionIndex: this.currentSection,
             innerParagraphs: innerParas,
           })
@@ -208,6 +212,7 @@ export class DocumentParser {
             rows: summary.rows,
             cols: summary.cols,
             headers: summary.headers,
+            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
             sectionIndex: this.currentSection,
           })
         }
@@ -545,6 +550,7 @@ export class DocumentParser {
           rows: it.rows,
           cols: it.cols,
           headers: it.headers,
+          firstRowLooksLikeHeader: it.firstRowLooksLikeHeader,
           sectionIndex: it.sectionIndex,
           paragraphs: it.innerParagraphs ?? [],
         })

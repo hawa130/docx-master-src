@@ -11,8 +11,8 @@ import { summarizeTable } from "@lib/parse/table-classifier.ts"
  *   table T row R col C  → text snippet (first 40 chars)
  *
  * Used before composing a `cell` locator. Lists every top-level table —
- * data, form, layout — because cell locators can address any of them
- * (paragraph indices skip data/form, but cell locators don't).
+ * data, layout — because cell locators can address any of them
+ * (paragraph indices skip data tables, but cell locators don't).
  */
 
 async function main() {
@@ -78,7 +78,7 @@ function cellText(tc: Element): string {
 }
 
 /** "  paras: 58–89" / "  paras: 60" / "" (empty when cell paragraphs are
- * unindexed, i.e. inside a data/form table — cell locator addresses them
+ * unindexed, i.e. inside a data table — cell locator addresses them
  * by [r,c] anyway). Layout-table paragraphs each have a #NNN; surfacing
  * the span lets agents pick a non-cross-cell range locator. */
 function formatParaSpan(tc: Element, indexByElement: Map<Element, number>): string {

@@ -374,7 +374,7 @@ function renderSkeleton(doc: LoadedDoc, paras: ParasMode): string[] {
     if (sec.footerPageNumFormat) lines.push(`Footer page num: ${sec.footerPageNumFormat}`)
     lines.push("")
     const elems = sectionElements.get(sec.index) || []
-    // Track running paragraph index so non-indexed elements (data/form tables,
+    // Track running paragraph index so non-indexed elements (data tables,
     // images, page breaks, equations) can be filtered by their positional
     // context — they belong to the slice iff a preceding-or-current indexed
     // paragraph falls inside it.
@@ -422,7 +422,7 @@ function elementInRange(
     if (el.paragraphs.length === 0) return false
     return el.paragraphs.some((p) => p.index >= range.from && p.index <= range.to)
   }
-  // Non-indexed elements (data/form tables, image, pageBreak, equation,
+  // Non-indexed elements (data tables, image, pageBreak, equation,
   // sectionBreak): treat as attached to their positional anchor.
   return anchor >= range.from && anchor <= range.to
 }
@@ -452,14 +452,19 @@ function renderElement(
         lines.push(`${indent}    #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
       }
       lines.push(`${indent}--- END LAYOUT TABLE ---`)
-    } else if (el.classification === "data") {
-      const headers = el.headers
-        .map((h) => `"${truncate(h, 12)}"`)
-        .slice(0, el.cols)
-        .join(",")
-      lines.push(`${indent}--- TABLE (${el.rows}×${el.cols}) headers:[${headers}] ---`)
     } else {
-      lines.push(`${indent}--- FORM TABLE (${el.rows}×${el.cols}) ---`)
+      // data: print headers only if first row looks like a header row
+      // (short / bold cells dominate). Otherwise omit — fewer false
+      // "headers:[label, value]" lines on form-shaped tables.
+      if (el.firstRowLooksLikeHeader) {
+        const headers = el.headers
+          .map((h) => `"${truncate(h, 12)}"`)
+          .slice(0, el.cols)
+          .join(",")
+        lines.push(`${indent}--- TABLE (${el.rows}×${el.cols}) headers:[${headers}] ---`)
+      } else {
+        lines.push(`${indent}--- TABLE (${el.rows}×${el.cols}) ---`)
+      }
     }
   } else if (el.kind === "image") {
     lines.push(`${indent}--- IMAGE (${el.widthCm.toFixed(1)}cm × ${el.heightCm.toFixed(1)}cm) ---`)

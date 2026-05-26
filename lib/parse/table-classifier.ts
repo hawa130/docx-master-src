@@ -12,6 +12,7 @@ export interface TableSummary {
   rows: number
   cols: number
   headers: string[]
+  firstRowLooksLikeHeader: boolean
 }
 
 /** Single cell holding more paragraphs than this is treated as a body
@@ -83,7 +84,7 @@ export function summarizeTable(tbl: Element): TableSummary {
   // frames, etc.). Falls through the normal classification path to
   // "data" otherwise, which hides the box's content.
   if (rowCount === 1 && maxCols === 1) {
-    return { classification: "layout", rows: rowCount, cols: maxCols, headers }
+    return { classification: "layout", rows: rowCount, cols: maxCols, headers, firstRowLooksLikeHeader: false }
   }
 
   let classification: TableClassification = "data"
@@ -92,22 +93,19 @@ export function summarizeTable(tbl: Element): TableSummary {
   } else if (hasOutlineHeading || maxCellParas > BULK_CELL_PARA_THRESHOLD) {
     classification = "layout"
   } else if (rowCount > 1 && maxCols > 1) {
-    if (looksLikeHeaderRow(rows[0]!)) {
-      classification = "data"
-    } else if (looksLikeForm(rows)) {
-      classification = "form"
-    } else {
-      classification = "data"
-    }
-  } else {
+    // First-row-looks-like-header is now a renderer hint, not a
+    // classifier branch — both data and what was previously "form"
+    // collapse to "data" since their downstream behavior is identical.
     classification = "data"
   }
+  // else: default "data" from initialization
 
   return {
     classification,
     rows: rowCount,
     cols: maxCols,
     headers,
+    firstRowLooksLikeHeader: rows.length > 0 ? looksLikeHeaderRow(rows[0]!) : false,
   }
 }
 
@@ -140,19 +138,4 @@ function looksLikeHeaderRow(tr: Element): boolean {
   }
   const ratio = (boldCells + shortCells) / (total * 2)
   return boldCells >= Math.ceil(total / 2) || ratio > 0.6
-}
-
-function looksLikeForm(rows: Element[]): boolean {
-  // label-value pattern: short text in left column(s), longer/empty in right
-  let formish = 0
-  for (const tr of rows) {
-    const tcs = getChildrenNS(tr, NS.w, "tc")
-    if (tcs.length < 2) continue
-    const leftText = collectCellText(tcs[0]!).trim()
-    const rightText = collectCellText(tcs[tcs.length - 1]!).trim()
-    if (leftText.length > 0 && leftText.length <= 12) {
-      if (rightText.length === 0 || rightText.length >= leftText.length) formish++
-    }
-  }
-  return formish >= Math.ceil(rows.length / 2)
 }
