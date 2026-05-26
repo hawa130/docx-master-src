@@ -20,13 +20,15 @@ import { forkNumWithStartOverride, setParagraphNumPr } from "@lib/apply/numberin
  *                          Classic use: 1./2./3. lists in Chapter 1 that
  *                          should start fresh in Chapter 2.
  *
- *   "byHeading"          — restart whenever the nearest preceding heading-
- *                          styled paragraph (any style with <w:outlineLvl>)
- *                          changes. The engine tracks the heading styleId
- *                          seen most recently before each list paragraph;
- *                          when it changes, a new fork is started. Use for
- *                          "each chapter gets its own 1, 2, 3, …" without
- *                          caring which heading level triggered it.
+ *   "byHeading"          — restart whenever a heading-styled paragraph
+ *                          (any style with <w:outlineLvl>, or a paragraph
+ *                          with direct <w:outlineLvl> in its own pPr) is
+ *                          encountered. Each heading increments a per-target
+ *                          epoch counter; when a list paragraph's last-seen
+ *                          epoch differs from the current epoch, a new fork
+ *                          is started. Use for "each chapter gets its own
+ *                          1, 2, 3, …" without caring which heading level
+ *                          triggered it.
  *
  *   { atStyleChange: S } — restart whenever a paragraph bound to styleId S
  *                          precedes the current list paragraph. Useful when
@@ -42,6 +44,28 @@ import { forkNumWithStartOverride, setParagraphNumPr } from "@lib/apply/numberin
  * Only single-level schemes with a non-"continuous" restart are forked;
  * multi-level schemes and continuous single-level schemes are skipped.
  */
+
+/**
+ * Build the set of styleIds that declare <w:outlineLvl> in their <w:pPr>
+ * in styles.xml. Used by applyListRestartPass for byHeading mode to detect
+ * heading paragraphs via the style cascade, not just via direct pPr overrides.
+ */
+export function buildHeadingStyleIdSet(stylesDoc: Document): Set<string> {
+  const w = NS.w
+  const result = new Set<string>()
+  const root = stylesDoc.documentElement
+  if (!root) return result
+  for (const styleEl of getChildrenNS(root, w, "style")) {
+    const id = wAttr(styleEl, "styleId")
+    if (!id) continue
+    const pPr = firstChildNS(styleEl, w, "pPr")
+    if (!pPr) continue
+    const outlineLvlEl = firstChildNS(pPr, w, "outlineLvl")
+    if (outlineLvlEl) result.add(id)
+  }
+  return result
+}
+
 export function applyListRestartPass(
   documentDoc: Document,
   numberingDoc: Document,
@@ -54,9 +78,10 @@ export function applyListRestartPass(
     numId: string
     abstractNumId: string
   }>,
+  headingStyleIds?: ReadonlySet<string>,
 ): void {
   type RestartMode = "perInstance" | "byHeading" | { atStyleChange: string }
-  type Target = { styleId: string; abstractNumId: string; level: number; mode: RestartMode }
+  type Target = { styleId: string; abstractNumId: string; level: number; mode: RestartMode; baseNumId: string }
   const targets: Target[] = []
   for (const scheme of installedSchemes) {
     if (scheme.levels.length !== 1) continue
@@ -67,6 +92,7 @@ export function applyListRestartPass(
       abstractNumId: scheme.abstractNumId,
       level: lvl.level,
       mode: lvl.restart as RestartMode,
+      baseNumId: scheme.numId,
     })
   }
   if (targets.length === 0) return
@@ -94,15 +120,21 @@ export function applyListRestartPass(
   const w = NS.w
 
   // Per-target boundary tracker state.
-  //   "byHeading":          headingOwner tracks the styleId of the most-recently-
-  //                         seen heading paragraph. When it changes, the current run
-  //                         is flushed so the next item starts a fresh fork.
+  //   "byHeading":          headingEpoch tracks a monotonically-incrementing
+  //                         counter that advances each time any heading paragraph
+  //                         is encountered. lastSeenEpoch[targetStyleId] records
+  //                         the epoch at the time of the most recent list paragraph.
+  //                         When the current epoch differs from lastSeenEpoch, a
+  //                         boundary has been crossed since the last list paragraph
+  //                         and the run is flushed. This correctly handles multiple
+  //                         chapters using the same heading styleId (e.g. Heading1).
   //   { atStyleChange: S }: atStylePending is set true when the marker style is seen;
   //                         the next list paragraph flushes and clears it.
-  const headingOwner = new Map<string, string | null>() // targetStyleId → heading styleId
+  const headingEpoch = { value: 0 } // global epoch; increments on every heading paragraph
+  const lastSeenEpochByStyle = new Map<string, number>() // targetStyleId → epoch at last list para
   const atStylePending = new Map<string, boolean>() // targetStyleId → marker seen?
   for (const t of targets) {
-    if (t.mode === "byHeading") headingOwner.set(t.styleId, null)
+    if (t.mode === "byHeading") lastSeenEpochByStyle.set(t.styleId, 0)
     else if (typeof t.mode === "object") atStylePending.set(t.styleId, false)
   }
 
@@ -114,19 +146,18 @@ export function applyListRestartPass(
     const pStyleEl = pPr ? firstChildNS(pPr, w, "pStyle") : null
     const paragraphStyleId = pStyleEl ? wAttr(pStyleEl, "val") : ""
 
-    // Detect whether this paragraph is a heading boundary (has outlineLvl in
-    // its direct pPr). Style-cascade-inherited outlineLvl is not checked here
-    // because list-restart.ts doesn't receive styles.xml; heading styles always
-    // set outlineLvl directly (that's how Word populates TOC navigation), so
-    // direct-pPr detection is sufficient in practice.
+    // Detect whether this paragraph is a heading boundary. Two detection paths:
+    //   1. The paragraph's styleId is in the heading style set (style declares
+    //      <w:outlineLvl> in styles.xml — the normal case for all Heading1-N).
+    //   2. The paragraph has a direct <w:outlineLvl> in its own pPr (one-off
+    //      override that doesn't go through a heading styleId).
+    // The headingStyleIds set is pre-computed by the caller from styles.xml so
+    // this pass doesn't need to receive the stylesDoc directly.
     let isHeading = false
-    let isHeadingStyleId: string | null = null
-    if (pPr) {
-      const outlineLvlEl = firstChildNS(pPr, w, "outlineLvl")
-      if (outlineLvlEl) {
-        isHeading = true
-        isHeadingStyleId = paragraphStyleId || null
-      }
+    if (paragraphStyleId && headingStyleIds?.has(paragraphStyleId)) {
+      isHeading = true
+    } else if (pPr && firstChildNS(pPr, w, "outlineLvl")) {
+      isHeading = true
     }
 
     const target = paragraphStyleId ? styleIdToTarget.get(paragraphStyleId) : undefined
@@ -142,7 +173,31 @@ export function applyListRestartPass(
           if (t.styleId !== target.styleId && t.mode === "perInstance") flush(t.styleId)
         }
       } else if (mode === "byHeading") {
-        // Run continues; heading-boundary flushes happen in the non-target branch.
+        // Check whether a heading boundary was crossed since the last list
+        // paragraph for this target. The epoch counter advances on every
+        // heading paragraph, so even if all chapters use the same styleId,
+        // each chapter increments the epoch and triggers a flush.
+        const lastEpoch = lastSeenEpochByStyle.get(target.styleId)!
+        if (lastEpoch !== headingEpoch.value) {
+          flush(target.styleId)
+          lastSeenEpochByStyle.set(target.styleId, headingEpoch.value)
+        }
+
+        // Check for block-level restart override: if this paragraph already has
+        // a direct <w:numPr> with a numId different from the scheme's base numId,
+        // it was forked by a block-level restart:true pass — treat it as an
+        // explicit override and don't rewrite it. Flush the current run so the
+        // next paragraph starts fresh, but don't add this paragraph to any run.
+        const existingNumPr = pPr ? firstChildNS(pPr, w, "numPr") : null
+        if (existingNumPr) {
+          const numIdEl = firstChildNS(existingNumPr, w, "numId")
+          const existingNumId = numIdEl ? wAttr(numIdEl, "val") : null
+          if (existingNumId !== null && existingNumId !== target.baseNumId) {
+            flush(target.styleId)
+            continue
+          }
+        }
+
         currentRunByStyle.get(target.styleId)!.push(child)
       } else {
         // atStyleChange: if the marker was seen since the last list paragraph,
@@ -155,19 +210,14 @@ export function applyListRestartPass(
       }
     } else {
       // Non-target paragraph — update boundary tracking state.
+      if (isHeading) {
+        // Advance the global epoch so every byHeading target detects the boundary.
+        headingEpoch.value++
+      }
       for (const t of targets) {
         if (t.mode === "perInstance") {
           // Any non-target paragraph breaks the run.
           flush(t.styleId)
-        } else if (t.mode === "byHeading") {
-          // Only heading paragraphs trigger a boundary for this mode.
-          if (isHeading) {
-            const prevOwner = headingOwner.get(t.styleId)
-            if (prevOwner !== isHeadingStyleId) {
-              flush(t.styleId)
-              headingOwner.set(t.styleId, isHeadingStyleId)
-            }
-          }
         } else if (typeof t.mode === "object") {
           if (paragraphStyleId === t.mode.atStyleChange) {
             // Marker style seen — next list paragraph starts a new run.

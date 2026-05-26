@@ -19,7 +19,7 @@ import {
   injectNumbering,
   resolveSuff,
 } from "@lib/apply/numbering-mutation.ts"
-import { applyListRestartPass } from "@lib/apply/list-restart.ts"
+import { applyListRestartPass, buildHeadingStyleIdSet } from "@lib/apply/list-restart.ts"
 import { detectManualNumbering } from "@lib/parse/manual-numbering-detect.ts"
 import { validateDocxFile } from "@lib/shared/docx-validate.ts"
 import { extractDisplayFields, printReport } from "@lib/shared/report.ts"
@@ -816,7 +816,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // unconditionally so standardize-only configs (no edits, no cross-refs
   // beyond captions) still trigger it.
   if (installedSchemes.length > 0 && !listRestartApplied) {
-    applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
+    const headingStyleIds = buildHeadingStyleIdSet(stylesDoc)
+    applyListRestartPass(documentDoc, numberingDoc, installedSchemes, headingStyleIds)
     listRestartApplied = true
   }
 
