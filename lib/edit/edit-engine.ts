@@ -20,7 +20,7 @@ import { DocxReader } from "@lib/xml/reader.ts"
 import { NS, type ParsedParagraph, type SectionInfo } from "@lib/parse/types.ts"
 import { buildStyleResolver } from "@lib/parse/style-names.ts"
 import { sectionForParagraph, sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
-import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent } from "@lib/xml/xml-utils.ts"
 import { PPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import {
   assertNever,
@@ -941,7 +941,26 @@ function isParagraphElement(el: Element): boolean {
 // MDF skip is now decided from the source Block.type at the inheritance
 // call site, where the agent's declared intent is unambiguous.)
 
-function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document): void {
+/** pPr fields where an explicit styleId on the new Block is meant to
+ * govern. When the engine inherits anchor pPr via MDF, these fields
+ * are stripped so the styleId cascade reaches them. Without this strip,
+ * a direct <w:outlineLvl w:val="1"/> on the anchor would override the
+ * Heading 1 outline level cascaded from ProposalH1, mis-tagging the
+ * new paragraph as Heading 2. */
+const STYLE_GOVERNED_PPR_FIELDS = new Set([
+  "outlineLvl",
+  "numPr",
+  "pageBreakBefore",
+  "widowControl",
+  "spacing",
+])
+
+function inheritPPrFromAnchor(
+  newP: Element,
+  anchor: Element,
+  ownerDoc: Document,
+  blockHasExplicitStyleId: boolean,
+): void {
   const anchorPPr = firstChildNS(anchor, w, "pPr")
   if (!anchorPPr) return
   let newPPr = firstChildNS(newP, w, "pPr")
@@ -970,6 +989,12 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
     // Skip the tracked-changes pPr snapshot — that's history, not content.
     if (c.localName === "pPrChange") continue
     if (c.localName === "rPr" && newHasPStyle) continue
+    // When the Block carries an explicit styleId, strip style-governed fields
+    // so the styleId cascade reaches them. Without this, a direct
+    // <w:outlineLvl> on the anchor would override the heading level that
+    // ProposalH1 (or any heading style) declares, rendering a Heading 1 as
+    // Heading 2 in the navigation pane and TOC.
+    if (blockHasExplicitStyleId && STYLE_GOVERNED_PPR_FIELDS.has(c.localName!)) continue
     const existing = existingByName.get(c.localName!)
     if (existing) {
       // MDF: agent's paraFormat overrides only the attrs it explicitly sets;
@@ -990,6 +1015,37 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
   // buildPPrChildren already pushed (e.g. anchor `ind` after our `spacing`
   // and before our `jc`). Plain appendChild would mis-order them.
   for (const c of toClone) insertChildInOrder(newPPr, c, PPR_CHILD_ORDER)
+}
+
+/** Inherit the anchor's first non-empty run rPr into the new paragraph's
+ * runs when the Block has no explicit runFormat. This implements the
+ * run-side of MDF: new paragraphs adopt the anchor's typeface so they
+ * blend visually into the destination context rather than falling back to
+ * the docDefault font (Calibri / 宋体). Only fields not already declared
+ * on the run's rPr are inherited — explicit runFormat choices always win. */
+function inheritAnchorRunRPr(
+  newRunRPr: Element,
+  anchorEl: Element,
+  newRunHasExplicitFormat: boolean,
+): void {
+  if (newRunHasExplicitFormat) return
+  const anchorRuns = getChildrenNS(anchorEl, w, "r")
+  const firstNonEmpty = anchorRuns.find((r) => textContent(r).trim().length > 0)
+  if (!firstNonEmpty) return
+  const anchorRPr = firstChildNS(firstNonEmpty, w, "rPr")
+  if (!anchorRPr) return
+  const existingNames = new Set(
+    getChildren(newRunRPr)
+      .filter((c) => c.namespaceURI === w)
+      .map((c) => c.localName!),
+  )
+  for (const child of getChildren(anchorRPr)) {
+    if (child.namespaceURI !== w) continue
+    // Skip tracked-changes rPr snapshots — history, not content.
+    if (child.localName === "rPrChange") continue
+    if (existingNames.has(child.localName!)) continue
+    newRunRPr.appendChild(child.cloneNode(true))
+  }
 }
 
 /** Copy `source`'s attributes onto `target`, leaving any attribute already
@@ -1024,7 +1080,34 @@ function inheritFormatForNewParagraphs(
     const block = newBlocks[i]!
     if (block.type !== "paragraph") continue
     if (!isParagraphElement(el)) continue
-    inheritPPrFromAnchor(el, anchor, ownerDoc)
+    const blockHasExplicitStyleId = block.styleId !== undefined
+    inheritPPrFromAnchor(el, anchor, ownerDoc, blockHasExplicitStyleId)
+    // Run-side MDF: inherit anchor's first-run rPr into new runs when
+    // the Block has no explicit runFormat. Each run that fragment-emit
+    // produced gets the same treatment — a paragraph with mixed inline
+    // formats should still pick up the anchor's base font for unstyled
+    // runs (the explicit-format check inside inheritAnchorRunRPr handles
+    // per-run overrides).
+    const blockHasExplicitRunFormat = block.runFormat !== undefined
+    for (const r of getChildrenNS(el, w, "r")) {
+      // Only inherit into runs that don't already carry an rPr that was
+      // set by an inline piece's own `format` field. A run with an rPr
+      // element was explicitly formatted by the agent; a run without one
+      // is the default-font fallback that MDF should upgrade.
+      const existingRPr = firstChildNS(r, w, "rPr")
+      if (existingRPr !== null) {
+        // Run already has some explicit formatting — only fill missing fields.
+        inheritAnchorRunRPr(existingRPr, anchor, blockHasExplicitRunFormat)
+      } else if (!blockHasExplicitRunFormat) {
+        // Run has no rPr at all and block has no default runFormat — create
+        // an rPr and populate from the anchor.
+        const newRPr = ownerDoc.createElementNS(w, "w:rPr")
+        inheritAnchorRunRPr(newRPr, anchor, false)
+        if (newRPr.childNodes.length > 0) {
+          r.insertBefore(newRPr, r.firstChild)
+        }
+      }
+    }
   }
 }
 

@@ -49,11 +49,15 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 - **`set-run`** — `{ "at": <run-locator>, "with": "value text", "format"?: { ... } }`. Replaces the targeted run's text while preserving its rPr (font / underline / size carry through). Use for filling form-fill placeholder runs without manually reconstructing label + value runs. `format` accepts the same fields as `runFormat` (bold / italic / underline / strike / color / fontLatin / fontCJK / size / vertAlign); absent, the run's existing rPr stays verbatim.
 - **`edit-caption`** — `{ "target": { "anchor": "<name>" } | { "captionId": "<id>", "index": N }, "text": "<string>" }`. Replaces the body text of an existing caption paragraph; preserves SEQ / STYLEREF fields and bookmark so cross-references keep resolving. Throws on EquationBlock targets (no body). See [`captions.md`](captions.md).
 
-### Match-destination formatting (default)
+### MDF (Match Destination Formatting) inheritance
 
-`replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` — same semantics as Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
+`replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` and the anchor's first non-empty run's `<w:rPr>`. This matches Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
 
-**Bold-pMark trap**: a label paragraph (heading-style) often has bold paragraph-mark rPr; the empty placeholder row beneath it inherits that bold. When you `replace` or `insert-after` against either, MDF would propagate the bold into your new paragraph's pPr-mark — and Word's style cascade can't undo it (it's not run rPr, not paragraph rPr). The engine handles the common case: when the new paragraph carries an explicit `styleId`, the anchor's pPr-mark rPr is skipped on inheritance and the style cascade governs. If you skip styleId (rare; Block uses MDF fallback), explicit `runFormat: { bold: false }` on each run is the override (writes `<w:b w:val="0"/>`).
+**With explicit `styleId` on the Block**, the engine skips these anchor pPr fields so the style cascade reaches them: `outlineLvl`, `numPr`, `pageBreakBefore`, `widowControl`, `spacing`. The full `<w:rPr>` from the anchor's pMark is also skipped (so the style's run rPr wins). Without this, a direct `<w:outlineLvl w:val="1"/>` on the anchor would override the heading level that `ProposalH1` declares, misclassifying the new paragraph in the TOC and navigation pane.
+
+**With explicit `runFormat` on a run**, the engine does not inherit the anchor's run rPr for that run — the Block's explicit format is canonical.
+
+If you need to opt out of MDF entirely (rare), set `"styleId": "Normal"` on the Block.
 
 ### Blocks (in `with` / `content`)
 
