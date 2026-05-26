@@ -42,7 +42,7 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 
 ### Ops
 
-- **`replace`** — `{ ..., "with": [Block, ...] }`. Removes targets, inserts fragment in their place.
+- **`replace`** — `{ ..., "with": [Block, ...] }`. Removes targets, inserts fragment in their place. Pair with `"overwriteFields": true` to allow the replace to absorb paragraphs that contain SEQ/REF/fldChar complex fields (typical caption-iteration scenario). Revisions and SDT remain blocking regardless.
 - **`insert-before` / `insert-after`** — `{ ..., "content": [Block, ...] }`. Inserts fragment immediately before / after the target.
 - **`delete`** — `{ ... }`. Removes the targeted paragraph(s).
 - **`format`** — `{ ..., "styleId"?, "runFormat"?, "paraFormat"?, "clearDirect"? }`. Mutates existing paragraphs without changing their content. At least one of styleId / runFormat / paraFormat / clearDirect required. `clearDirect: ["pPr"] | ["rPr"] | ["pPr","rPr"] | "all"` — drop direct pPr/rPr children before applying the new format (keeps `<w:pStyle>` and `<w:numPr>` on pPr — those control style binding). Useful when restyling a paragraph carrying historical direct overrides you want gone. Note: `["pPr"]` also removes the paragraph-mark rPr (`<w:pPr><w:rPr>`) — this is the rPr that styles a paragraph's pilcrow / end mark, often inherited from anchor. To preserve the pMark rPr while clearing other direct pPr children, use `clearDirect: ["pPr"]` plus an explicit `runFormat` (which the engine writes after the clear).
@@ -57,8 +57,6 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 **With explicit `styleId` on the Block**, the engine skips these anchor pPr fields so the style cascade reaches them: `outlineLvl`, `numPr`, `pageBreakBefore`, `widowControl`, `spacing`. `spacing` is included because heading / body styles typically declare paragraph spacing; if you need to preserve the anchor's spacing instead of the styleId's, set explicit `paraFormat.spaceBefore` / `spaceAfter` / `lineSpacing` on the Block. The full `<w:rPr>` from the anchor's pMark is also skipped (so the style's run rPr wins). Without this, a direct `<w:outlineLvl w:val="1"/>` on the anchor would override the heading level that `ProposalH1` declares, misclassifying the new paragraph in the TOC and navigation pane.
 
 **With explicit `runFormat` on a run**, the engine does not inherit the anchor's run rPr for that run — the Block's explicit format is canonical.
-
-If you need to opt out of MDF entirely (rare), set `"styleId": "Normal"` on the Block.
 
 ### Blocks (in `with` / `content`)
 
@@ -143,12 +141,6 @@ Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` ru
 `"trackChanges": true` emits edits as Word revision markup: text changes via `<w:ins>` / `<w:del>`, format changes via `<w:rPrChange>` / `<w:pPrChange>` snapshots. The user accepts / rejects in Word's Review tab. Paragraphs that *already* contain tracked changes are blocked; ask the user to accept / reject existing revisions first.
 
 `"author"` (optional, only meaningful with `trackChanges: true`) — non-empty string written to the `w:author` attribute of every emitted `<w:ins>` / `<w:del>` / `*Change`. Omitted ⇒ empty value ⇒ Word displays "Unknown Author". Never default this to a tool brand; only set it when the user explicitly names who's authoring the review.
-
-## `overwriteFields` — caption / cross-ref iteration
-
-Once an `apply` run has emitted SEQ / REF fields into a cell (typical caption pipeline output), a subsequent `replace` against the same cell paragraphs is blocked by default — the blocker scan refuses paragraphs containing `<w:fldChar>` / complex field regions.
-
-Set `"overwriteFields": true` on the `replace` op when you intend to regenerate the cell's content from scratch. The engine drops the existing fields together with the paragraphs. Revisions (`<w:ins>` / `<w:del>`) and form controls (`<w:sdt>`) are still blocking — they require user action regardless.
 
 ## Cell-fill strategy
 

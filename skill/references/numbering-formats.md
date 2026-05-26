@@ -71,7 +71,9 @@ Level 0: [1] / [2] / [3]                numFmt=decimal  lvlText="[%1]"   suff="s
 ```
 Body-text cites to these (or to any auto-numbered caption / heading) go through `InlineRef` in `edits[]`, not literal text. See [`cross-references.md`](cross-references.md).
 
-### restart options
+### restart
+
+Scheme-level `restart` controls how the counter sequence resets across the document. Default is `"continuous"` (one counter for the whole doc).
 
 | Value | Behavior |
 |---|---|
@@ -80,25 +82,7 @@ Body-text cites to these (or to any auto-numbered caption / heading) go through 
 | `"byHeading"` | Restart whenever the nearest preceding heading-styled paragraph (any style with `outlineLvl`) changes. Use for "each chapter has 1, 2, 3, …" patterns. |
 | `{ "atStyleChange": "ProposalH2" }` | Restart whenever a paragraph bound to the named styleId appears. For chapter boundaries marked by a custom style that doesn't carry `outlineLvl`. |
 
-Block-level explicit restart (`numbering: { numId, level, restart: true }`) overrides scheme-level behavior at that paragraph. The engine forks a fresh numId with `<w:startOverride val="1"/>` at that point; items that follow continue on the new fork. Use when a single mid-list position needs a hard reset that scheme-level `restart` can't express.
-
-### Procedural Numbered Lists (`restart: "perInstance"`)
-```
-Level 0: 1. / 2. / 3.                   numFmt=decimal  lvlText="%1."  suff="space"  restart="perInstance"
-```
-When the same scheme is meant to drive multiple separate list blocks (steps in Chapter 1 numbered 1./2./3., independent steps in Chapter 2 also starting from 1.), opt in to per-instance restart. The engine forks a fresh `numId` per contiguous run of paragraphs bound to the scheme and writes `<w:startOverride val="1"/>` on each fork. An "instance" is broken by any paragraph not bound to the scheme's styleId — e.g. a heading or body paragraph between two list blocks.
-
-### Chapter-scoped Numbered Lists (`restart: "byHeading"`)
-```
-Level 0: 1. / 2. / 3.                   numFmt=decimal  lvlText="%1."  suff="space"  restart="byHeading"
-```
-Items restart at 1 each time a new heading paragraph (any style with `outlineLvl`) appears before them. Intervening body paragraphs do not break the run — only heading changes do. Use when multiple chapters should each show independent 1, 2, 3 sequences but list items within a chapter may be separated by body text.
-
-### Restart at a Specific Style (`restart: { atStyleChange: "..." }`)
-```
-Level 0: 1. / 2. / 3.                   numFmt=decimal  lvlText="%1."  suff="space"  restart={ atStyleChange: "ProposalH2" }
-```
-Items restart whenever a paragraph bound to the named styleId appears in the document before a list item. Use when the chapter boundary is a custom style that doesn't carry `outlineLvl`.
+Block-level `numbering: { numId, level, restart: true }` overrides scheme-level behavior at one paragraph. The engine forks a fresh numId with `<w:startOverride val="1"/>` at that point; use when a single mid-list position needs a hard reset the scheme-level value can't express.
 
 ## Explicit `numId` on a scheme
 

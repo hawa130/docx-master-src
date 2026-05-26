@@ -59,9 +59,13 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 
 **Creating from scratch.** Omit `source` to scaffold from the bundled blank template (one empty Normal paragraph, A4 portrait, no other styles or numbering). Declare what you need in the usual blocks (`styles` / `numbering` / `pageSetup` / `headerFooter` / `edits`); `styles[]` must use Mode B (direct fields) since the blank has no representative paragraphs to extract from. The empty paragraph at index 1 is a `replace` or `insert-after` target (`insert-before` creates a stray leading empty paragraph; `delete` would empty the body). Incompatible with `template` (transplanting from a template into a blank is conceptually inconsistent — start with a host source if you need template-import).
 
-## Workflow
+## Common document shapes
 
-**Archetype check first:** Before picking specific tools, see if the document matches an archetype in `references/archetypes/`. Archetype docs codify common pitfalls and recommended workflows — skipping them re-discovers known issues.
+If the doc matches a recurring shape, the routing below is your starting line — common pitfalls already addressed in canonical refs.
+
+- **Chinese government / institutional forms (申报书 / 申请表 / 报告表)** — cover (1×1, 2×2, 8×2 form tables) + personnel/budget data tables + one big content table (16×2 with merged rows) holding 90% of narrative. Classifier recognizes the content table as `layout`; cells reachable via `cell` locator. Typical workflow: standardize-shape with `stripPrefixPatterns` + ProposalH-style chain + numId scheme + per-cell narrative fills via `cell` locator. Cover 1×1 table is also `layout` — address its title via global paragraph index, not `cell`.
+
+## Workflow
 
 1. **Survey.** `overview` first. From the output, note:
    - **Existing structure** — Heading levels, numbering schemes (with consumption counts; 0 = orphan), fingerprints, document skeleton.
@@ -113,7 +117,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 
 ## Cross-command invariants
 
-- Original file is never modified; every applying CLI writes a fresh copy + validates before keeping. Only errors *introduced* by the run are fatal — pre-existing source errors (VML, `mc:AlternateContent`, `numId="0"`) are non-fatal warnings. `--allow-validation-warnings` keeps output even on new errors (debugging only). Details: [`standardize.md §Validation behavior`](references/standardize.md#validation-behavior).
+- Original file is never modified; every applying CLI writes a fresh copy + validates before keeping. Only errors *introduced* by the run are fatal — pre-existing source errors are non-fatal warnings. `--allow-validation-warnings` keeps output even on new errors (debugging only). Details: [`standardize.md §Validation behavior`](references/standardize.md#validation-behavior).
 - Section properties sparse-by-design: untouched unless declared via `pageSetup`. Details: [`config-schema.md`](references/config-schema.md#page-setup).
 - Paragraph indexing is 1-based, matching `#NNN` in skeleton. Layout-table paragraphs are indexed; data / form-table paragraphs aren't. Both are reachable by surgical edits — layout cells via global `#NNN` index, data cells via `cell` locator with optional `paragraph: K` / `to: M`. `RunLocator` accepts cell coords too for `set-run`. See [`references/edit.md` locator table](references/edit.md#locators-at).
 - All `edits[]` locators resolve against the **pre-edits** document state — `#NNN` from `overview` is what locators reference, regardless of intervening ops. Resolved Element refs survive subsequent mutations.

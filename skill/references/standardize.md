@@ -350,6 +350,4 @@ A complete standardize-shape config combines the four blocks. This is a referenc
 
 ## Validation behavior
 
-`apply` validates the output docx after writing. Only errors **introduced by this apply run** are fatal (output deleted, exit 1). Validation errors already present in the source — common with templates from Word, WPS, LibreOffice, Apache POI (VML in footers, `mc:AlternateContent`, `numId="0"` sentinels) — are reported as warnings and do not block output.
-
-Pass `--allow-validation-warnings` to keep the output even when new errors are introduced. Typical use: debugging a config that produces invalid output you still want to inspect.
+`apply` validates the output docx after writing. Only errors **introduced by this apply run** are fatal; pre-existing errors in the source are warnings and do not block output. Pass `--allow-validation-warnings` to keep output even when new errors are introduced (debugging only).
