@@ -63,6 +63,7 @@ import {
 } from "@lib/edit/track-changes.ts"
 import { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 import { emitHyperlinkNode, ensureHyperlinkCharStyle } from "@lib/edit/hyperlink.ts"
+import { applyParagraphLevelRestart } from "@lib/apply/list-restart.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import { WIdAllocator } from "@lib/edit/wid-allocator.ts"
 import {
@@ -218,6 +219,10 @@ export interface RunEditOpsInput {
    *  to the same body rels file — sharing a single registry instance
    *  avoids racing rId allocation. */
   imageRegistry?: DocxAssetRegistry
+  /** Live numbering.xml Document — wired in by apply-styles so that
+   * ParagraphBlock.numbering.restart forks can mint fresh numIds at emit
+   * time. When absent, `numbering.restart: true` throws at emit. */
+  numberingDoc?: Document | null
 }
 
 export interface RunEditOpsOutput {
@@ -247,7 +252,7 @@ export interface RunEditOpsOutput {
  * own replacement map) plus the applied-ops report.
  */
 export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutput> {
-  const { documentDoc, parsedParagraphs, reader, edits, trackChanges, author, stylesDoc } = input
+  const { documentDoc, parsedParagraphs, reader, edits, trackChanges, author, stylesDoc, numberingDoc } = input
 
   const resolverCtx = buildResolverContext(documentDoc, parsedParagraphs)
   const blockers = detectBlockers(documentDoc, resolverCtx.indexByElement)
@@ -488,6 +493,9 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
     adoptAnchor: (name, pEl) => {
       bookmarkAllocator.adoptName(name, pEl)
     },
+    forkNumRestart: numberingDoc
+      ? (pEl, numId, level) => applyParagraphLevelRestart(pEl, numberingDoc, numId, level)
+      : undefined,
   }
   const perOp: ApplyEditsReport["perOp"] = []
   for (const [i, edit] of resolved.entries()) {

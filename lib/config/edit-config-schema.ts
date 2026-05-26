@@ -193,6 +193,14 @@ export const RichTextSchema = z.union([z.string(), z.array(InlineNodeSchema)])
 const NumberingRefSchema = z.strictObject({
   numId: NonEmptyString,
   level: z.number().check(z.gte(0), z.lte(8)),
+  /** Force a counter restart at this paragraph. The engine forks a fresh
+   * `<w:num>` pointing to the same abstractNumId with
+   * `<w:startOverride val="1"/>` so this item and subsequent items on the
+   * same scheme display 1, 2, 3 … from here. Use for mid-list resets that
+   * scheme-level `restart` can't express (e.g. the second list inside a
+   * section that already has `restart: "byHeading"` but needs a manual reset
+   * at a non-heading boundary). */
+  restart: z.optional(z.boolean()),
 })
 
 /* ------------- blocks ------------- */

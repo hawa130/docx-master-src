@@ -428,7 +428,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // is the canonical multi-scheme case). Each scheme allocates a fresh
   // numId and binds its levels independently.
   const installedSchemes: Array<{
-    levels: ReadonlyArray<{ level: number; styleId: string; restart: "continuous" | "perInstance" }>
+    levels: ReadonlyArray<{
+      level: number
+      styleId: string
+      restart: "continuous" | "perInstance" | "byHeading" | { atStyleChange: string }
+    }>
     numId: string
     abstractNumId: string
   }> = []
@@ -587,6 +591,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       sections: parsed.sections,
       captions: resolvedCaptions.byIdentifier,
       imageRegistry: bodyAssetRegistry,
+      numberingDoc,
     })
     editsApplied = result.report.applied
     editsTrackChanges = result.report.trackChanges

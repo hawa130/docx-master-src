@@ -356,6 +356,13 @@ export interface EmitContext {
    * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
    * + an anchor in input = engine error at emit. */
   adoptAnchor?: (name: string, pEl: Element) => void
+  /** Fork a fresh `<w:num>` for a `ParagraphBlock.numbering.restart: true`
+   * paragraph. The callback mints the fork in numberingDoc, rewrites the
+   * paragraph's `<w:numPr>` to the new numId, and returns the new numId.
+   * Absent ctx.forkNumRestart + `numbering.restart: true` in input = engine
+   * error at emit. The returned numId supersedes the numId from the block for
+   * the purpose of writing `<w:numPr>` — the callback owns that write. */
+  forkNumRestart?: (pEl: Element, numId: string, level: number) => string
   /** Resolves a `styleId` to a rich `StyleInfo` (display name +
    * outlineLevel + isBuiltInLocalizable). Required for InlineStyleRef
    * nodes — `emitInlineStyleRef` picks one of three locale-safe field
@@ -423,14 +430,28 @@ function emitParagraphBlock(
       pPr.appendChild(ps)
     }
     if (block.numbering) {
-      const numPr = ownerDoc.createElementNS(w, "w:numPr")
-      const ilvl = ownerDoc.createElementNS(w, "w:ilvl")
-      ilvl.setAttributeNS(w, "w:val", String(block.numbering.level))
-      numPr.appendChild(ilvl)
-      const numId = ownerDoc.createElementNS(w, "w:numId")
-      numId.setAttributeNS(w, "w:val", block.numbering.numId)
-      numPr.appendChild(numId)
-      pPr.appendChild(numPr)
+      if (block.numbering.restart) {
+        // Paragraph-level explicit restart: fork a fresh numId via the callback.
+        // The callback writes <w:numPr> on p directly, so we skip the normal
+        // numPr emit here. Throw early if the callback wasn't wired — this is
+        // a config error (caller must pass numberingDoc via RunEditOpsInput).
+        if (!ctx.forkNumRestart) {
+          throw new Error(
+            `ParagraphBlock.numbering.restart: true requires numberingDoc to be available. ` +
+              `Pass numberingDoc in RunEditOpsInput (apply-styles always does; standalone edit runs need it when using numbering.restart).`,
+          )
+        }
+        ctx.forkNumRestart(p, block.numbering.numId, block.numbering.level)
+      } else {
+        const numPr = ownerDoc.createElementNS(w, "w:numPr")
+        const ilvl = ownerDoc.createElementNS(w, "w:ilvl")
+        ilvl.setAttributeNS(w, "w:val", String(block.numbering.level))
+        numPr.appendChild(ilvl)
+        const numId = ownerDoc.createElementNS(w, "w:numId")
+        numId.setAttributeNS(w, "w:val", block.numbering.numId)
+        numPr.appendChild(numId)
+        pPr.appendChild(numPr)
+      }
     }
     if (block.paraFormat) {
       for (const c of buildPPrChildren(block.paraFormat, ownerDoc)) pPr.appendChild(c)
