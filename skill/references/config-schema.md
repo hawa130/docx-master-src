@@ -174,26 +174,6 @@ Modes mix in the same array. `overrides` companions `fromParagraph` — layer ad
 
 ```jsonc
 numbering: {
-  // Scheme-level restart behavior. Single-level schemes only.
-  // (Multi-level schemes use lvlRestart on each level entry instead.)
-  // Accepted values:
-  //   - "continuous" (default): one numId, items continue regardless of
-  //       intervening paragraphs.
-  //   - "perInstance": fork a fresh numId per contiguous run of same-styleId
-  //       paragraphs so each list block restarts at 1
-  //       (procedural 1./2./3. lists only).
-  //   - "byHeading": restart whenever the nearest preceding paragraph with
-  //       outlineLvl changes.
-  //   - { "atStyleChange": "<styleId>" }: restart at every paragraph bound
-  //       to the named styleId.
-  //
-  //   Block-level override: numbering: { numId, level, restart: true } forks a
-  //   fresh numId with <w:startOverride val="1"/> at one paragraph — use when a
-  //   single mid-list position needs a hard reset the scheme-level value can't express.
-  //
-  //   For SEQ-based per-chapter caption numbering use captions.chapterPrefix
-  //   instead — see § "Captions" below.
-  "restart": "continuous",
   levels: [
     {
       level:   0,                        // REQUIRED. 0-8.
@@ -225,11 +205,33 @@ numbering: {
         color: "3370FF",                 //   number marker only — independent of the
         bold:  false,                    //   title text.
       },
+      // Counter scope for single-level schemes. Default "continuous" — one
+      // counter shared by every paragraph bound to this level.
+      // Accepted values:
+      //   "continuous": one numId, items continue regardless of intervening paragraphs.
+      //   "perInstance": fork a fresh numId per contiguous run of same-styleId
+      //       paragraphs so each list block restarts at 1 (procedural 1./2./3. lists).
+      //   "byHeading": restart whenever the nearest preceding paragraph with
+      //       outlineLvl changes.
+      //   { "atStyleChange": "<styleId>" }: restart at every paragraph bound
+      //       to the named styleId.
+      //
+      //   Block-level override: numbering: { numId, level, restart: true } forks a
+      //   fresh numId with <w:startOverride val="1"/> at one paragraph — use when a
+      //   single mid-list position needs a hard reset this field can't express.
+      //
+      //   For SEQ-based per-chapter caption numbering use captions.chapterPrefix
+      //   instead — see § "Captions" below.
+      //
+      //   Ignored on multi-level schemes (which use lvlRestart on each level for resets).
+      restart: "continuous",
     },
     ...
   ]
 }
 ```
+
+`restart` is a **level-entry** field — it lives inside `levels[i]`, not at the scheme root. For single-level schemes (the common case for `byHeading` / `atStyleChange`), this means setting it on the single level entry. The behavior is conceptually scheme-wide because single-level schemes have only one counter, but the JSON placement is inside `levels[i]`.
 
 Omit `numbering` entirely if the document has no numbered headings/lists.
 
@@ -237,7 +239,9 @@ Omit `numbering` entirely if the document has no numbered headings/lists.
 
 By default the engine allocates fresh numIds for declared schemes. To pin a scheme to a specific id — so block-level `numbering: { numId }` references resolve predictably — set `"numId": N` on the scheme object (sibling of `levels`). The dry-run report includes a scheme → numId allocation table showing which id each scheme was assigned and whether it was pinned or allocated.
 
-Collision: two schemes requesting the same `numId` cause apply to throw, naming both conflicting entries.
+The engine always creates a fresh `<w:abstractNum>` + `<w:num>` pair. Pinning a `numId` that already exists in `numbering.xml` (from a pre-existing scheme) produces a duplicate `<w:num>` with that id — the engine does not detect this, and behavior is renderer-dependent. Only pin numIds that are not already present in the source document.
+
+Collision: two config-declared schemes requesting the same `numId` cause apply to throw, naming both conflicting entries.
 
 Pattern templates and `numFmt` values: see [`numbering-formats.md`](numbering-formats.md).
 
