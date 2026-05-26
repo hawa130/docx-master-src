@@ -1,0 +1,3 @@
+
+[stderr]
+Error: ENOENT: no such file or directory, open '_local/fixtures/table-padding-showcase.docx'

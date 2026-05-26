@@ -1,0 +1,3 @@
+
+[stderr]
+Error: ENOENT: no such file or directory, open '_local/fixtures/_filled_proposal.docx'

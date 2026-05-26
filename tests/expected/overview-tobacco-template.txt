@@ -1,0 +1,188 @@
+=== Document Metadata ===
+File:    申报书模板.docx
+Size:    30.8 KB
+Title:   中国烟草总公司文件
+Author:  cc
+Paragraphs: 94
+Sections:   1
+
+=== Page Setup ===
+Paper:       A4 (210 × 297 mm)
+Orientation: portrait
+Margins:     top=37 bottom=30 left=27 right=27 mm
+Text width:  156 mm / 442.2 pt
+
+=== Theme ===
+Major font: Aptos Display
+Minor font: Aptos
+Accent colors: accent1=#156082 accent2=#E97132 accent3=#196B24 accent4=#0F9ED5 accent5=#A02B93 accent6=#4EA72E
+
+=== Style Definitions (styles.xml) ===
+  ProposalH1 "ProposalH1" [paragraph]  usage=21  {14pt, 黑体, left, outlineLvl=0, numId=2}
+  3 "heading 3" [paragraph] basedOn=a  usage=4  {Bold, 仿宋_GB2312, outlineLvl=2, numId=1}
+  1 "heading 1" [paragraph] basedOn=a0  usage=2  {黑体, left, numId=1}
+  (10 unused styles hidden — pass --include-unused to show)
+
+=== Numbering Definitions (numbering.xml) ===
+  numId=1 (abstract=0)  used by 0 paragraphs
+    L0: numFmt=chineseCounting lvlText="%1、" start=1
+    L1: numFmt=chineseCounting lvlText="（%2）" start=1
+    L2: numFmt=decimal lvlText="%3．" start=1
+    L3: numFmt=decimal lvlText="（%4）" start=1
+    L4: numFmt=decimalEnclosedCircleChinese lvlText="%5" start=1
+    L5: numFmt=decimal lvlText="%6）" start=1
+    L6: numFmt=lowerLetter lvlText="%7．" start=1
+    L7: numFmt=lowerLetter lvlText="%8）" start=1
+    L8: numFmt=lowerRoman lvlText="%9 " start=1
+  numId=2 (abstract=1)  used by 21 paragraphs
+    L0: numFmt=chineseCountingThousand lvlText="%1、" start=1 pStyle=ProposalH1
+    L1: numFmt=chineseCountingThousand lvlText="（%2）" start=1 pStyle=ProposalH2
+    L2: numFmt=decimal lvlText="%3." start=1 pStyle=ProposalH3
+
+=== Visual Style Summary (deduplicated) ===
+A [746912]: 宋体 12pt Both                         ×22  avg 6ch  via "Normal"/a
+B [02200e]: 黑体 14pt Left Heading-2               ×21  avg 10ch  via "ProposalH1"/ProposalH1
+C [23246d]: 宋体 14pt Left                         ×9  avg 0ch  via "Normal"/a
+D [9a65e1]: 仿宋_GB2312 14pt Both                  ×6  avg 16ch  via "Normal"/a
+E [64b486]: 仿宋_GB2312 12pt Left 1stIndent        ×5  avg 7ch  via "Normal"/a
+F [96225c]: 仿宋_GB2312 16pt Both                  ×5  avg 0ch  via "Normal"/a
+G [b450c5]: 仿宋_GB2312 10.5pt Both 1stIndent Heading-3 ×4  avg 0ch  via "heading 3"/3
+H [42a496]: 仿宋_GB2312 12pt Left                  ×4  avg 15ch  via "Normal"/a
+I [9677e2]: 楷体_GB2312 16pt Center                ×4  avg 7ch  via "Normal"/a
+J [fb8457]: 仿宋_GB2312 14pt Both                  ×4  avg 41ch  via "Normal"/a
+K [e0c1ff]: 黑体 9pt Both Heading-2                ×3  avg 0ch  via "Normal"/a
+L [b16425]: 方正小标宋简体 26pt Center                  ×2  avg 10ch  via "Normal"/a
+M [ec5112]: 仿宋_GB2312 5pt Left Heading-1         ×1  avg 0ch  via "heading 1"/1
+N [7a1429]: 黑体 16pt Left 1stIndent Heading-1     ×1  avg 0ch  via "heading 1"/1
+O [56ce8e]: 宋体 10.5pt Both                       ×1  avg 0ch  via "Normal"/a
+P [5772d9]: 黑体 16pt Underline Both               ×1  avg 0ch  via "Normal"/a
+Q [2afa81]: 黑体 18pt Center                       ×1  avg 7ch  via "Normal"/a
+
+=== Direct Format per Fingerprint ===
+  A  pPr: adjustRightInd, snapToGrid, rPr(pMark)  |  rPr: rFonts, sz, lang
+  B  pPr: pStyle, pageBreakBefore, adjustRightInd, snapToGrid, spacing, ind, outlineLvl  |  rPr: (none)
+  C  pPr: adjustRightInd, snapToGrid, spacing, jc, rPr(pMark)  |  rPr: (none)
+  D  pPr: adjustRightInd, spacing, ind, rPr(pMark)  |  rPr: rFonts, sz, lang
+  E  pPr: adjustRightInd, spacing, ind, jc, rPr(pMark)  |  rPr: rFonts, sz, lang
+  F  pPr: adjustRightInd, snapToGrid, spacing, rPr(pMark)  |  rPr: (none)
+  G  pPr: pStyle, numPr, tabs, ind, rPr(pMark)  |  rPr: (none)
+  H  pPr: tabs, spacing, jc, rPr(pMark)  |  rPr: rFonts, sz, lang
+  I  pPr: adjustRightInd, snapToGrid, jc, rPr(pMark)  |  rPr: rFonts, sz, szCs, lang
+  J  pPr: adjustRightInd, spacing, ind, rPr(pMark)  |  rPr: rFonts, sz, lang, szCs
+  K  pPr: adjustRightInd, snapToGrid, spacing, outlineLvl, rPr(pMark)  |  rPr: (none)
+  L  pPr: adjustRightInd, snapToGrid, jc, rPr(pMark)  |  rPr: rFonts, sz, szCs
+  M  pPr: pStyle, widowControl, numPr, tabs, spacing, rPr(pMark)  |  rPr: (none)
+  N  pPr: pStyle, widowControl, numPr, tabs, ind, rPr(pMark)  |  rPr: (none)
+  O  pPr: rPr(pMark)  |  rPr: (none)
+  P  pPr: adjustRightInd, snapToGrid, spacing, rPr(pMark)  |  rPr: (none)
+  Q  pPr: adjustRightInd, snapToGrid, spacing, ind, jc, rPr(pMark)  |  rPr: rFonts, sz, szCs, lang
+
+=== Document Skeleton ===
+--- Section 1 (para #1-#94) ---
+Header: (none)
+Footer: (none)
+
+  #001 --- empty ---
+--- TABLE (2×2) ---
+  #002 --- empty ×2 ---
+  #004 [L]  "中国烟草总公司陕西省公司"
+  #005 [L]  "科技项目申报书"
+  #006 --- empty ×2 ---
+--- TABLE (8×2) ---
+  #008 --- empty ×2 ---
+  #010 [I]  "中国烟草总公司陕西省公司"
+  #011 [I]  "二〇二五年制"
+--- PAGEBREAK ---
+  #012 [Q]  "填 报 说 明"
+  #013 [I]  "（2025年版）"
+  #014 --- empty ---
+  #015 [J]  "一、申请承担中国烟草总公司陕西省公司科技项目必须填报本申报书。"
+  #016 [D]  "二、请按栏目要求，实事求是，逐条认真填写，概念、术语、表达简洁明确，符合规范并使…"
+  #017 [D]  "三、申报书封面所指项目类别依次按 “类别一”“类别二”填写，项目领域按照表格中项…"
+  #018 [J]  "四、申报书所列归口申报单位为省公司各部门、直属单位，各市级烟草公"
+  #019 [J]  "司。"
+  #020 [J]  "五、申报书电子文档按要求在全省系统科技项目管理系统填报，作为后续项目专家评审的唯…"
+  #021 [B]  "项目名称（< 25字）"
+--- LAYOUT TABLE ---
+    #022 [P]  ""
+--- END LAYOUT TABLE ---
+  #023 --- empty ---
+  #024 [B]  "项目类别"
+--- TABLE (3×2) ---
+  #025 --- empty ---
+  #026 [B]  "项目起止日期"
+  #027 --- empty ---
+  #028 [A]  "年 月至 年 月"
+  #029 --- empty ---
+  #030 [B]  "项目承担单位"
+--- TABLE (6×5) ---
+  #031 [B]  "项目主要负责人"
+--- TABLE (3×9) ---
+  #032 --- empty ---
+  #033 [B]  "项目主要参加人"
+--- TABLE (14×8) ---
+  #034 [B]  "项目经费预算表"
+--- TABLE (26×10) ---
+  #035 --- empty ---
+--- LAYOUT TABLE ---
+    #036 [H]  "直接经费测算说明："
+    #037 [A]  "1. 设备费："
+    #038 [A]  ""
+    #039 [A]  "2. 材料费："
+    #040 [A]  ""
+    #041 [A]  "3. 测试化验加工费："
+    #042 [A]  ""
+    #043 [A]  "4. 燃料动力费："
+    #044 [A]  ""
+    #045 [A]  "5. 会议/差旅/国际合作交流费："
+    #046 [A]  ""
+    #047 [A]  "6. 出版/文献/信息传播/知识产权事务费："
+    #048 [A]  ""
+    #049 [A]  "7. 劳务费："
+    #050 [A]  ""
+    #051 [A]  "8. 专家咨询费："
+    #052 [A]  ""
+    #053 [A]  "9. 外协合作费："
+    #054 [A]  ""
+    #055 [A]  "10. 其他支出："
+    #056 [D]  ""
+    #057 [H]  "间接经费测算说明："
+    #058 [D]  ""
+    #059 [B]  "项目研究内容摘要（<200字）"
+    #060 [B]  "研究内容"
+    #061 [B]  "与本项目相关的前期研究基础"
+    #062 [B]  "项目主要技术关键及创新点"
+    #063 [B]  "项目成果呈现形式及预期技术经济指标"
+    #064 [B]  "项目实施方案"
+    #065 [B]  "年度进度安排及考核指标"
+    #066 [B]  "项目成果推广应用方案"
+    #067 [B]  "承担单位及协作单位现有基础条件"
+    #068 [B]  "项目主要负责人学术背景"
+    #069 [B]  "项目承担单位任务分工（含协作单位）"
+    #070 [B]  "项目承担单位意见"
+    #071 [C]  ""
+    #072 [C]  ""
+    #073 [D]  ""
+    #074 [G]  ""
+    #075 [C]  ""
+    #076 [E]  "签 章"
+    #077 [E]  "年 月 日"
+    #078 [B]  "项目推广单位意见"
+    #079 [H]  "本单位为项目成果的推广实施主体，负责项目成果的转化推广。"
+    #080 [D]  ""
+    #081 [G]  ""
+    #082 [C]  ""
+    #083 [C]  ""
+    #084 [E]  "签 章"
+    #085 [H]  "年 月 日"
+    #086 [B]  "归口申报单位意见"
+    #087 [C]  ""
+    #088 [C]  ""
+    #089 [C]  ""
+    #090 [C]  ""
+    #091 [G]  ""
+    #092 [E]  "签 章"
+    #093 [E]  "年 月 日"
+--- END LAYOUT TABLE ---
+  #094 --- empty ---
+
