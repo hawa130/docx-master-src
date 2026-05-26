@@ -42,6 +42,7 @@ import {
   detectBlockers,
   explainBlockerReason,
   summarizeBlockers,
+  type BlockerReason,
   type BlockerScan,
 } from "@lib/edit/blockers.ts"
 import {
@@ -282,6 +283,12 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   // boundary so it's a clear contract, not a half-rendered output.
   if (trackChanges) {
     for (const [i, op] of edits.entries()) {
+      if (op.op === "merge") {
+        throw new Error(
+          `edits[${i}] (merge): merge under trackChanges=true is not supported. ` +
+            `Run merge in a separate apply without trackChanges.`,
+        )
+      }
       const frag =
         op.op === "replace"
           ? op.with
@@ -527,6 +534,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx, {
         bookmarkAllocator,
         captionsMap: input.captions,
+        blockersByElement: blockers.byElement,
       })
     } catch (err) {
       const msg = (err as Error).message
@@ -831,6 +839,11 @@ function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) 
 interface ApplyDeps {
   bookmarkAllocator: BookmarkAllocator
   captionsMap: Map<string, ResolvedCaptionConfig> | undefined
+  /** Pre-computed blocker map — merge uses this to refuse targets with
+   * revision markup, SDT, or complex fields. Same map `validateAgainstBlockers`
+   * consumed; threaded here as defense-in-depth so `applyMerge` enforces the
+   * contract even if called outside the standard runEditOps pipeline. */
+  blockersByElement: Map<Element, BlockerReason>
 }
 
 function applyEditCaptionOp(
@@ -922,7 +935,7 @@ function applyOne(
     case "edit-caption":
       return applyEditCaptionOp(edit.op, documentDoc, deps)
     case "merge":
-      return applyMerge(edit.target, edit.op, stale)
+      return applyMerge(edit.target, edit.op, stale, deps.blockersByElement)
     default:
       return assertNever(edit.op)
   }
@@ -1262,11 +1275,25 @@ function applyMerge(
   target: ResolvedTarget,
   op: Extract<EditOp, { op: "merge" }>,
   stale: Set<Element>,
+  blockersByElement: Map<Element, BlockerReason>,
 ): number {
   if (target.paragraphs.length < 2) {
     throw new Error(
       `merge: needs >= 2 paragraphs, got ${target.paragraphs.length}. Use a range or cell-paragraph-range locator covering at least two paragraphs.`,
     )
+  }
+  // Blockers: refuse to merge through revision markup, SDT, or fields.
+  // Same class as replace/delete blocker scan — validates conservatively
+  // across ALL target paragraphs (not just non-survivors) because absorbing
+  // any paragraph with tracked changes or field content silently destroys it.
+  for (const p of target.paragraphs) {
+    const reason = blockersByElement.get(p)
+    if (reason) {
+      throw new Error(
+        `merge: paragraph contains ${explainBlockerReason(reason)} — refusing to merge. ` +
+          `Accept/reject existing tracked changes or resolve fields/controls before merging.`,
+      )
+    }
   }
   const keepPPr = op.keepPPr ?? "first"
   const survivor =
