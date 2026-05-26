@@ -79,6 +79,13 @@ string form when you mean an exact line height.
 }
 ```
 
+## Top-level config fields
+
+- **`source`** (string, optional) — path to the input docx. The original file is never modified. Omit to scaffold from a blank template (one empty Normal paragraph, A4 portrait). Required when a `template` block is declared.
+- **`output`** (string, **required**) — path for the output docx. Must differ from `source`.
+- **`dryRun`** (boolean, default `false`) — when `true`, run the pipeline in memory and produce a change report without writing a file. Equivalent to the `--dry-run` CLI flag.
+- **`allowValidationWarnings`** (boolean, default `false`) — keep the output docx even when apply introduces new OOXML validation errors. Pre-existing source errors are always non-fatal (baseline-diff). Use for debugging configs that produce invalid output you still want to inspect. CLI: `--allow-validation-warnings`. See [standardize.md](standardize.md) Validation behavior.
+
 ## Style entries
 
 `styles[]` is required and holds at least one entry. Each entry follows one of two shapes (mix freely across the array — pick per role).
