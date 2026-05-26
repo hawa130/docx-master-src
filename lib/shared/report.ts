@@ -133,6 +133,181 @@ function renderVsDirect(r: VsDirectReport, lines: string[]): void {
   }
 }
 
+/* ------------- drift map ------------- */
+
+/** One contiguous band in the pre→post index drift map.
+ *  `kind="unchanged"`: pre indices mapped 1-to-1 (no offset change in band).
+ *  `kind="deleted"`: pre indices removed by a delete / replace op.
+ *  `kind="merged"`: pre indices consumed by a merge op.
+ *  `kind="shifted"`: pre indices still present but at a different post index. */
+type DriftBand =
+  | { kind: "unchanged"; preStart: number; preEnd: number }
+  | { kind: "deleted"; preStart: number; preEnd: number }
+  | { kind: "merged"; preStart: number; preEnd: number }
+  | { kind: "shifted"; preStart: number; preEnd: number; postStart: number }
+
+/**
+ * Compute a compact pre→post paragraph index drift map from a set of dry-run
+ * edit previews.  Returns an empty array when there is no body-level drift
+ * (all ops are format / set-run / cell-container ops that don't shift body
+ * indices).
+ *
+ * @param entries   Per-op previews from `previewEditOps`.
+ * @param totalPre  Last paragraph index (inclusive) in the pre-edit document.
+ *                  When > 0 the map shows trailing unchanged bands; when ≤ 0
+ *                  the map stops after the last affected region.
+ */
+export function computeDriftBands(
+  entries: EditsPreviewEntry[],
+  totalPre: number,
+): DriftBand[] {
+  // Keep only body ops that actually move paragraphs.
+  const bodyOps = entries.filter((e) => {
+    if (e.container !== "body") return false
+    // net delta = 0 and no removals → no drift contribution
+    return e.willReplaceOrDeleteIndices.length > 0 || e.willInsertCount > 0
+  })
+  if (bodyOps.length === 0) return []
+
+  // Build a sorted map: pre-index → what happened to it.
+  // kind: "deleted" | "merged" — indices that are gone post-edit.
+  const removedKind = new Map<number, "deleted" | "merged">()
+
+  // Collect sorted "offset events": after processing all paragraphs up to
+  // `afterIndex` (inclusive), the running post-offset shifts by `delta`.
+  // Events are sorted by afterIndex ascending so we can sweep left-to-right.
+  type OffsetEvent = { afterIndex: number; delta: number }
+  const offsetEvents: OffsetEvent[] = []
+
+  for (const e of bodyOps) {
+    const removed = e.willReplaceOrDeleteIndices
+    if (removed.length === 0) {
+      // Pure insert-before / insert-after: no removals, only additions.
+      // The anchor determines where the offset jump happens.
+      const anchor = e.targetParaIndices[0] ?? -1
+      if (anchor < 0) continue
+      const delta = e.willInsertCount
+      if (delta === 0) continue
+      if (e.op === "insert-before") {
+        // New paras land before `anchor`, shifting anchor and everything after.
+        offsetEvents.push({ afterIndex: anchor - 1, delta })
+      } else {
+        // insert-after: new paras land after `anchor`.
+        offsetEvents.push({ afterIndex: anchor, delta })
+      }
+      continue
+    }
+
+    // Sorted ascending for easy range detection.
+    const sortedRemoved = [...removed].sort((a, b) => a - b)
+    const isMerge = e.op === "merge"
+    const kind: "deleted" | "merged" = isMerge ? "merged" : "deleted"
+    for (const idx of sortedRemoved) {
+      removedKind.set(idx, kind)
+    }
+    // For merge: N removed, 1 survivor inserted → net = -(N-1)
+    // For replace: N removed, K inserted
+    // For delete: N removed, 0 inserted
+    const effectiveInserted = isMerge ? 1 : e.willInsertCount
+    const netDelta = effectiveInserted - sortedRemoved.length
+    if (netDelta !== 0) {
+      // Offset kicks in after the last removed index.
+      offsetEvents.push({ afterIndex: sortedRemoved[sortedRemoved.length - 1]!, delta: netDelta })
+    }
+  }
+
+  if (removedKind.size === 0 && offsetEvents.length === 0) return []
+
+  // Sort events by afterIndex for left-to-right sweep.
+  offsetEvents.sort((a, b) => a.afterIndex - b.afterIndex)
+
+  // Determine the pre-edit index range to cover.
+  const maxPreFromOps =
+    removedKind.size > 0
+      ? Math.max(...removedKind.keys(), ...offsetEvents.map((ev) => ev.afterIndex))
+      : Math.max(...offsetEvents.map((ev) => ev.afterIndex))
+  // totalPre is the last 1-based paragraph index; use it directly as the upper
+  // bound. When absent (≤ 0), stop a little past the last event so shifted
+  // paragraphs beyond the last edit still show.
+  const maxPre = totalPre > 0 ? totalPre : maxPreFromOps + 20
+
+  // Sweep pre-index 0..maxPre and build bands.
+  const bands: DriftBand[] = []
+  let runningOffset = 0
+  let eventIdx = 0
+
+  // Helper: flush a run of consecutive pre-indices with the same classification.
+  type RunKind = "unchanged" | "deleted" | "merged" | "shifted"
+  let runStart = 0
+  let runKind: RunKind = "unchanged"
+  let runPostStart = 0
+
+  function flushRun(preEnd: number): void {
+    if (runStart > preEnd) return
+    if (runKind === "unchanged") {
+      bands.push({ kind: "unchanged", preStart: runStart, preEnd })
+    } else if (runKind === "deleted") {
+      bands.push({ kind: "deleted", preStart: runStart, preEnd })
+    } else if (runKind === "merged") {
+      bands.push({ kind: "merged", preStart: runStart, preEnd })
+    } else {
+      bands.push({ kind: "shifted", preStart: runStart, preEnd, postStart: runPostStart })
+    }
+  }
+
+  for (let pre = 0; pre <= maxPre; pre++) {
+    // Apply any offset events that fire at or before this pre-index.
+    while (eventIdx < offsetEvents.length && offsetEvents[eventIdx]!.afterIndex < pre) {
+      runningOffset += offsetEvents[eventIdx]!.delta
+      eventIdx++
+    }
+
+    const removedAs = removedKind.get(pre)
+    const thisKind: RunKind = removedAs ?? (runningOffset !== 0 ? "shifted" : "unchanged")
+    const thisPostStart = pre + runningOffset
+
+    if (thisKind !== runKind || (thisKind === "shifted" && thisPostStart !== runPostStart + (pre - runStart))) {
+      flushRun(pre - 1)
+      runStart = pre
+      runKind = thisKind
+      runPostStart = thisPostStart
+    }
+  }
+  flushRun(maxPre)
+
+  return bands
+}
+
+/** Render drift bands as report lines. Returns empty array when there's nothing
+ *  to show (no-drift case). */
+export function renderDriftLines(bands: DriftBand[]): string[] {
+  const driftBands = bands.filter((b) => b.kind !== "unchanged")
+  if (driftBands.length === 0) return []
+
+  const lines: string[] = []
+  lines.push("=== Paragraph index drift (pre-edit → post-edit) ===")
+
+  function fmtRange(start: number, end: number): string {
+    const w3 = (n: number) => String(n).padStart(3, "0")
+    return start === end ? `#${w3(start)}` : `#${w3(start)}..#${w3(end)}`
+  }
+
+  for (const b of bands) {
+    if (b.kind === "unchanged") {
+      lines.push(`  pre ${fmtRange(b.preStart, b.preEnd)}  → unchanged`)
+    } else if (b.kind === "deleted") {
+      lines.push(`  pre ${fmtRange(b.preStart, b.preEnd)}  → DELETED`)
+    } else if (b.kind === "merged") {
+      lines.push(`  pre ${fmtRange(b.preStart, b.preEnd)}  → MERGED`)
+    } else {
+      const postEnd = b.postStart + (b.preEnd - b.preStart)
+      lines.push(`  pre ${fmtRange(b.preStart, b.preEnd)}  → post ${fmtRange(b.postStart, postEnd)}`)
+    }
+  }
+  lines.push("")
+  return lines
+}
+
 /* ------------- change report ------------- */
 
 export function printReport(args: {
@@ -204,6 +379,11 @@ export function printReport(args: {
   /** Per-sectPr binding summary — section count touched + whether
    *  `<w:titlePg/>` was set. Absent when headerFooter was not declared. */
   headerFooterBinding?: HeaderFooterBindingReport
+  /** dry-run only: last paragraph index (inclusive) in the pre-edit document,
+   *  used to show trailing "unchanged" bands in the drift map.  Equal to the
+   *  1-based `index` of the last `ParsedParagraph`.  Omit (or ≤ 0) to suppress
+   *  trailing bands. */
+  totalParagraphs?: number
 }) {
   const lines: string[] = []
   lines.push(
@@ -532,6 +712,10 @@ export function printReport(args: {
       "  Note: implicit-keep counts above already exclude paragraphs the edits[] pass will replace/delete.",
     )
     lines.push("")
+  }
+  if (args.dryRun && args.editsPreview.length > 0) {
+    const bands = computeDriftBands(args.editsPreview, args.totalParagraphs ?? -1)
+    for (const line of renderDriftLines(bands)) lines.push(line)
   }
   if (args.captionsPreview) {
     const cp = args.captionsPreview

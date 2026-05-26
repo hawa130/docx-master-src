@@ -1250,6 +1250,9 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     pageSetup: pageSetupReport,
     headerFooter: headerFooterReport,
     headerFooterBinding: headerFooterBindingReport,
+    totalParagraphs: config.dryRun
+      ? (parsed.paragraphs[parsed.paragraphs.length - 1]?.index ?? parsed.paragraphs.length)
+      : undefined,
   })
 
   // Dry-run also invokes runEditOps now (so the cross-ref pipeline can see
