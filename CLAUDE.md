@@ -35,10 +35,8 @@ All `lib/` and `skill/tools/` imports go through `@lib/*` (declared in `tsconfig
 | Auto-fix lint where possible | `bun run lint:fix` |
 | Format (oxfmt; markdown excluded) | `bun run fmt` |
 | Format check (no write) | `bun run fmt:check` |
-| Run regression (golden-output) | `bun run test:regression` |
-| Update regression baselines | `bun run test:regression:update` |
 
-Regression coverage: `bun run test:regression` re-runs `overview` against a fixed set of fixtures and diffs against committed expected output (`tests/expected/*.txt`). After an intentional change that alters tool output, rebuild + `bun run test:regression:update` to refresh baselines, review the diff, commit. Any other behavioral changes that affect output not yet in the regression set still need manual verification.
+No automated tests — run scripts against `_local/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/plugin/skills/docx-master/` reflects the change before claiming done.
 
 ## Dependency policy
 

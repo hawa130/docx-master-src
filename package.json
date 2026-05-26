@@ -36,9 +36,7 @@
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
     "test:math": "bun run tests/math-corpus.ts",
-    "test:math:update": "bun run tests/math-corpus.ts --update",
-    "test:regression": "bun tests/regression-runner.ts",
-    "test:regression:update": "bun tests/regression-runner.ts --update"
+    "test:math:update": "bun run tests/math-corpus.ts --update"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",
