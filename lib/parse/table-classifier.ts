@@ -77,6 +77,15 @@ export function summarizeTable(tbl: Element): TableSummary {
   const allSingleTcPerRow = rowTcCounts.every((c) => c === 1)
   const hasOutlineHeading = descendantsNS(tbl, NS.w, "outlineLvl").length > 0
 
+  // S0: 1×1 tables are always layout boxes. Structurally a data table
+  // requires at least a header + one data row; 1×1 is by elimination a
+  // single-cell content container (cover page title boxes, callout
+  // frames, etc.). Falls through the normal classification path to
+  // "data" otherwise, which hides the box's content.
+  if (rowCount === 1 && maxCols === 1) {
+    return { classification: "layout", rows: rowCount, cols: maxCols, headers }
+  }
+
   let classification: TableClassification = "data"
   if (allSingleTcPerRow && totalParas > 3) {
     classification = "layout"
