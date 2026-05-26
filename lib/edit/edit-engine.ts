@@ -164,6 +164,12 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
     } else if (op === "delete") {
       willReplaceOrDeleteIndices = [...targetParaIndices]
       for (const idx of targetParaIndices) if (idx >= 0) replacedOrDeletedIndices.add(idx)
+    } else if (op === "merge") {
+      // All target paragraphs are reported as touched; the non-survivor ones
+      // are removed (all except the keepPPr end). Report them all as
+      // replaced/deleted so dry-run counts don't double-count them.
+      willReplaceOrDeleteIndices = [...targetParaIndices]
+      for (const idx of targetParaIndices) if (idx >= 0) replacedOrDeletedIndices.add(idx)
     } else if (op === "insert-before" || op === "insert-after") {
       willInsertCount = edit.op.content.length
     }
@@ -915,6 +921,8 @@ function applyOne(
       return applySetRun(edit.runRef, edit.op, documentDoc, trackContext)
     case "edit-caption":
       return applyEditCaptionOp(edit.op, documentDoc, deps)
+    case "merge":
+      return applyMerge(edit.target, edit.op, stale)
     default:
       return assertNever(edit.op)
   }
@@ -1246,6 +1254,53 @@ function insertAtContainerEnd(
     }
   }
   for (const el of newEls) container.appendChild(el)
+}
+
+/* ------------- merge ------------- */
+
+function applyMerge(
+  target: ResolvedTarget,
+  op: Extract<EditOp, { op: "merge" }>,
+  stale: Set<Element>,
+): number {
+  if (target.paragraphs.length < 2) {
+    throw new Error(
+      `merge: needs >= 2 paragraphs, got ${target.paragraphs.length}. Use a range or cell-paragraph-range locator covering at least two paragraphs.`,
+    )
+  }
+  const keepPPr = op.keepPPr ?? "first"
+  const survivor =
+    keepPPr === "last"
+      ? target.paragraphs[target.paragraphs.length - 1]!
+      : target.paragraphs[0]!
+
+  // Collect all <w:r> children from every paragraph in document order.
+  // Detach each run from its original parent as we collect, so that the
+  // survivor-paragraph's own runs are also detached before re-appending
+  // (avoids double-appending runs that were already in the survivor).
+  const allRuns: Element[] = []
+  for (const p of target.paragraphs) {
+    for (const r of Array.from(getChildrenNS(p, w, "r"))) {
+      p.removeChild(r)
+      allRuns.push(r)
+    }
+  }
+
+  // Append the collected runs to the survivor. The survivor's <w:pPr> and
+  // any non-run children (bookmarks, proofErr, etc.) remain untouched.
+  for (const r of allRuns) {
+    survivor.appendChild(r)
+  }
+
+  // Remove the non-survivor paragraphs.
+  for (const p of target.paragraphs) {
+    if (p !== survivor && p.parentNode) {
+      p.parentNode.removeChild(p)
+      stale.add(p)
+    }
+  }
+
+  return target.paragraphs.length
 }
 
 /* ------------- replace ------------- */

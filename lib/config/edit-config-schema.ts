@@ -694,6 +694,13 @@ const EditCaptionOpSchema = z.strictObject({
   text: z.string(),
 })
 
+const MergeOpSchema = z.strictObject({
+  op: z.literal("merge"),
+  at: LocatorSchema,
+  /** Keep the pPr of which paragraph: "first" (default) or "last". */
+  keepPPr: z.optional(z.union([z.literal("first"), z.literal("last")])),
+})
+
 // Discriminate on `op` so a wrong-shape variant points at the right field.
 // Without this, zod's plain union tries each option and reports the lowest-
 // cost mismatch — which for `{ op: "set-run", at: { type: "paragraph", ... } }`
@@ -709,6 +716,7 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   FormatOpSchema,
   SetRunOpSchema,
   EditCaptionOpSchema,
+  MergeOpSchema,
 ])
 
 /* ------------- top-level edit config ------------- */
