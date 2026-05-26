@@ -89,6 +89,8 @@ Two directions, both common in POI / WPS / school templates:
 
 ### Style identity (`<w:name>` aliasing)
 
+`name` is optional. For an override on an existing styleId, omitted `name` preserves the source `<w:name>`. For a new style, omitted `name` defaults to `id`.
+
 `name` must not alias any existing style's identity. Word treats `<w:name>` as the built-in style identity marker, including locale aliases ("Normal" ≡ "正文" ≡ "標準"; "Heading 1" ≡ "标题 1"; "Body Text" ≡ "正文文本"). When two different styleIds claim the same identity, Word silently drops the second style's `rPr` at render time. Three safe approaches:
 
 - **Override existing by its styleId** so no new name enters the doc.

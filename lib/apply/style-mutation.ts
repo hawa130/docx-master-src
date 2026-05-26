@@ -284,19 +284,28 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     result = "created"
   }
 
-  // name: required and idempotent. When the element already exists, update
-  // its w:val in place — otherwise removing-and-re-appending would push it
-  // to the end of <w:style>, but OOXML's schema (ECMA-376 §17.7.4) requires
-  // <w:name> to be the FIRST child. Word is lenient enough to load
-  // mis-ordered styles, but stricter validators (and other docx libraries)
-  // reject them.
+  // name: optional. Behavior depends on create vs update:
+  //   - Update (style exists): when def.name is set, update <w:name> in place;
+  //     when omitted, leave the existing <w:name> unchanged (preserve source name).
+  //   - Create (new style): when def.name is set, use it; when omitted, default
+  //     to def.id so the new style always has a valid <w:name>.
+  // When the element already exists, update its w:val in place — otherwise
+  // removing-and-re-appending would push it to the end of <w:style>, but
+  // OOXML's schema (ECMA-376 §17.7.4) requires <w:name> to be the FIRST
+  // child. Word is lenient enough to load mis-ordered styles, but stricter
+  // validators (and other docx libraries) reject them.
   let nameEl = firstChildNS(target, w, "name")
-  if (nameEl) {
-    nameEl.setAttributeNS(w, "w:val", def.name)
+  if (result === "updated" && def.name === undefined) {
+    // Preserve existing <w:name> — no action needed; nameEl stays as-is.
   } else {
-    nameEl = stylesDoc.createElementNS(w, "w:name")
-    nameEl.setAttributeNS(w, "w:val", def.name)
-    target.insertBefore(nameEl, target.firstChild)
+    const nameVal = def.name ?? def.id
+    if (nameEl) {
+      nameEl.setAttributeNS(w, "w:val", nameVal)
+    } else {
+      nameEl = stylesDoc.createElementNS(w, "w:name")
+      nameEl.setAttributeNS(w, "w:val", nameVal)
+      target.insertBefore(nameEl, target.firstChild)
+    }
   }
 
   // basedOn: only touched when def explicitly provides it; otherwise the
@@ -321,7 +330,8 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
       } else {
         bo = stylesDoc.createElementNS(w, "w:basedOn")
         bo.setAttributeNS(w, "w:val", resolved)
-        const afterName = nameEl.nextSibling
+        const currentNameEl = firstChildNS(target, w, "name")
+        const afterName = currentNameEl?.nextSibling ?? null
         if (afterName) target.insertBefore(bo, afterName)
         else target.appendChild(bo)
       }

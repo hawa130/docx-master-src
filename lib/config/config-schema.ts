@@ -68,7 +68,7 @@ export const StyleOverridesSchema = z.strictObject(styleFormatFields)
 
 export const StyleEntrySchema = z.strictObject({
   id: NonEmptyString,
-  name: NonEmptyString,
+  name: z.optional(NonEmptyString),
   fromParagraph: z.optional(z.number()),
   ...styleFormatFields,
   overrides: z.optional(StyleOverridesSchema),

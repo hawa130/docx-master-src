@@ -360,8 +360,20 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     collidingId: string
     existingName: string
   }> = []
+  const sourceStyleIds = new Set(
+    getChildrenNS(stylesDoc.documentElement!, NS.w, "style")
+      .map((s) => wAttr(s, "styleId"))
+      .filter((id): id is string => id !== null),
+  )
   for (const def of resolvedStyles) {
-    const key = canonicalNameKey(def.name)
+    // When name is omitted on an override (style already exists by id),
+    // the existing <w:name> is preserved — no new name enters the doc,
+    // so no collision is possible. Skip the check entirely.
+    if (def.name === undefined && sourceStyleIds.has(def.id)) continue
+    // When name is omitted on a create (new style), the engine defaults
+    // name to id — check that value for collisions.
+    const effectiveName = def.name ?? def.id
+    const key = canonicalNameKey(effectiveName)
     const collidingId = sourceCanonicalToStyleId.get(key)
     if (collidingId && collidingId !== def.id) {
       const existingName = sourceCanonicalToOriginalName.get(key)!
@@ -374,10 +386,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       `${styleNameConflicts.length} style name collision(s) — Word treats matching names (and locale aliases) as the same built-in identity and would silently drop the new style's rPr at render:`,
     )
     for (const c of styleNameConflicts) {
+      const effectiveName = c.def.name ?? c.def.id
       const aliasNote =
-        c.existingName !== c.def.name ? ` (locale alias of existing "${c.existingName}")` : ""
+        c.existingName !== effectiveName ? ` (locale alias of existing "${c.existingName}")` : ""
+      const nameDisplay = c.def.name !== undefined ? `name="${c.def.name}"` : `name omitted (defaults to id "${c.def.id}")`
       lines.push(
-        `  styles[].id="${c.def.id}" name="${c.def.name}"${aliasNote} → already used by source styleId="${c.collidingId}"`,
+        `  styles[].id="${c.def.id}" ${nameDisplay}${aliasNote} → already used by source styleId="${c.collidingId}"`,
       )
     }
     lines.push("")
