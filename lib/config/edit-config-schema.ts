@@ -510,12 +510,33 @@ const RangeLocatorSchema = z
     }),
   )
 
-const CellLocatorSchema = z.strictObject({
-  type: z.literal("cell"),
-  table: z.number().check(z.gte(1)),
-  row: z.number().check(z.gte(1)),
-  col: z.number().check(z.gte(1)),
-})
+const CellLocatorSchema = z
+  .strictObject({
+    type: z.literal("cell"),
+    table: z.number().check(z.gte(1)),
+    row: z.number().check(z.gte(1)),
+    col: z.number().check(z.gte(1)),
+    /** 1-based paragraph index WITHIN this cell. When set, the locator
+     * resolves to just that one paragraph instead of all paragraphs in
+     * the cell. Pair with `to` for a contiguous range within the cell. */
+    paragraph: z.optional(z.number().check(z.gte(1))),
+    /** 1-based "to" paragraph index within the cell, inclusive. Only
+     * meaningful with `paragraph`; defines a range [paragraph, to]. */
+    to: z.optional(z.number().check(z.gte(1))),
+  })
+  .check(
+    z.refine((loc) => !(loc.to !== undefined && loc.paragraph === undefined), {
+      error: "cell locator: `to` requires `paragraph` to be set",
+    }),
+  )
+  .check(
+    z.refine(
+      (loc) => loc.to === undefined || loc.paragraph === undefined || loc.to >= loc.paragraph,
+      {
+        error: "cell locator: `to` must be >= `paragraph`",
+      },
+    ),
+  )
 
 const HeadingLocatorSchema = z.strictObject({
   type: z.literal("heading"),

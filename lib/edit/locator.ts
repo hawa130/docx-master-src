@@ -142,7 +142,7 @@ export function resolveLocator(loc: Locator, ctx: ResolverContext): ResolvedTarg
     case "range":
       return resolveRange(loc.from, loc.to, ctx)
     case "cell":
-      return resolveCell(loc.table, loc.row, loc.col, ctx)
+      return resolveCell(loc.table, loc.row, loc.col, loc.paragraph, loc.to, ctx)
     case "heading":
       return resolveHeading(loc.text, loc.level, ctx)
     case "whole-body":
@@ -196,6 +196,8 @@ function resolveCell(
   table: number,
   row: number,
   col: number,
+  paragraph: number | undefined,
+  to: number | undefined,
   ctx: ResolverContext,
 ): ResolvedTarget {
   // All three coords are 1-based agent-facing; convert to 0-based for array
@@ -220,8 +222,27 @@ function resolveCell(
     )
   }
   const tc = cells[col - 1]!
-  const paragraphs = getChildrenNS(tc, NS.w, "p")
-  return { paragraphs, container: tc }
+  const allParagraphs = getChildrenNS(tc, NS.w, "p")
+
+  if (paragraph === undefined) {
+    // whole-cell scope (legacy behavior)
+    return { paragraphs: allParagraphs, container: tc }
+  }
+
+  const cellCount = allParagraphs.length
+  if (paragraph < 1 || paragraph > cellCount) {
+    throw new Error(
+      `cell.paragraph: index ${paragraph} out of range. Table ${table} row ${row} col ${col} has ${cellCount} paragraph(s); valid 1..${cellCount}.`,
+    )
+  }
+  const end = to ?? paragraph
+  if (end > cellCount) {
+    throw new Error(
+      `cell.to: index ${end} out of range. Cell has ${cellCount} paragraph(s); valid ${paragraph}..${cellCount}.`,
+    )
+  }
+  const narrowed = allParagraphs.slice(paragraph - 1, end)
+  return { paragraphs: narrowed, container: tc }
 }
 
 function resolveHeading(
