@@ -1406,6 +1406,28 @@ function applyFormat(
   if (target.paragraphs.length === 0) {
     throw new Error("format op resolved to zero paragraphs — locator must select at least one")
   }
+  const clear = op.clearDirect
+  const shouldClearPPr = clear === "all" || (Array.isArray(clear) && clear.includes("pPr"))
+  const shouldClearRPr = clear === "all" || (Array.isArray(clear) && clear.includes("rPr"))
+  if (shouldClearPPr || shouldClearRPr) {
+    for (const p of target.paragraphs) {
+      if (shouldClearPPr) {
+        const pPr = firstChildNS(p, w, "pPr")
+        if (pPr) {
+          for (const c of [...getChildren(pPr)]) {
+            if (c.namespaceURI === w && (c.localName === "pStyle" || c.localName === "numPr")) continue
+            pPr.removeChild(c)
+          }
+        }
+      }
+      if (shouldClearRPr) {
+        for (const r of getChildrenNS(p, w, "r")) {
+          const rPr = firstChildNS(r, w, "rPr")
+          if (rPr) r.removeChild(rPr)
+        }
+      }
+    }
+  }
   let touched = 0
   for (const p of target.paragraphs) {
     if (op.runFormat) {

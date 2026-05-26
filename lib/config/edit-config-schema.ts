@@ -653,10 +653,16 @@ const FormatOpSchema = z
     styleId: z.optional(NonEmptyString),
     runFormat: z.optional(RunFormatSchema),
     paraFormat: z.optional(ParagraphFormatSchema),
+    clearDirect: z.optional(
+      z.union([
+        z.array(z.union([z.literal("pPr"), z.literal("rPr")])),
+        z.literal("all"),
+      ]),
+    ),
   })
   .check(
-    z.refine((op) => !!(op.styleId || op.runFormat || op.paraFormat), {
-      error: "format op needs at least one of: styleId, runFormat, paraFormat",
+    z.refine((op) => !!(op.styleId || op.runFormat || op.paraFormat || op.clearDirect), {
+      error: "format op needs at least one of: styleId, runFormat, paraFormat, clearDirect",
     }),
   )
 
