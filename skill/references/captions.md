@@ -235,7 +235,7 @@ Standalone marker — the **next** caption of `captionId` renders with its count
 
 ## Standardize re-emit (source-doc captions)
 
-Existing SEQ captions in the source doc get re-rendered with the current `captions[<id>]` config on each apply — useful when iterating on prefix / chapter-prefix shape across runs. Bookmark + identifier + body text preserved. Identifier mismatch (SEQ exists for an unconfigured identifier) → pass through + warn.
+Existing SEQ captions in the source doc get re-rendered with the current `captions[<id>]` config on each apply. Bookmark + identifier + body text preserved. Identifier mismatch (SEQ exists for an unconfigured identifier) → pass through + warn.
 
 ## CJK prefix / separator spacing
 

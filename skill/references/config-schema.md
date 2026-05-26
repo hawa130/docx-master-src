@@ -1,8 +1,7 @@
 # `apply` Config Schema
 
 Full field-by-field reference for the JSON config consumed by
-`apply [--dry-run] <config.json>`. Read this before composing your first
-config; SKILL.md only carries a top-level summary.
+`apply [--dry-run] <config.json>`.
 
 ## Length values
 
@@ -84,7 +83,7 @@ string form when you mean an exact line height.
 - **`source`** (string, optional) — path to the input docx. The original file is never modified. Omit to scaffold from a blank template (one empty Normal paragraph, A4 portrait). Required when a `template` block is declared.
 - **`output`** (string, **required**) — path for the output docx. Must differ from `source`.
 - **`dryRun`** (boolean, default `false`) — when `true`, run the pipeline in memory and produce a change report without writing a file. Equivalent to the `--dry-run` CLI flag.
-- **`allowValidationWarnings`** (boolean, default `false`) — keep the output docx even when apply introduces new OOXML validation errors. Pre-existing source errors are always non-fatal (baseline-diff). Use for debugging configs that produce invalid output you still want to inspect. CLI: `--allow-validation-warnings`. See [standardize.md](standardize.md) Validation behavior.
+- **`allowValidationWarnings`** (boolean, default `false`) — keep the output docx even when apply introduces new OOXML validation errors. Pre-existing source errors are always non-fatal (baseline-diff). CLI: `--allow-validation-warnings`. See [standardize.md](standardize.md) Validation behavior.
 
 ## Style entries
 
@@ -189,8 +188,7 @@ numbering: {
                                          //   is the intended path.
       numRPr: {                          // optional. rPr applied to the auto-generated
         color: "3370FF",                 //   number marker only — independent of the
-        bold:  false,                    //   title text. Use to keep designs like
-                                         //   "blue numbering + black title".
+        bold:  false,                    //   title text.
       },
       restart: "continuous",             // optional. "continuous" (default) | "perInstance".
                                          //   Single-level schemes only — multi-level uses

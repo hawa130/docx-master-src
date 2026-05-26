@@ -14,7 +14,7 @@ Source paragraphs carry typography (font, size, indent, alignment) and structure
 
 ## Workflow
 
-1. **Survey.** `overview` first. Note: existing styles + fingerprints + numbering schemes (with consumption counts), content chrome formatting per fingerprint, typed structural prefixes (heading-shape AND caption-shape), typed in-prose counters, form-fill paragraphs, source content for fills.
+1. **Survey.** `overview` first.
 2. **Design ONE config** spanning the four decisions below. Reactive additions accrete debt.
 3. **Dry-run** (`apply --dry-run`). Read each signal against intent — see §5.
 4. **Apply.** Output is a fresh docx; the original is never modified.

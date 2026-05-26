@@ -79,8 +79,8 @@ Scheme-level `restart` controls how the counter sequence resets across the docum
 |---|---|
 | `"perInstance"` | Each contiguous run of list items gets its own numId; restart at run boundaries (broken by any non-target paragraph). |
 | `"continuous"` | One numId across the whole doc; items continue regardless of intervening paragraphs (default). |
-| `"byHeading"` | Restart whenever the nearest preceding heading-styled paragraph (any style with `outlineLvl`) changes. Use for "each chapter has 1, 2, 3, …" patterns. |
-| `{ "atStyleChange": "ProposalH2" }` | Restart whenever a paragraph bound to the named styleId appears. For chapter boundaries marked by a custom style that doesn't carry `outlineLvl`. |
+| `"byHeading"` | Restart whenever the nearest preceding heading-styled paragraph (any style with `outlineLvl`) changes. |
+| `{ "atStyleChange": "ProposalH2" }` | Restart whenever a paragraph bound to the named styleId appears. |
 
 Block-level `numbering: { numId, level, restart: true }` overrides scheme-level behavior at one paragraph. The engine forks a fresh numId with `<w:startOverride val="1"/>` at that point; use when a single mid-list position needs a hard reset the scheme-level value can't express.
 

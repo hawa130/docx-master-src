@@ -207,7 +207,7 @@ Then in body text:
 | What | How |
 |---|---|
 | Cell paragraph styleId | `Block[]` form: `[{ "type": "paragraph", "styleId": "TableCellBody", "text": "..." }]`. Cascade resolves through styles.xml normally. |
-| Auto-numbered captions inside cells | A cell paragraph bound to `FigureCaption` / `TableCaption` participates in the doc-wide counter — useful for image-gallery cells. |
+| Auto-numbered captions inside cells | A cell paragraph bound to `FigureCaption` / `TableCaption` participates in the doc-wide counter. |
 | Theme fonts inside cells | rPr cascade applies; no special wiring needed. |
 | Bookmark anchors inside cells | Cell paragraph blocks can declare `anchor` — same BookmarkAllocator path as body paragraphs. Cross-refs from any position resolve. |
 | `pattern_rules` / `bulk_rules` coverage | Body + layout-table cell paragraphs (indexed). Data-table cells are now reachable via per-cell-paragraph addressing in surgical edits, but **not** by whole-doc bulk rules. For predictable cell paragraph styling, bind via explicit `styleId` in inserts or use the `cell` locator. |

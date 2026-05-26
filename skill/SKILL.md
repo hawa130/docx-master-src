@@ -59,12 +59,6 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 
 **Creating from scratch.** Omit `source` to scaffold from the bundled blank template (one empty Normal paragraph, A4 portrait, no other styles or numbering). Declare what you need in the usual blocks (`styles` / `numbering` / `pageSetup` / `headerFooter` / `edits`); `styles[]` must use Mode B (direct fields) since the blank has no representative paragraphs to extract from. The empty paragraph at index 1 is a `replace` or `insert-after` target (`insert-before` creates a stray leading empty paragraph; `delete` would empty the body). Incompatible with `template` (transplanting from a template into a blank is conceptually inconsistent — start with a host source if you need template-import).
 
-## Common document shapes
-
-If the doc matches a recurring shape, the routing below is your starting line — common pitfalls already addressed in canonical refs.
-
-- **Chinese government / institutional forms (申报书 / 申请表 / 报告表)** — cover (1×1, 2×2, 8×2 form tables) + personnel/budget data tables + one big content table (16×2 with merged rows) holding 90% of narrative. Classifier recognizes the content table as `layout`; cells reachable via `cell` locator. Typical workflow: standardize-shape with `stripPrefixPatterns` + ProposalH-style chain + numId scheme + per-cell narrative fills via `cell` locator. Cover 1×1 table is also `layout` — address its title via global paragraph index, not `cell`.
-
 ## Workflow
 
 1. **Survey.** `overview` first. From the output, note:

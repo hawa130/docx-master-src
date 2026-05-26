@@ -82,7 +82,6 @@ After the user confirms scope, report items usually map cleanly:
 ## Notes
 
 - Direct `pPr` / `rPr` is not a violation by virtue of being present — for content chrome it's the typographic source standardize preserves. It IS a violation when chrome's values conflict with the spec, or when same-role chrome is inconsistent across instances; the fix path is `overrides` on the installed style, not `fromParagraph` extraction (which would pull the violating values in as the new style's typography). See SKILL.md "How to think about formatting".
-- For long specs (20-page school formatting standards), audit in groups — cover / headings / body / figures / tables / references — and let the user prioritize rather than dumping hundreds of items at once.
 - Issues the engine's preflight catches (style.name collisions, etc.) still belong in the audit report; the report is for the user, not the engine.
 
 ## Compose with other shapes
