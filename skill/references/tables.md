@@ -224,3 +224,16 @@ Then in body text:
 - **Word built-in styles like "Grid Table 4 - Accent 1"** — not referenced; declare equivalent borders + shading manually.
 - **Same-apply edit of a freshly inserted table's cells** — paragraph indices and cell locators reference pre-edit state. Insert the table in one apply, edit cells in a second.
 - **Percentage column widths** — use fixed pt or `"auto"` instead.
+
+## Classifier reason labels (overview output)
+
+Overview tags each table with `reason:<label>` showing which signal triggered the layout/data classification. Use these to verify the classifier picked the right class, and to mentally override when a known edge case is misclassified.
+
+| Reason | Trigger | Class |
+|---|---|---|
+| `1x1` | 1 row × 1 col table | layout |
+| `singleTcStack` | Every row has exactly one `<w:tc>` and total paragraphs > 3 | layout |
+| `outlineLvl` | Table contains any direct `<w:outlineLvl>` | layout |
+| `bulkCell` | Some cell holds more than 5 paragraphs | layout |
+| `multiColData` | Multi-row × multi-col, no layout signal fired | data |
+| `fallback` | Degenerate (single-cell tables that aren't 1×1, etc.) | data |

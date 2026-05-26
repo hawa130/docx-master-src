@@ -446,24 +446,25 @@ function renderElement(
     lines.push(`${indent}  #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
   } else if (el.kind === "table") {
     if (el.classification === "layout") {
-      lines.push(`${indent}--- LAYOUT TABLE ---`)
+      lines.push(`${indent}--- LAYOUT TABLE  reason:${el.classificationReason} ---`)
       for (const p of el.paragraphs) {
         if (range && (p.index < range.from || p.index > range.to)) continue
         lines.push(`${indent}    #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
       }
       lines.push(`${indent}--- END LAYOUT TABLE ---`)
     } else {
-      // data: print headers only if first row looks like a header row
-      // (short / bold cells dominate). Otherwise omit — fewer false
-      // "headers:[label, value]" lines on form-shaped tables.
-      if (el.firstRowLooksLikeHeader) {
-        const headers = el.headers
-          .map((h) => `"${truncate(h, 12)}"`)
+      // Data table: always show row1 if any cell is non-empty. Tag is
+      // `row1:[...]` (fact) not `headers:[...]` (role) — agent decides
+      // whether the row is headers or first data row.
+      const nonEmpty = el.row1Texts.some((t) => t.length > 0)
+      if (nonEmpty) {
+        const formatted = el.row1Texts
+          .map((t) => `"${truncate(t, 12)}"`)
           .slice(0, el.cols)
           .join(",")
-        lines.push(`${indent}--- TABLE (${el.rows}×${el.cols}) headers:[${headers}] ---`)
+        lines.push(`${indent}--- TABLE (${el.rows}×${el.cols}) row1:[${formatted}]  reason:${el.classificationReason} ---`)
       } else {
-        lines.push(`${indent}--- TABLE (${el.rows}×${el.cols}) ---`)
+        lines.push(`${indent}--- TABLE (${el.rows}×${el.cols})  reason:${el.classificationReason} ---`)
       }
     }
   } else if (el.kind === "image") {

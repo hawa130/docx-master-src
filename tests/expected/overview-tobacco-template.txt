@@ -83,12 +83,12 @@ Header: (none)
 Footer: (none)
 
   #001 --- empty ---
---- TABLE (2×2) ---
+--- TABLE (2×2) row1:["项目类别：",""]  reason:multiColData ---
   #002 --- empty ×2 ---
   #004 [L]  "中国烟草总公司陕西省公司"
   #005 [L]  "科技项目申报书"
   #006 --- empty ×2 ---
---- TABLE (8×2) ---
+--- TABLE (8×2) row1:["项 目 领 域：",""]  reason:multiColData ---
   #008 --- empty ×2 ---
   #010 [I]  "中国烟草总公司陕西省公司"
   #011 [I]  "二〇二五年制"
@@ -103,28 +103,28 @@ Footer: (none)
   #019 [J]  "司。"
   #020 [J]  "五、申报书电子文档按要求在全省系统科技项目管理系统填报，作为后续项目专家评审的唯…"
   #021 [B]  "项目名称（< 25字）"
---- LAYOUT TABLE ---
+--- LAYOUT TABLE  reason:1x1 ---
     #022 [P]  ""
 --- END LAYOUT TABLE ---
   #023 --- empty ---
   #024 [B]  "项目类别"
---- TABLE (3×2) ---
+--- TABLE (3×2) row1:["类别一","□科学研究 □技术开发 …"]  reason:multiColData ---
   #025 --- empty ---
   #026 [B]  "项目起止日期"
   #027 --- empty ---
   #028 [A]  "年 月至 年 月"
   #029 --- empty ---
   #030 [B]  "项目承担单位"
---- TABLE (6×5) ---
+--- TABLE (6×5) row1:["单位名称","联系人","手机","电子邮箱","通讯地址"]  reason:multiColData ---
   #031 [B]  "项目主要负责人"
---- TABLE (3×9) ---
+--- TABLE (3×9) row1:["姓名","性别","年龄","学历","职称","专业","工作单位","手机","电子邮箱"]  reason:multiColData ---
   #032 --- empty ---
   #033 [B]  "项目主要参加人"
---- TABLE (14×8) ---
+--- TABLE (14×8) row1:["姓名","性别","年龄","学历","职称","专业","工作单位","任务分工"]  reason:multiColData ---
   #034 [B]  "项目经费预算表"
---- TABLE (26×10) ---
+--- TABLE (26×10) row1:["经费来源预算（万元）","经费支出预算（万元）"]  reason:multiColData ---
   #035 --- empty ---
---- LAYOUT TABLE ---
+--- LAYOUT TABLE  reason:singleTcStack ---
     #036 [H]  "直接经费测算说明："
     #037 [A]  "1. 设备费："
     #038 [A]  ""

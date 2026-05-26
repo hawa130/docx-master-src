@@ -35,8 +35,8 @@ type RawItem =
       classification: TableClassification
       rows: number
       cols: number
-      headers: string[]
-      firstRowLooksLikeHeader: boolean
+      row1Texts: string[]
+      classificationReason: string
       sectionIndex: number
       // for layout tables: include paragraphs (as raw items)
       innerParagraphs?: ParsedParagraph[]
@@ -115,8 +115,8 @@ export class DocumentParser {
             classification: "layout",
             rows: summary.rows,
             cols: summary.cols,
-            headers: summary.headers,
-            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
+            row1Texts: summary.row1Texts,
+            classificationReason: summary.classificationReason,
             sectionIndex: this.currentSection,
             innerParagraphs: innerParas,
           })
@@ -132,8 +132,8 @@ export class DocumentParser {
             classification: summary.classification,
             rows: summary.rows,
             cols: summary.cols,
-            headers: summary.headers,
-            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
+            row1Texts: summary.row1Texts,
+            classificationReason: summary.classificationReason,
             sectionIndex: this.currentSection,
           })
         }
@@ -195,8 +195,8 @@ export class DocumentParser {
             classification: "layout",
             rows: summary.rows,
             cols: summary.cols,
-            headers: summary.headers,
-            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
+            row1Texts: summary.row1Texts,
+            classificationReason: summary.classificationReason,
             sectionIndex: this.currentSection,
             innerParagraphs: innerParas,
           })
@@ -211,8 +211,8 @@ export class DocumentParser {
             classification: summary.classification,
             rows: summary.rows,
             cols: summary.cols,
-            headers: summary.headers,
-            firstRowLooksLikeHeader: summary.firstRowLooksLikeHeader,
+            row1Texts: summary.row1Texts,
+            classificationReason: summary.classificationReason,
             sectionIndex: this.currentSection,
           })
         }
@@ -549,8 +549,8 @@ export class DocumentParser {
           classification: it.classification,
           rows: it.rows,
           cols: it.cols,
-          headers: it.headers,
-          firstRowLooksLikeHeader: it.firstRowLooksLikeHeader,
+          row1Texts: it.row1Texts,
+          classificationReason: it.classificationReason,
           sectionIndex: it.sectionIndex,
           paragraphs: it.innerParagraphs ?? [],
         })

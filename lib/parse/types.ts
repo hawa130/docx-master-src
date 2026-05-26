@@ -117,8 +117,8 @@ export type DocumentElement =
       classification: TableClassification
       rows: number
       cols: number
-      headers: string[]
-      firstRowLooksLikeHeader: boolean
+      row1Texts: string[]
+      classificationReason: string
       sectionIndex: number
       paragraphs: ParsedParagraph[] // only populated for layout tables
     }

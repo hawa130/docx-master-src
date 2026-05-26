@@ -11,8 +11,20 @@ export interface TableSummary {
   classification: TableClassification
   rows: number
   cols: number
-  headers: string[]
-  firstRowLooksLikeHeader: boolean
+  /** First-row cell text snippets, truncated. Empty array if the
+   * first row has no cells or all cells are empty. Renderer uses
+   * this as the source of truth for row1 display — agent decides
+   * whether row1 is "headers" or "first data row" based on context. */
+  row1Texts: string[]
+  /** Short label naming which classifier signal fired. One of:
+   *   - "singleTcStack" — every row has 1 <w:tc> AND totalParas > 3 (S1)
+   *   - "outlineLvl"     — table contains direct <w:outlineLvl> (S2)
+   *   - "bulkCell"       — some cell has > threshold paragraphs (S2)
+   *   - "1x1"            — 1 row × 1 col, layout by elimination (S0)
+   *   - "multiColData"   — rowCount > 1 && maxCols > 1, default data
+   *   - "fallback"       — degenerate (single-cell tables that aren't
+   *                        1x1 layouts, etc.) → data */
+  classificationReason: string
 }
 
 /** Single cell holding more paragraphs than this is treated as a body
@@ -29,7 +41,6 @@ export function summarizeTable(tbl: Element): TableSummary {
   const rowCount = rows.length
   let maxCols = 0
   let maxCellParas = 0
-  const rowEffectiveCols: number[] = []
   const rowTcCounts: number[] = []
 
   for (const tr of rows) {
@@ -43,18 +54,15 @@ export function summarizeTable(tbl: Element): TableSummary {
       const cellParas = descendantsNS(tc, NS.w, "p").length
       if (cellParas > maxCellParas) maxCellParas = cellParas
     }
-    rowEffectiveCols.push(cells)
     rowTcCounts.push(tcs.length)
     if (cells > maxCols) maxCols = cells
   }
 
-  // collect headers from first row
-  const headers: string[] = []
+  // collect row1 text snippets from first row
+  const row1Texts: string[] = []
   if (rows.length > 0) {
-    const first = rows[0]!
-    for (const tc of getChildrenNS(first, NS.w, "tc")) {
-      const text = collectCellText(tc).trim()
-      headers.push(text)
+    for (const tc of getChildrenNS(rows[0]!, NS.w, "tc")) {
+      row1Texts.push(collectCellText(tc).trim())
     }
   }
 
@@ -84,58 +92,37 @@ export function summarizeTable(tbl: Element): TableSummary {
   // frames, etc.). Falls through the normal classification path to
   // "data" otherwise, which hides the box's content.
   if (rowCount === 1 && maxCols === 1) {
-    return { classification: "layout", rows: rowCount, cols: maxCols, headers, firstRowLooksLikeHeader: false }
+    return { classification: "layout", rows: rowCount, cols: maxCols, row1Texts, classificationReason: "1x1" }
   }
 
   let classification: TableClassification = "data"
+  let classificationReason = "fallback"
+
   if (allSingleTcPerRow && totalParas > 3) {
     classification = "layout"
-  } else if (hasOutlineHeading || maxCellParas > BULK_CELL_PARA_THRESHOLD) {
+    classificationReason = "singleTcStack"
+  } else if (hasOutlineHeading) {
     classification = "layout"
+    classificationReason = "outlineLvl"
+  } else if (maxCellParas > BULK_CELL_PARA_THRESHOLD) {
+    classification = "layout"
+    classificationReason = "bulkCell"
   } else if (rowCount > 1 && maxCols > 1) {
-    // First-row-looks-like-header is now a renderer hint, not a
-    // classifier branch — both data and what was previously "form"
-    // collapse to "data" since their downstream behavior is identical.
     classification = "data"
+    classificationReason = "multiColData"
   }
-  // else: default "data" from initialization
+  // else: default "data" / "fallback"
 
   return {
     classification,
     rows: rowCount,
     cols: maxCols,
-    headers,
-    firstRowLooksLikeHeader: rows.length > 0 ? looksLikeHeaderRow(rows[0]!) : false,
+    row1Texts,
+    classificationReason,
   }
 }
 
 function collectCellText(tc: Element): string {
   const ts = descendantsNS(tc, NS.w, "t")
   return ts.map((t) => textContent(t)).join("")
-}
-
-function looksLikeHeaderRow(tr: Element): boolean {
-  const tcs = getChildrenNS(tr, NS.w, "tc")
-  if (tcs.length === 0) return false
-  let boldCells = 0
-  let shortCells = 0
-  let total = 0
-  for (const tc of tcs) {
-    total++
-    const text = collectCellText(tc).trim()
-    if (text.length > 0 && text.length <= 20) shortCells++
-    // check any run rPr has <w:b/>
-    const rPrs = descendantsNS(tc, NS.w, "rPr")
-    let hasBold = false
-    for (const rPr of rPrs) {
-      const b = firstChildNS(rPr, NS.w, "b")
-      if (b && wVal(b) !== "0") {
-        hasBold = true
-        break
-      }
-    }
-    if (hasBold) boldCells++
-  }
-  const ratio = (boldCells + shortCells) / (total * 2)
-  return boldCells >= Math.ceil(total / 2) || ratio > 0.6
 }
