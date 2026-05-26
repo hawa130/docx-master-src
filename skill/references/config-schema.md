@@ -63,7 +63,8 @@ string form when you mean an exact line height.
                                      // (e.g. multi-level heading + single-level list).
   captions: { "<id>": { ... } },     // optional. Caption-class numbering (figure /
                                      // table / equation / theorem / ...). See
-                                     // references/captions.md.
+                                     // § "Captions" below; rendering pipeline in
+                                     // captions.md.
   edits:    [ { op: "...", ... } ],  // optional. Location-based surgical edits
                                      // (replace / insert / delete / image / caption /
                                      // equation). See references/edit.md.
@@ -190,14 +191,34 @@ numbering: {
         color: "3370FF",                 //   number marker only — independent of the
         bold:  false,                    //   title text.
       },
-      restart: "continuous",             // optional. "continuous" (default) | "perInstance".
+      restart: "continuous",             // optional. Scheme-level counter restart.
                                          //   Single-level schemes only — multi-level uses
-                                         //   lvlRestart instead. "continuous": one counter
-                                         //   shared across the doc (captions / references /
-                                         //   equations / appendix). "perInstance": fork a
-                                         //   fresh numId per contiguous run of same-styleId
-                                         //   paragraphs so each list block restarts at 1
-                                         //   (procedural 1./2./3. lists only).
+                                         //   lvlRestart instead.
+                                         //
+                                         //   "continuous" (default) — one counter shared
+                                         //     across the doc; items continue regardless
+                                         //     of intervening paragraphs.
+                                         //   "perInstance" — fork a fresh numId per
+                                         //     contiguous run of same-styleId paragraphs
+                                         //     so each list block restarts at 1
+                                         //     (procedural 1./2./3. lists only).
+                                         //   "byHeading" — restart whenever the nearest
+                                         //     preceding heading-styled paragraph (any
+                                         //     style with outlineLvl) changes.
+                                         //   { "atStyleChange": "<styleId>" } — restart
+                                         //     whenever a paragraph bound to the named
+                                         //     styleId appears.
+                                         //
+                                         //   Block-level override: numbering: { numId,
+                                         //   level, restart: true } forks a fresh numId
+                                         //   with <w:startOverride val="1"/> at one
+                                         //   paragraph — use when a single mid-list
+                                         //   position needs a hard reset the scheme-level
+                                         //   value can't express.
+                                         //
+                                         //   For SEQ-based per-chapter caption numbering
+                                         //   use captions.chapterPrefix instead — see
+                                         //   § "Captions" below.
     },
     ...
   ]
@@ -205,6 +226,46 @@ numbering: {
 ```
 
 Omit `numbering` entirely if the document has no numbered headings/lists.
+
+### Explicit `numId` on a scheme
+
+By default the engine allocates fresh numIds for declared schemes. To pin a scheme to a specific id — so block-level `numbering: { numId }` references resolve predictably — set `"numId": N` on the scheme object (sibling of `levels`). The dry-run report includes a scheme → numId allocation table showing which id each scheme was assigned and whether it was pinned or allocated.
+
+Collision: two schemes requesting the same `numId` cause apply to throw, naming both conflicting entries.
+
+Pattern templates and `numFmt` values: see [`numbering-formats.md`](numbering-formats.md).
+
+## Captions
+
+```jsonc
+captions: {
+  "<id>": {
+    prefix?: string,          // literal before the counter (default "")
+    suffix?: string,          // literal after the counter (default "")
+    format?: "arabic" | "alphabetic" | "ALPHABETIC"
+           | "roman" | "ROMAN" | "chinese" | "chinese-formal",
+                              // default "arabic"
+    chapterPrefix?: Array<    // ordered, any depth; default [] (global, no restart)
+      string                  //   bare styleId — use heading's native number rendering
+      | { styleId: string;    //   force format (re-renders as Arabic/alphabetic/roman/...
+          format?: SeqFormat }//   regardless of heading's native numFmt)
+    >,                        //   The 中文 academic case: H1 displays "第一章", captions
+                              //   read "图 1.1" — use { styleId: "Heading1", format: "arabic" }
+    chapterSeparator?: string,// joins chapter levels + counter (default ".")
+    bodySeparator?: string,   // between counter and CaptionBlock.text (default " ")
+    styleId: string,          // REQUIRED — caption paragraph's style
+    subCounter?: {            // enables subequations (1a)(1b)
+      format?: "arabic" | "alphabetic" | ...,  // default "alphabetic"
+      prefix?: string,        // default ""
+      suffix?: string         // default ""
+    }
+  }
+}
+```
+
+`chapterPrefix` is the SEQ-based per-chapter caption mechanism. It is distinct from `restart: "byHeading"` on a numbering scheme: `chapterPrefix` drives caption counters (figures / tables / equations) via SEQ fields + a hidden parallel chapter SEQ injected into heading paragraphs; `byHeading` drives list-class auto-numbering restart inside `numbering[]`. They address different counter classes; do not substitute one for the other.
+
+Block-level types used with captions — `CaptionBlock`, `EquationBlock.captionId`, `caption-counter-reset` — and the full rendering pipeline: see [`captions.md`](captions.md).
 
 ## Requirements (annotation only)
 

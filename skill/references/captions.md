@@ -42,6 +42,8 @@ Word-native caption-class numbering — SEQ + STYLEREF fields + bookmark + REF `
 }
 ```
 
+Field semantics for the `captions` config block are also in [`config-schema.md` § Captions](config-schema.md#captions). `chapterPrefix` is the SEQ-based mechanism for per-chapter caption numbering; it is distinct from `restart: "byHeading"` on a `numbering[]` scheme (which restarts list-class auto-numbering, not caption counters) — see [`config-schema.md` § Numbering](config-schema.md#numbering).
+
 ## Schema reference
 
 ```ts

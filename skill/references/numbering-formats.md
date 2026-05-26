@@ -60,10 +60,7 @@ Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."    
 
 For paragraph roles that need a sequence but not a hierarchy — reference list entries, procedural numbered steps, appendix items — bind a one-level numbering scheme. **Caption-class numbering (figures / tables / equations / theorems) lives in the top-level `captions` table, not here — see [`captions.md`](captions.md).**
 
-Default counter scope: one continuous counter across the document
-(`restart: "continuous"`, implicit). The only opt-out is procedural
-`1./2./3.` list shapes (see "Procedural Numbered Lists" below), which
-need `restart: "perInstance"`.
+Default counter scope: one continuous counter across the document (implicit `restart: "continuous"`). The only opt-out for this section's patterns is procedural `1./2./3.` list shapes (need `restart: "perInstance"`). Full `restart` value semantics → [`config-schema.md` § Numbering](config-schema.md#numbering).
 
 ### Reference List
 ```
@@ -71,24 +68,9 @@ Level 0: [1] / [2] / [3]                numFmt=decimal  lvlText="[%1]"   suff="s
 ```
 Body-text cites to these (or to any auto-numbered caption / heading) go through `InlineRef` in `edits[]`, not literal text. See [`cross-references.md`](cross-references.md).
 
-### restart
+### restart and numId
 
-Scheme-level `restart` controls how the counter sequence resets across the document. Default is `"continuous"` (one counter for the whole doc).
-
-| Value | Behavior |
-|---|---|
-| `"perInstance"` | Each contiguous run of list items gets its own numId; restart at run boundaries (broken by any non-target paragraph). |
-| `"continuous"` | One numId across the whole doc; items continue regardless of intervening paragraphs (default). |
-| `"byHeading"` | Restart whenever the nearest preceding heading-styled paragraph (any style with `outlineLvl`) changes. |
-| `{ "atStyleChange": "ProposalH2" }` | Restart whenever a paragraph bound to the named styleId appears. |
-
-Block-level `numbering: { numId, level, restart: true }` overrides scheme-level behavior at one paragraph. The engine forks a fresh numId with `<w:startOverride val="1"/>` at that point; use when a single mid-list position needs a hard reset the scheme-level value can't express.
-
-## Explicit `numId` on a scheme
-
-By default, the engine allocates fresh numIds for declared schemes. To pin a scheme to a specific id — so block-level `numbering: { numId }` references resolve predictably — set `"numId": N` on the scheme. The dry-run report includes a scheme → numId allocation table showing which id each scheme was assigned and whether it was pinned or allocated.
-
-Collision: two schemes requesting the same `numId` cause apply to throw, naming both conflicting entries.
+Full `restart` value semantics (all 4 values) and `numId` pinning: see [`config-schema.md` § Numbering](config-schema.md#numbering).
 
 ## lvlText Syntax
 

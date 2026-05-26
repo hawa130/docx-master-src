@@ -19,7 +19,7 @@ Otherwise, treat a document as two kinds of paragraphs:
   - **Don't replace, don't duplicate.** A chrome paragraph stays as itself — never the target of `replace`, never quoted into an inserted paragraph's `text`. Content insertion lands in the empty placeholder slot beside the chrome (`set-run` on inline blanks; `replace` against the empty slot for separate-paragraph forms).
 - **Empty slots** — blank paragraphs pre-allocated for content insertion. Bind inserted content to a semantic style (`BodyText` / `ListNumber` / `Heading1..N`), installing the style in `styles[]` if no existing one fits. `Normal` is fallback, not a body style.
 
-**For `styles[]`**: one style per semantic role. **If the role has any paragraph already playing it in the source, the entry MUST use `fromParagraph: N`** — the engine extracts typography from that paragraph automatically; add only `outlineLevel` / `basedOn` and user-spec overrides via `overrides: { ... }`. **Top-level `size` / `bold` / `alignment` / `spaceBefore` / `lineSpacing` on a represented-role entry silently overrides the template** — the dominant over-declaration failure. Reserve top-level explicit fields for empty-slot roles or fresh styles the user explicitly speced. Full design phase: [standardize.md §1](references/standardize.md).
+**For `styles[]`**: one style per semantic role. If the role has any paragraph already playing it in the source, the entry MUST use `fromParagraph: N` — do not redeclare top-level typography fields on represented roles (silent template override). Full rule and rationale: [standardize.md §1](references/standardize.md).
 
 Tools surface visible facts; classification and judgment are yours.
 
@@ -122,3 +122,10 @@ All tools invoked via `node <script> <args>`, output to stdout.
 - Style-name preflight: before any mutation, the engine catches `<w:name>` collisions (including en/zh-CN locale aliases) and aborts with a fix hint; `--dry-run` lists collisions as warnings instead.
 
 Block-level config details: [`references/standardize.md`](references/standardize.md), [`references/edit.md`](references/edit.md), [`references/config-schema.md`](references/config-schema.md).
+
+## Where things live
+
+- **Field semantics** (any apply config field — values, constraints, defaults) → [`references/config-schema.md`](references/config-schema.md)
+- **Locator + op contracts** (addressing, edit ops, block types) → [`references/edit.md`](references/edit.md)
+- **Workflow** (audit → standardize → edit pipeline, design decisions) → respective workflow refs (`audit.md`, `standardize.md`, `edit.md`)
+- **Domain knowledge** (Chinese counting patterns, caption pipeline, classifier reasons, table layouts) → concept refs (`numbering-formats.md`, `captions.md`, `tables.md`, `equations.md`, `cross-references.md`, `header-footer.md`, `chinese-font-sizes.md`)
