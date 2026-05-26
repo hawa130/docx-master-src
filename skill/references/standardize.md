@@ -56,6 +56,26 @@ For roles with **no source paragraph** playing them yet — e.g., `ListNumber` i
 
 Undeclared fields cascade from `basedOn` / `Normal` / theme — leave them blank.
 
+### Canonical ListBullet / ListNumber configuration
+
+For Word-natural list rendering (bullet / number hangs in the margin, text aligns at a consistent indent), use:
+
+```jsonc
+{
+  "id": "ListBullet",
+  "fontCJK": "宋体",
+  "size": "12pt",
+  "paraFormat": {
+    "indentLeft": "0.74cm",
+    "hangingIndent": "0.74cm"
+  }
+}
+```
+
+Equivalent for `ListNumber` (substitute `ListNumber` for the `id`). Avoid `firstLineIndent` on list styles — it produces "first-line indent THEN bullet" layout (bullet appears N chars in from text margin), which is not the standard Word list appearance. The combination `indentLeft + hangingIndent` of the same value is what makes the bullet hang at the left margin while text aligns at `indentLeft`.
+
+This recipe pairs with `numbering: [...]` declarations that bind the styleId via `pStyle` in their level definitions.
+
 ### Override existing > create new
 
 Run `inspect_style_def` first — POI / WPS / school templates often play Normal / Heading 1 / etc. under auto-generated styleIds (`a`, `a1`, `2`, `10`, ...). Override by exact styleId; the engine mutates in place, preserving everything unspecified. Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body would corrupt those paragraphs; reassign first.
