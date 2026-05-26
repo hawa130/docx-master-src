@@ -577,6 +577,7 @@ export const ApplyConfigSchema = z
     source: z.optional(NonEmptyString),
     output: NonEmptyString,
     dryRun: z.optional(z.boolean()),
+    allowValidationWarnings: z.optional(z.boolean()),
     template: z.optional(TemplateSchema),
     theme: z.optional(ThemeSchema),
     pageSetup: z.optional(PageSetupSchema),

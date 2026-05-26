@@ -323,3 +323,11 @@ A complete standardize-shape config combines the four blocks. This is a referenc
 
 - **Insertion + surgical edits**: add an `edits[]` block to the same `apply` config for content insertion or paragraph touch-ups the rules missed. See [`edit.md`](edit.md). The engine installs styles/numbering first, so `edits[]` references just-installed styleIds.
 - **Read-only check before reshape**: `audit` (see [`audit.md`](audit.md)). Audit's violation list translates directly into standardize-shape blocks — style violations → `styles[]`, typed structural prefixes → `pattern_rules` + `numbering`, typed captions → `captions` + `edits[]` `CaptionBlock`.
+
+---
+
+## Validation behavior
+
+`apply` validates the output docx after writing. Only errors **introduced by this apply run** are fatal (output deleted, exit 1). Validation errors already present in the source — common with templates from Word, WPS, LibreOffice, Apache POI (VML in footers, `mc:AlternateContent`, `numId="0"` sentinels) — are reported as warnings and do not block output.
+
+Pass `--allow-validation-warnings` to keep the output even when new errors are introduced. Typical use: debugging a config that produces invalid output you still want to inspect.

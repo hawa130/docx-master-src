@@ -71,6 +71,26 @@ import type {
   StyleResolutionEntry,
 } from "@lib/config/config-types.ts"
 
+/**
+ * Normalize a ValidationError into a stable key for baseline comparison.
+ * Strips file paths, line/column coordinates, and paragraph indices — all
+ * of which differ between source and output but don't indicate a new
+ * structural problem introduced by apply. Two errors that vary only in
+ * position (same schema violation, different location in same part) map to
+ * the same key so a pre-existing positional shift doesn't create a false
+ * "new" error.
+ */
+function normalizeValidationError(e: { part: string; message: string }): string {
+  const msg = e.message
+    .replace(/\/[^\s"']+\.docx/g, "<docx>")
+    .replace(/\bline \d+\b/g, "line N")
+    .replace(/\bcol \d+\b/g, "col M")
+    .replace(/\bparagraph #\d+\b/g, "paragraph #N")
+    .replace(/\binput_\d+\.xml\b/g, "input_N.xml")
+    .trim()
+  return `${e.part}||${msg}`
+}
+
 /** Heuristic checks on a resolved style entry. The engine doesn't reject
  * these — they're informational signals surfaced in dry-run + the change
  * report so the agent can fix before commit. Narrow by design: only fire
@@ -1069,19 +1089,49 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // the in-memory report alone. Otherwise: write, then run the comprehensive
   // bundle check (XML well-formedness, CT_* schema, whitespace preservation,
   // cross-part references, content types, relationship Ids).
+  //
+  // Baseline-diff validation: errors already present in the source file are
+  // reported as warnings, not fatal. Only errors *introduced* by this apply
+  // run cause the output to be deleted (unless --allow-validation-warnings
+  // is set, in which case new errors are also non-fatal).
   if (!config.dryRun) {
+    // Capture source baseline before writing output.
+    const baselineErrors = await validateDocxFile(source)
+    const baselineKeys = new Set(baselineErrors.map((e) => normalizeValidationError(e)))
+
     await reader.copyAndModify(output, replacements)
-    const errors = await validateDocxFile(output)
-    if (errors.length > 0) {
-      if (existsSync(output)) {
-        try {
-          unlinkSync(output)
-        } catch {}
+    const outputErrors = await validateDocxFile(output)
+
+    const newErrors = outputErrors.filter((e) => !baselineKeys.has(normalizeValidationError(e)))
+    const preExistingErrors = outputErrors.filter((e) =>
+      baselineKeys.has(normalizeValidationError(e)),
+    )
+
+    if (preExistingErrors.length > 0) {
+      console.error(
+        `Validation: ${preExistingErrors.length} pre-existing error(s) carried through from source (non-fatal).`,
+      )
+    }
+
+    if (newErrors.length > 0) {
+      const lines = newErrors.slice(0, 20).map((e) => `  ${e.part}: ${e.message}`)
+      const more = newErrors.length > 20 ? `\n  …${newErrors.length - 20} more` : ""
+      if (config.allowValidationWarnings) {
+        console.error(
+          `Validation: ${newErrors.length} new error(s) introduced by this run (--allow-validation-warnings set; output kept):\n${lines.join("\n")}${more}`,
+        )
+      } else {
+        if (existsSync(output)) {
+          try {
+            unlinkSync(output)
+          } catch {}
+        }
+        console.error(
+          `Validation FAILED — ${newErrors.length} new error(s) introduced by this run:\n${lines.join("\n")}${more}\n` +
+            `  (Use --allow-validation-warnings to keep the output despite new errors.)`,
+        )
+        process.exit(1)
       }
-      const lines = errors.slice(0, 20).map((e) => `  ${e.part}: ${e.message}`)
-      const more = errors.length > 20 ? `\n  …${errors.length - 20} more` : ""
-      console.error(`Validation FAILED:\n${lines.join("\n")}${more}`)
-      process.exit(1)
     }
   }
 
