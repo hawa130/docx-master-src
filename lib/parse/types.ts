@@ -64,7 +64,7 @@ export interface ParsedParagraph {
  * its own entry), images, tables, equations, breaks. Exposed to
  * inspect_neighbors so neighbor lookup is on-demand instead of an
  * always-on annotation on every paragraph. Layout-table inner paragraphs
- * are inlined; data/form table inner paragraphs are NOT.
+ * are inlined; data table inner paragraphs are NOT.
  */
 export type NeighborItem =
   | { kind: "paragraph"; paraIndex: number; isEmpty: boolean; sectionIndex: number }

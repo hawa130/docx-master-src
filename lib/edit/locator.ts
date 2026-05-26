@@ -158,7 +158,7 @@ function resolveParagraph(index: number, ctx: ResolverContext): ResolvedTarget {
     const max = ctx.indexed.length
     throw new Error(
       `paragraph #${index} not found. Document has ${max} indexed paragraph(s) (range: #1${max ? `–#${max}` : ""}).` +
-        ` Paragraphs inside data/form tables are unindexed and only reachable via a cell locator.`,
+        ` Paragraphs inside data tables are unindexed and only reachable via a cell locator.`,
     )
   }
   return { paragraphs: [hit.element], container: hit.container }
@@ -238,7 +238,7 @@ function resolveCell(
   const end = to ?? paragraph
   if (end > cellCount) {
     throw new Error(
-      `cell.to: index ${end} out of range. Cell has ${cellCount} paragraph(s); valid ${paragraph}..${cellCount}.`,
+      `cell.to: index ${end} out of range. Table ${table} row ${row} col ${col} has ${cellCount} paragraph(s); valid ${paragraph}..${cellCount}.`,
     )
   }
   const narrowed = allParagraphs.slice(paragraph - 1, end)

@@ -675,7 +675,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     const range =
       max > 0 ? `#${parsed.paragraphs[0]!.index}–#${parsed.paragraphs[max - 1]!.index}` : "(none)"
     throw new Error(
-      `${where}: paragraph #${idx} not found. Document has ${max} indexed paragraphs (${range}). Paragraphs inside data/form tables are not indexed.`,
+      `${where}: paragraph #${idx} not found. Document has ${max} indexed paragraphs (${range}). Paragraphs inside data tables are not indexed.`,
     )
   }
   const excludeSet = new Set(config.exclude ?? [])

@@ -69,7 +69,7 @@ export function resolveStyleDef(
       `style "${def.id}": fromParagraph #${def.fromParagraph} not found.\n` +
         `  Document has ${paragraphs.length} indexed paragraphs (range: #${minIdx}–#${maxIdx}).\n` +
         `  Closest valid: #${closest.index} ("${closest.text.slice(0, 40)}${closest.text.length > 40 ? "…" : ""}")\n` +
-        `  Note: paragraphs inside data tables and form tables are not indexed and cannot be referenced.`,
+        `  Note: paragraphs inside data tables are not indexed and cannot be referenced.`,
     )
   }
   const extracted = paragraphToStyleEntry(para)
