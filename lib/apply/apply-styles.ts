@@ -1172,15 +1172,35 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   if (!config.dryRun) {
     // Capture source baseline before writing output.
     const baselineErrors = await validateDocxFile(source)
-    const baselineKeys = new Set(baselineErrors.map((e) => normalizeValidationError(e)))
+    // Multiset (count per key) instead of a plain Set so that N identical
+    // errors in the source only absorb N matching errors in the output.
+    // A Set would let 1 baseline entry mask any number of output errors
+    // with the same normalized key, silently swallowing introduced errors.
+    const baselineCounts = new Map<string, number>()
+    for (const e of baselineErrors) {
+      const k = normalizeValidationError(e)
+      baselineCounts.set(k, (baselineCounts.get(k) ?? 0) + 1)
+    }
 
     await reader.copyAndModify(output, replacements)
     const outputErrors = await validateDocxFile(output)
 
-    const newErrors = outputErrors.filter((e) => !baselineKeys.has(normalizeValidationError(e)))
-    const preExistingErrors = outputErrors.filter((e) =>
-      baselineKeys.has(normalizeValidationError(e)),
-    )
+    // Consume baseline slots greedily: each output error checks if a slot
+    // remains for its key and decrements if so (pre-existing), otherwise
+    // counts as new (introduced by this run).
+    const available = new Map(baselineCounts)
+    const newErrors: (typeof outputErrors)[number][] = []
+    const preExistingErrors: (typeof outputErrors)[number][] = []
+    for (const e of outputErrors) {
+      const k = normalizeValidationError(e)
+      const n = available.get(k) ?? 0
+      if (n > 0) {
+        available.set(k, n - 1)
+        preExistingErrors.push(e)
+      } else {
+        newErrors.push(e)
+      }
+    }
 
     if (preExistingErrors.length > 0) {
       console.error(
