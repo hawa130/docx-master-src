@@ -84,7 +84,7 @@ they need a `captions` table declared at the apply config root. See
 
 `anchor` attaches a stable bookmark name (Word's `[A-Za-z_][\w-]{0,39}` rule) so later `InlineRef` nodes can target this new paragraph via `refTo: { "type": "anchor", "name": ... }`. The only way to ref a paragraph created in this same `apply` run — paragraph-index locators reference pre-edit state. See [`cross-references.md`](cross-references.md).
 
-`text` is either a plain string (single run) or an array of inline nodes. Six inline node types, discriminated by which key is present:
+`text` is either a plain string (single run) or an array of inline nodes. Seven inline node types, discriminated by which key is present:
 
 | Shape | Renders |
 |---|---|
@@ -94,6 +94,7 @@ they need a `captions` table declared at the apply config root. See
 | `{ link, text, format? }` | Hyperlink (external URL or `#anchor` jump) |
 | `{ field, format? }` | Dynamic field (`"page"` / `"numPages"` / `"date"`) |
 | `{ styleRef, numberOnly?, format? }` | STYLEREF — render the nearest paragraph of a given style |
+| `{ break }` | `<w:br/>` — `"line"` (soft line break), `"page"` (page break), `"column"` (column break). Use sparingly — prefer paragraph-level breaks over inline. |
 
 **Hyperlinks** (`{ link, text }`) — `link` is any URI Word accepts (`https:` / `http:` / `mailto:` / `tel:` / `ftp:` / …); `#name` targets an internal bookmark — same anchor namespace as `refTo: { type: "anchor" }` (source bookmarks plus `anchor` on Blocks in this apply). The visible `text` is agent-supplied; the `Hyperlink` character style (Word's blue + underline) is applied automatically and injected into styles.xml on first use. Use `refTo` when the visible text should be the target's auto-numbered cite; use `link` when you supply the visible text and just want clickable navigation. Agent-supplied `format` merges on top of the Hyperlink character style — only the keys you set get overridden, the rest of the Hyperlink rPr (e.g. underline) survives.
 

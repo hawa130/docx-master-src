@@ -314,6 +314,18 @@ export function emitRichText(
       }
       continue
     }
+    if ("break" in piece) {
+      const r = ownerDoc.createElementNS(w, "w:r")
+      const br = ownerDoc.createElementNS(w, "w:br")
+      // "line" is the default w:br type (soft line break); only page/column
+      // need an explicit w:type attribute.
+      if (piece.break !== "line") {
+        br.setAttributeNS(w, "w:type", piece.break)
+      }
+      r.appendChild(br)
+      out.push(r)
+      continue
+    }
     out.push(emitRun(piece.text, piece.format ?? defaultFormat, ownerDoc))
   }
   return out

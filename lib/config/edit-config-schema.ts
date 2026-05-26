@@ -175,6 +175,15 @@ export const InlineStyleRefSchema = z.strictObject({
   format: z.optional(RunFormatSchema),
 })
 
+/** Inline break — emits `<w:r><w:br/></w:r>` (line) or `<w:r><w:br
+ *  w:type="page|column"/></w:r>`. "line" is a soft line break within the
+ *  paragraph; "page" / "column" force the next run onto the next page or
+ *  column. Use sparingly — prefer paragraph-level structure over inline
+ *  breaks where semantics allow. */
+export const InlineBreakSchema = z.strictObject({
+  break: z.union([z.literal("line"), z.literal("page"), z.literal("column")]),
+})
+
 export const InlineNodeSchema = z.union([
   InlineRunSchema,
   InlineRefSchema,
@@ -182,6 +191,7 @@ export const InlineNodeSchema = z.union([
   InlineHyperlinkSchema,
   InlineFieldSchema,
   InlineStyleRefSchema,
+  InlineBreakSchema,
 ])
 
 /** Plain string is shorthand for a single run with no inline formatting.
