@@ -239,6 +239,34 @@ function getOrCreateNS(parent: Element, doc: Document, ns: string, localName: st
   return doc.createElementNS(ns, `w:${localName}`)
 }
 
+/**
+ * Upsert an OOXML toggle element (bold, italic, etc.) in `parent`.
+ *
+ * - `on === true`:  ensure element exists with no `w:val` attribute (presence = on).
+ * - `on === false`: ensure element exists with `w:val="0"` (explicit off — overrides
+ *   any `basedOn` ancestor that declares the toggle; removing the element would mean
+ *   "inherit", not "force off").
+ */
+function upsertToggle(
+  parent: Element,
+  doc: Document,
+  ns: string,
+  localName: string,
+  on: boolean,
+  order: readonly string[],
+): void {
+  let el = firstChildNS(parent, ns, localName)
+  if (!el) {
+    el = doc.createElementNS(ns, `w:${localName}`)
+    insertChildInOrder(parent, el, order)
+  }
+  if (on) {
+    el.removeAttributeNS(ns, "val")
+  } else {
+    el.setAttributeNS(ns, "w:val", "0")
+  }
+}
+
 export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "updated" {
   const w = NS.w
   const root = stylesDoc.documentElement!
@@ -352,9 +380,11 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     }
     if (def.firstLineIndent != null || def.hangingIndent != null) {
       const ind = getOrCreateNS(pPr, stylesDoc, w, "ind")
-      if (def.firstLineIndent != null && def.firstLineIndent !== 0) {
+      if (def.firstLineIndent != null) {
         const r = parseIndent(def.firstLineIndent)
         if (r) {
+          // Explicit 0 writes w:firstLine="0" — distinct from absent (which
+          // inherits any firstLine set by a basedOn ancestor).
           if (r.kind === "char") {
             ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
           } else {
@@ -362,7 +392,7 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
           }
         }
       }
-      if (def.hangingIndent != null && def.hangingIndent !== 0) {
+      if (def.hangingIndent != null) {
         const r = parseIndent(def.hangingIndent)
         if (r) {
           if (r.kind === "char") {
@@ -418,28 +448,16 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
       if (!szCs.parentNode) insertChildInOrder(rPr, szCs, RPR_CHILD_ORDER)
     }
     if (def.bold !== undefined) {
-      const bEl = firstChildNS(rPr, w, "b")
-      const bCsEl = firstChildNS(rPr, w, "bCs")
-      if (def.bold) {
-        if (!bEl) insertChildInOrder(rPr, stylesDoc.createElementNS(w, "w:b"), RPR_CHILD_ORDER)
-        if (!bCsEl)
-          insertChildInOrder(rPr, stylesDoc.createElementNS(w, "w:bCs"), RPR_CHILD_ORDER)
-      } else {
-        if (bEl) rPr.removeChild(bEl)
-        if (bCsEl) rPr.removeChild(bCsEl)
-      }
+      // Tri-state toggle: true → presence-only (inherit-safe on); false → w:val="0"
+      // (explicit off, overrides any basedOn ancestor that declares bold);
+      // undefined → leave as-is. Removing the element on false would mean
+      // "inherit from basedOn", not "force off".
+      upsertToggle(rPr, stylesDoc, w, "b", def.bold, RPR_CHILD_ORDER)
+      upsertToggle(rPr, stylesDoc, w, "bCs", def.bold, RPR_CHILD_ORDER)
     }
     if (def.italic !== undefined) {
-      const iEl = firstChildNS(rPr, w, "i")
-      const iCsEl = firstChildNS(rPr, w, "iCs")
-      if (def.italic) {
-        if (!iEl) insertChildInOrder(rPr, stylesDoc.createElementNS(w, "w:i"), RPR_CHILD_ORDER)
-        if (!iCsEl)
-          insertChildInOrder(rPr, stylesDoc.createElementNS(w, "w:iCs"), RPR_CHILD_ORDER)
-      } else {
-        if (iEl) rPr.removeChild(iEl)
-        if (iCsEl) rPr.removeChild(iCsEl)
-      }
+      upsertToggle(rPr, stylesDoc, w, "i", def.italic, RPR_CHILD_ORDER)
+      upsertToggle(rPr, stylesDoc, w, "iCs", def.italic, RPR_CHILD_ORDER)
     }
     if (def.color !== undefined) {
       const color = getOrCreateNS(rPr, stylesDoc, w, "color")
