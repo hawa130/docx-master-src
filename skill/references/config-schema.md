@@ -104,6 +104,14 @@ string form when you mean an exact line height.
                                // paragraph's full computed rPr + pPr (using the
                                // dominant text run, skipping numbering-prefix-only
                                // runs) and uses them as the style definition.
+                               //
+                               // CORRECTNESS RULE: Required when the source already
+                               // has any paragraph playing this role (any pre-existing
+                               // styleId you are refining). Top-level typography fields
+                               // (size, bold, alignment, lineSpacing, etc.) on a
+                               // represented-role entry silently override the template's
+                               // actual typography — use `overrides` for explicit
+                               // adjustments instead. See standardize.md §1 for rationale.
   overrides: {                 // optional. Any field listed under Mode B can appear here.
     outlineLevel: 0,           // typical use: add structural fields the source lacks
     alignment:    "left",      // or override a specific value per user request
@@ -166,14 +174,40 @@ Modes mix in the same array. `overrides` companions `fromParagraph` — layer ad
 
 ```jsonc
 numbering: {
+  // Scheme-level restart behavior. Single-level schemes only.
+  // (Multi-level schemes use lvlRestart on each level entry instead.)
+  // Accepted values:
+  //   - "continuous" (default): one numId, items continue regardless of
+  //       intervening paragraphs.
+  //   - "perInstance": fork a fresh numId per contiguous run of same-styleId
+  //       paragraphs so each list block restarts at 1
+  //       (procedural 1./2./3. lists only).
+  //   - "byHeading": restart whenever the nearest preceding paragraph with
+  //       outlineLvl changes.
+  //   - { "atStyleChange": "<styleId>" }: restart at every paragraph bound
+  //       to the named styleId.
+  //
+  //   Block-level override: numbering: { numId, level, restart: true } forks a
+  //   fresh numId with <w:startOverride val="1"/> at one paragraph — use when a
+  //   single mid-list position needs a hard reset the scheme-level value can't express.
+  //
+  //   For SEQ-based per-chapter caption numbering use captions.chapterPrefix
+  //   instead — see § "Captions" below.
+  "restart": "continuous",
   levels: [
     {
       level:   0,                        // REQUIRED. 0-8.
       numFmt:  "chineseCounting",        // REQUIRED. decimal / chineseCounting /
                                          //   bullet / lowerRoman / etc.
                                          //   See references/numbering-formats.md for table.
+                                         //   Note: chineseCounting and chineseCountingThousand
+                                         //   produce the same visible glyphs (一、二、三…) —
+                                         //   prefer chineseCounting as the canonical form.
       lvlText: "第%1章",                 // REQUIRED. Display pattern (%N = level N counter).
       styleId: "Heading1",               // REQUIRED. Binds this level to a paragraph style.
+                                         // PREREQUISITE: must either pre-exist in styles.xml
+                                         // or be declared in styles[]. Otherwise apply throws
+                                         // at install time with "style not found".
       start:   1,                        // optional. Starting number. Default 1.
       stripPrefixPatterns: ["%1.%2", "%1."],
                                          // optional. Alternative manual-prefix patterns
@@ -191,34 +225,6 @@ numbering: {
         color: "3370FF",                 //   number marker only — independent of the
         bold:  false,                    //   title text.
       },
-      restart: "continuous",             // optional. Scheme-level counter restart.
-                                         //   Single-level schemes only — multi-level uses
-                                         //   lvlRestart instead.
-                                         //
-                                         //   "continuous" (default) — one counter shared
-                                         //     across the doc; items continue regardless
-                                         //     of intervening paragraphs.
-                                         //   "perInstance" — fork a fresh numId per
-                                         //     contiguous run of same-styleId paragraphs
-                                         //     so each list block restarts at 1
-                                         //     (procedural 1./2./3. lists only).
-                                         //   "byHeading" — restart whenever the nearest
-                                         //     preceding heading-styled paragraph (any
-                                         //     style with outlineLvl) changes.
-                                         //   { "atStyleChange": "<styleId>" } — restart
-                                         //     whenever a paragraph bound to the named
-                                         //     styleId appears.
-                                         //
-                                         //   Block-level override: numbering: { numId,
-                                         //   level, restart: true } forks a fresh numId
-                                         //   with <w:startOverride val="1"/> at one
-                                         //   paragraph — use when a single mid-list
-                                         //   position needs a hard reset the scheme-level
-                                         //   value can't express.
-                                         //
-                                         //   For SEQ-based per-chapter caption numbering
-                                         //   use captions.chapterPrefix instead — see
-                                         //   § "Captions" below.
     },
     ...
   ]
