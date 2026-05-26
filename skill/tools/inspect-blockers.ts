@@ -7,6 +7,7 @@ import { summarizeTable } from "@lib/parse/table-classifier.ts"
 import { NS } from "@lib/parse/types.ts"
 import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
 import { pad } from "@lib/parse/format.ts"
+import type { CellCoords } from "@lib/edit/text-search.ts"
 
 /**
  * `inspect_blockers` — list paragraphs that `apply`'s edit phase will refuse
@@ -17,13 +18,6 @@ import { pad } from "@lib/parse/format.ts"
  * conflicts. Indexed paragraphs appear as `#NNN`; paragraphs inside
  * data-table cells appear as `T<n>R<n>C<n> K<n>`.
  */
-
-interface CellCoords {
-  table: number
-  row: number
-  col: number
-  paragraph: number
-}
 
 /** Build a Map from every <w:p> inside data-table cells to its cell coords.
  * Only tables classified as "data" are included; layout-table paragraphs
@@ -134,7 +128,7 @@ async function main() {
     }
     if (unknownRows.length > 0) {
       out.push(
-        `  (${unknownRows.length} blocked paragraph(s) in layout-table cells — not addressable via edit locators)`,
+        `  (${unknownRows.length} blocked paragraph(s) at unresolved locations — likely nested inside an uncommon container (deeply nested tables, etc.). Not directly addressable via edit locators.)`,
       )
     }
     out.push("")

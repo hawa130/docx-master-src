@@ -5,13 +5,7 @@ import { summarizeTable } from "@lib/parse/table-classifier.ts"
 import { computeRawFingerprint } from "@lib/parse/fingerprint.ts"
 import { formatComputedPPrParts, formatComputedRPrParts, pad, truncate } from "@lib/parse/format.ts"
 import { firstChildNS, getChildren, getChildrenNS, textContent, wVal } from "@lib/xml/xml-utils.ts"
-
-interface CellCoords {
-  table: number
-  row: number
-  col: number
-  paragraph: number
-}
+import type { CellCoords } from "@lib/edit/text-search.ts"
 
 interface CellParaEntry {
   coords: CellCoords
