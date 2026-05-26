@@ -553,18 +553,40 @@ const WholeBodyLocatorSchema = z.strictObject({
  * surrounding label runs. Pick the run by 1-based `runIndex`, or by `blank`
  * (Kth run whose text is whitespace-only and rPr carries `<w:u/>` — typical
  * form-fill placeholder). When both omitted, defaults to the first blank
- * run (`blank: 1`). */
+ * run (`blank: 1`).
+ *
+ * Two forms:
+ *   Global: `{ type: "run", paragraph: N, blank?, runIndex? }` — targets
+ *     paragraph N in the indexed (body + layout-table-cell) scope.
+ *   Cell:   `{ type: "run", table: T, row: R, col: C, paragraph: K, blank?,
+ *              runIndex? }` — targets paragraph K inside data-table cell
+ *     (T, R, C). Mirrors the `cell` locator coordinate scheme. */
+const RunLocatorGlobalSchema = z.strictObject({
+  type: z.literal("run"),
+  paragraph: z.number().check(z.gte(1)),
+  blank: z.optional(z.number().check(z.gte(1))),
+  runIndex: z.optional(z.number().check(z.gte(1))),
+})
+
+const RunLocatorCellSchema = z.strictObject({
+  type: z.literal("run"),
+  table: z.number().check(z.gte(1)),
+  row: z.number().check(z.gte(1)),
+  col: z.number().check(z.gte(1)),
+  paragraph: z.number().check(z.gte(1)),
+  blank: z.optional(z.number().check(z.gte(1))),
+  runIndex: z.optional(z.number().check(z.gte(1))),
+})
+
 export const RunLocatorSchema = z
-  .strictObject({
-    type: z.literal("run"),
-    paragraph: z.number().check(z.gte(1)),
-    blank: z.optional(z.number().check(z.gte(1))),
-    runIndex: z.optional(z.number().check(z.gte(1))),
-  })
+  .union([RunLocatorGlobalSchema, RunLocatorCellSchema])
   .check(
-    z.refine((loc) => !(loc.blank !== undefined && loc.runIndex !== undefined), {
-      error: "run locator: pass either `blank` or `runIndex`, not both",
-    }),
+    z.refine(
+      (loc) => !(loc.blank !== undefined && loc.runIndex !== undefined),
+      {
+        error: "run locator: pass either `blank` or `runIndex`, not both",
+      },
+    ),
   )
 
 export const LocatorSchema = z.union([
@@ -724,7 +746,7 @@ const customHint: HintFn = (issue, pathStr, raw) => {
         ? (cursor as { op?: unknown }).op
         : undefined
     if (opLiteral === "set-run") {
-      return `set-run requires at.type === "run" (use a RunLocator: { type: "run", paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
+      return `set-run requires at.type === "run" (use a RunLocator: global form { type: "run", paragraph, blank|runIndex } or cell form { type: "run", table, row, col, paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
     }
   }
   return null
