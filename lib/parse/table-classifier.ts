@@ -14,11 +14,21 @@ export interface TableSummary {
   headers: string[]
 }
 
+/** Single cell holding more paragraphs than this is treated as a body
+ * container (chapter content, multi-paragraph notes) and forces the
+ * table into the `layout` bucket. Threshold sits above typical data
+ * cells (which carry at most a handful of paragraphs) and well below
+ * the form-template extremes seen in real templates (申报书 mid-cells
+ * hold 20+ in skeleton, 70+ when filled). */
+const BULK_CELL_PARA_THRESHOLD = 8
+
 export function summarizeTable(tbl: Element): TableSummary {
   const rows = getChildrenNS(tbl, NS.w, "tr")
   const rowCount = rows.length
   let maxCols = 0
+  let maxCellParas = 0
   const rowEffectiveCols: number[] = []
+  const rowTcCounts: number[] = []
 
   for (const tr of rows) {
     const tcs = getChildrenNS(tr, NS.w, "tc")
@@ -28,8 +38,11 @@ export function summarizeTable(tbl: Element): TableSummary {
       const gridSpan = tcPr ? firstChildNS(tcPr, NS.w, "gridSpan") : null
       const span = gridSpan ? parseInt(wVal(gridSpan) || "1", 10) : 1
       cells += span
+      const cellParas = descendantsNS(tc, NS.w, "p").length
+      if (cellParas > maxCellParas) maxCellParas = cellParas
     }
     rowEffectiveCols.push(cells)
+    rowTcCounts.push(tcs.length)
     if (cells > maxCols) maxCols = cells
   }
 
@@ -46,9 +59,27 @@ export function summarizeTable(tbl: Element): TableSummary {
   // count total paragraphs across all cells
   const totalParas = descendantsNS(tbl, NS.w, "p").length
 
+  // Layout signals — overrule structural form/data shape:
+  //   S1 single-cell-per-row stack: every row has exactly one <w:tc>
+  //      (regardless of gridSpan) and the table holds >3 paragraphs.
+  //      Catches both true 1-grid-column tables AND the common Word
+  //      pattern "table grid is N-column but body rows all merge
+  //      across all columns" — visually identical, both are stacks
+  //      of full-width single cells used as content containers.
+  //      Counting <w:tc> instead of gridSpan-effective cols is what
+  //      makes the second form get recognized.
+  //   S2 outlineLvl: any descendant <w:outlineLvl/> means the table
+  //      contains heading-bound paragraphs. Data cells never carry
+  //      outline level.
+  //   S3 bulk cell: a single cell holding many paragraphs is a body
+  //      container, not a tabular data cell.
+  const allSingleTcPerRow = rowTcCounts.every((c) => c === 1)
+  const hasOutlineHeading = descendantsNS(tbl, NS.w, "outlineLvl").length > 0
+
   let classification: TableClassification = "data"
-  const allSingleCol = rowEffectiveCols.every((c) => c === 1)
-  if (allSingleCol && totalParas > 3) {
+  if (allSingleTcPerRow && totalParas > 3) {
+    classification = "layout"
+  } else if (hasOutlineHeading || maxCellParas > BULK_CELL_PARA_THRESHOLD) {
     classification = "layout"
   } else if (rowCount > 1 && maxCols > 1) {
     if (looksLikeHeaderRow(rows[0]!)) {
