@@ -1319,25 +1319,38 @@ function applyMerge(
       ? target.paragraphs[target.paragraphs.length - 1]!
       : target.paragraphs[0]!
 
-  // Collect all <w:r> children from every paragraph in document order.
-  // Detach each run from its original parent as we collect, so that the
-  // survivor-paragraph's own runs are also detached before re-appending
-  // (avoids double-appending runs that were already in the survivor).
-  const allRuns: Element[] = []
+  // Collect all non-pPr content children from every paragraph in document
+  // order. This includes <w:r>, <w:hyperlink>, <w:bookmarkStart>,
+  // <w:bookmarkEnd>, <w:commentRangeStart>, <w:commentRangeEnd>,
+  // <w:proofErr>, <w:sdt>, and any other content nodes — preserving their
+  // relative order across paragraphs. We detach each node from its current
+  // parent as we collect so that nodes already in the survivor don't get
+  // double-appended when we move them.
+  const allContent: Element[] = []
   for (const p of target.paragraphs) {
-    for (const r of Array.from(getChildrenNS(p, w, "r"))) {
-      p.removeChild(r)
-      allRuns.push(r)
+    for (const child of Array.from(getChildren(p))) {
+      if (child.namespaceURI === w && child.localName === "pPr") continue
+      p.removeChild(child)
+      allContent.push(child)
     }
   }
 
-  // Append the collected runs to the survivor. The survivor's <w:pPr> and
-  // any non-run children (bookmarks, proofErr, etc.) remain untouched.
-  for (const r of allRuns) {
-    survivor.appendChild(r)
+  // Determine the insertion point in the survivor: after the last <w:r> in
+  // the survivor's current children, so that newly merged content lands
+  // after the survivor's own runs but before any trailing non-content nodes
+  // (e.g. <w:bookmarkEnd> that closes a bookmark anchored to this paragraph).
+  // If the survivor has no runs, insert after <w:pPr> (i.e. at the start of
+  // the content region). Since allContent was collected AFTER detaching from
+  // survivors, the survivor is now empty of its own content nodes too; the
+  // only child remaining is <w:pPr> (if present). Re-append all collected
+  // nodes — the relative document order is preserved across paragraph
+  // boundaries because we iterated target.paragraphs in array order and
+  // collected children in child order within each paragraph.
+  for (const node of allContent) {
+    survivor.appendChild(node)
   }
 
-  // Remove the non-survivor paragraphs.
+  // Remove the non-survivor paragraphs (now empty of content).
   for (const p of target.paragraphs) {
     if (p !== survivor && p.parentNode) {
       p.parentNode.removeChild(p)
