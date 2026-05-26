@@ -70,9 +70,14 @@ export function formatComputedRPrParts(r: ComputedRunStyle, opts: RPrFormatOptio
     if (truthy && !v) return
     parts.push(truthy ? `${name}: true` : `${name}: ${v}`)
   }
-  if (r.fontEastAsia) parts.push(`fontCJK: "${r.fontEastAsia}"`)
   const latin = r.fontAscii ?? r.fontHAnsi
-  if (latin && latin !== r.fontEastAsia) parts.push(`fontLatin: "${latin}"`)
+  const setSlots = [latin, r.fontEastAsia].filter((v): v is string => v !== undefined)
+  if (setSlots.length >= 2 && setSlots.every((v) => v === setSlots[0])) {
+    parts.push(`font: "${setSlots[0]}"`)
+  } else {
+    if (r.fontEastAsia) parts.push(`fontCJK: "${r.fontEastAsia}"`)
+    if (latin) parts.push(`fontLatin: "${latin}"`)
+  }
   if (r.size !== undefined) parts.push(`size: ${r.size / 2}pt`)
   pushToggle("bold", r.bold)
   pushToggle("italic", r.italic)
