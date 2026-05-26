@@ -61,6 +61,8 @@ Sparse by design — only declared blocks apply; untouched styles / numbering / 
 
 ## Workflow
 
+**Archetype check first:** Before picking specific tools, see if the document matches an archetype in `references/archetypes/`. Archetype docs codify common pitfalls and recommended workflows — skipping them re-discovers known issues.
+
 1. **Survey.** `overview` first. From the output, note:
    - **Existing structure** — Heading levels, numbering schemes (with consumption counts; 0 = orphan), fingerprints, document skeleton.
    - **Content chrome formatting** — what direct `pPr` / `rPr` content paragraphs carry. This IS the document's typographic convention; preserve it by not redeclaring those attributes on the re-tagging styles.
