@@ -462,11 +462,34 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     }
     const validNumberingTargets = new Set([...declaredIds, ...existingStyleIds])
 
-    // First pass: collect explicit numIds and detect collisions before mutating.
-    const claimedNumIds = new Set<number>()
+    // Pre-scan numbering.xml for existing <w:num> ids. Used in two places below:
+    //   1. Explicit numId collision check — throws if config pins an id already
+    //      present in the source (duplicate <w:num w:numId="N"> is invalid OOXML).
+    //   2. Auto-allocator exclusion — prevents the engine from picking an id that
+    //      already exists in the source even when no config scheme claims it.
+    const sourceNumIds = new Set<number>()
+    for (const numEl of getChildrenNS(numberingDoc.documentElement!, NS.w, "num")) {
+      const idStr = wAttr(numEl, "numId")
+      if (idStr) {
+        const id = parseInt(idStr, 10)
+        if (Number.isFinite(id)) sourceNumIds.add(id)
+      }
+    }
+
+    // First pass: collect explicit numIds and detect config-internal + source collisions.
+    const claimedNumIds = new Set<number>([...sourceNumIds])
     for (const [schemeIdx, scheme] of numberingSchemes.entries()) {
       if (scheme.numId === undefined) continue
       const path = numberingSchemes.length === 1 ? "numbering" : `numbering[${schemeIdx}]`
+      // Check against source numbering.xml first (most surprising to the agent).
+      if (sourceNumIds.has(scheme.numId)) {
+        throw new Error(
+          `${path}.numId = ${scheme.numId} collides with an existing <w:num w:numId="${scheme.numId}"/> in the source. ` +
+            `Either pin to a different numId, or remove the explicit numId to let the engine allocate ` +
+            `(the engine will pick an id not in use).`,
+        )
+      }
+      // Check config-internal duplicates.
       if (claimedNumIds.has(scheme.numId)) {
         const prev = numberingSchemes.findIndex(
           (s, i) => i < schemeIdx && s.numId === scheme.numId,

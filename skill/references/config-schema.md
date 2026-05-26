@@ -239,9 +239,9 @@ Omit `numbering` entirely if the document has no numbered headings/lists.
 
 By default the engine allocates fresh numIds for declared schemes. To pin a scheme to a specific id — so block-level `numbering: { numId }` references resolve predictably — set `"numId": N` on the scheme object (sibling of `levels`). The dry-run report includes a scheme → numId allocation table showing which id each scheme was assigned and whether it was pinned or allocated.
 
-The engine always creates a fresh `<w:abstractNum>` + `<w:num>` pair. Pinning a `numId` that already exists in `numbering.xml` (from a pre-existing scheme) produces a duplicate `<w:num>` with that id — the engine does not detect this, and behavior is renderer-dependent. Only pin numIds that are not already present in the source document.
+The engine always creates a fresh `<w:abstractNum>` + `<w:num>` pair. If the pinned `numId` is already present in the source `numbering.xml`, apply throws with a clear message naming the conflicting entry and instructing the agent to choose a different id or remove the explicit `numId` to let the engine allocate. The engine's auto-allocator also skips all source numIds, so allocated ids are always safe regardless of what the source contains.
 
-Collision: two config-declared schemes requesting the same `numId` cause apply to throw, naming both conflicting entries.
+Collision: two config-declared schemes requesting the same `numId`, or any config scheme requesting a `numId` already in the source, causes apply to throw, naming the conflicting entry.
 
 Pattern templates and `numFmt` values: see [`numbering-formats.md`](numbering-formats.md).
 
