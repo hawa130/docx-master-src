@@ -15,12 +15,13 @@ export interface TableSummary {
 }
 
 /** Single cell holding more paragraphs than this is treated as a body
- * container (chapter content, multi-paragraph notes) and forces the
- * table into the `layout` bucket. Threshold sits above typical data
- * cells (which carry at most a handful of paragraphs) and well below
- * the form-template extremes seen in real templates (申报书 mid-cells
- * hold 20+ in skeleton, 70+ when filled). */
-const BULK_CELL_PARA_THRESHOLD = 8
+ * container and forces the table into the `layout` bucket. Calibrated
+ * against survey of real fixtures: true data cells never exceed 3
+ * paragraphs; multi-line form cells (申报书 checkbox lists, proposal
+ * evaluation rubrics) sit at 5; layout content containers start at 4
+ * but typically reach 10+. Threshold 5 keeps form / data cells stable
+ * while catching content-heavy multi-tc layout cases that S1 misses. */
+const BULK_CELL_PARA_THRESHOLD = 5
 
 export function summarizeTable(tbl: Element): TableSummary {
   const rows = getChildrenNS(tbl, NS.w, "tr")
