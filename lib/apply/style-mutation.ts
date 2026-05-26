@@ -390,6 +390,16 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     }
     if (def.firstLineIndent != null || def.hangingIndent != null) {
       const ind = getOrCreateNS(pPr, stylesDoc, w, "ind")
+      // Clear the entire mutually-exclusive first-line/hanging group before
+      // writing any new value. The four attrs are pairwise exclusive:
+      //   firstLine vs firstLineChars (same offset, different units)
+      //   hanging   vs hangingChars   (same offset, different units)
+      //   firstLine vs hanging        (which direction the first line shifts)
+      // Leaving old attrs from the exclusive set produces undefined Word
+      // behavior (e.g. firstLine="420" + hangingChars="200" coexisting).
+      for (const a of ["firstLine", "firstLineChars", "hanging", "hangingChars"]) {
+        ind.removeAttributeNS(w, a)
+      }
       if (def.firstLineIndent != null) {
         const r = parseIndent(def.firstLineIndent)
         if (r) {
