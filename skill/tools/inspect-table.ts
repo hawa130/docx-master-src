@@ -51,11 +51,21 @@ async function main() {
       for (let r = 0; r < rows.length; r++) {
         const cells = getChildrenNS(rows[r]!, NS.w, "tc")
         for (let c = 0; c < cells.length; c++) {
-          const text = cellText(cells[c]!)
-          const snippet = text.length > 40 ? text.slice(0, 40) + "…" : text
+          const paras = getChildrenNS(cells[c]!, NS.w, "p")
           const paraSpan = formatParaSpan(cells[c]!, indexByElement)
           // Display 1-based to match the cell locator's 1-based row/col fields.
-          out.push(`  [${r + 1},${c + 1}] ${JSON.stringify(snippet)}${paraSpan}`)
+          if (paras.length <= 1) {
+            const text = paras[0] ? paragraphText(paras[0]).trim() : ""
+            const snippet = text.length > 40 ? text.slice(0, 40) + "…" : text
+            out.push(`  [${r + 1},${c + 1}] ${JSON.stringify(snippet)}${paraSpan}`)
+          } else {
+            out.push(`  [${r + 1},${c + 1}] paras:${paras.length}${paraSpan}`)
+            for (let k = 0; k < paras.length; k++) {
+              const pText = paragraphText(paras[k]!).trim()
+              const snippet = pText.length > 40 ? pText.slice(0, 40) + "…" : pText
+              out.push(`         K${k + 1}: ${JSON.stringify(snippet)}`)
+            }
+          }
         }
       }
       out.push("")
@@ -65,16 +75,6 @@ async function main() {
     console.error(`Error: ${(err as Error).message}`)
     process.exit(1)
   }
-}
-
-function cellText(tc: Element): string {
-  let out = ""
-  for (const p of getChildrenNS(tc, NS.w, "p")) {
-    if (out) out += " ⏎ "
-    const pText = paragraphText(p)
-    out += pText
-  }
-  return out
 }
 
 /** "  paras: 58–89" / "  paras: 60" / "" (empty when cell paragraphs are
