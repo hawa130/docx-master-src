@@ -14,6 +14,14 @@ import { loadDocx } from "@lib/xml/load.ts"
 import { searchDocument, describeRegion, type MatchHit } from "@lib/edit/text-search.ts"
 import { pad } from "@lib/parse/format.ts"
 
+/** Unique location key for grouping hits by paragraph/cell in the summary. */
+function locationKey(h: MatchHit): string {
+  if (h.cell) {
+    return `T${h.cell.table}R${h.cell.row}C${h.cell.col}K${h.cell.paragraph}`
+  }
+  return `#${h.paragraphIndex}`
+}
+
 async function main() {
   const argv = process.argv.slice(2)
   let isRegex = false
@@ -108,11 +116,11 @@ async function main() {
       return
     }
 
-    const paraSet = new Set(hits.map((h) => h.paragraphIndex))
+    const locSet = new Set(hits.map(locationKey))
     const counts = summarize(hits)
     const annotation = formatAnnotations(counts)
     lines.push(
-      `${hits.length} matches across ${paraSet.size} paragraphs${annotation ? ` (${annotation})` : ""}:`,
+      `${hits.length} matches across ${locSet.size} paragraphs${annotation ? ` (${annotation})` : ""}:`,
     )
     lines.push("")
 
@@ -131,6 +139,7 @@ async function main() {
 }
 
 function formatMatchLine(h: MatchHit): string {
+  const locCol = formatLocColumn(h)
   const runCol = formatRunColumn(h)
   const ch = `ch=${String(h.ch).padStart(3, " ")}`
   const len = `len=${h.len}`
@@ -138,7 +147,17 @@ function formatMatchLine(h: MatchHit): string {
   if (h.crossRun) tags.push("cross-run")
   if (h.region) tags.push(describeRegion(h.region))
   const tagStr = tags.length > 0 ? `   (${tags.join("; ")})` : ""
-  return `  #${pad(h.paragraphIndex)}  ${runCol}  ${ch}  ${len}   ${h.context}${tagStr}`
+  return `  ${locCol}  ${runCol}  ${ch}  ${len}   ${h.context}${tagStr}`
+}
+
+function formatLocColumn(h: MatchHit): string {
+  // Fixed width so cell and paragraph rows align across a mixed result set.
+  const PAD = 14
+  if (h.cell) {
+    const { table, row, col, paragraph } = h.cell
+    return `T${table}R${row}C${col} K${paragraph}`.padEnd(PAD, " ")
+  }
+  return `#${pad(h.paragraphIndex!)}`.padEnd(PAD, " ")
 }
 
 function formatRunColumn(h: MatchHit): string {
