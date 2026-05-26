@@ -560,6 +560,12 @@ const ReplaceOpSchema = z.strictObject({
   op: z.literal("replace"),
   at: LocatorSchema,
   with: FragmentSchema,
+  /** When true, allow replacing paragraphs that contain SEQ / REF /
+   * other complex fields. Default false (blocker rejects them). Use
+   * for caption / cross-ref iteration: a previous apply emitted SEQ
+   * fields, you want to rebuild the cell content. Revisions
+   * (<w:ins> / <w:del>) and SDT controls are still blocking. */
+  overwriteFields: z.optional(z.boolean()),
 })
 
 const InsertBeforeOpSchema = z.strictObject({

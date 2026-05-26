@@ -659,9 +659,14 @@ function validateAgainstBlockers(
 ): void {
   const failures: string[] = []
   for (const [i, edit] of resolved.entries()) {
+    const overwriteFields = edit.op.op === "replace" && edit.op.overwriteFields === true
     for (const p of edit.target.paragraphs) {
       const reason = blockers.byElement.get(p)
       if (reason) {
+        // replace with overwriteFields:true skips the "field" blocker — the
+        // engine drops the existing fields together with the replaced paragraphs.
+        // Revisions (tracked-change) and SDT controls remain blocking regardless.
+        if (overwriteFields && reason === "field") continue
         const idx = indexByElement.get(p)
         const where = idx !== undefined ? `paragraph #${idx}` : `cell paragraph`
         failures.push(

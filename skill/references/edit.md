@@ -142,6 +142,12 @@ Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` ru
 
 `"author"` (optional, only meaningful with `trackChanges: true`) — non-empty string written to the `w:author` attribute of every emitted `<w:ins>` / `<w:del>` / `*Change`. Omitted ⇒ empty value ⇒ Word displays "Unknown Author". Never default this to a tool brand; only set it when the user explicitly names who's authoring the review.
 
+## `overwriteFields` — caption / cross-ref iteration
+
+Once an `apply` run has emitted SEQ / REF fields into a cell (typical caption pipeline output), a subsequent `replace` against the same cell paragraphs is blocked by default — the blocker scan refuses paragraphs containing `<w:fldChar>` / complex field regions.
+
+Set `"overwriteFields": true` on the `replace` op when you intend to regenerate the cell's content from scratch. The engine drops the existing fields together with the paragraphs. Revisions (`<w:ins>` / `<w:del>`) and form controls (`<w:sdt>`) are still blocking — they require user action regardless.
+
 ## Cell-fill strategy
 
 Form cells often hold a label paragraph + several empty placeholder rows (the form designer pre-allocates blanks for handwriting). Two strategies:
