@@ -1410,6 +1410,41 @@ function applyReplace(
 
 /* ------------- format ------------- */
 
+/**
+ * pPr child local-names that clearDirect should strip.
+ * Whitelist of format-bearing children only — structural children
+ * (pStyle, numPr, sectPr, pPrChange) are intentionally absent.
+ */
+const CLEAR_DIRECT_PPR_STRIP_SET = new Set([
+  "spacing",
+  "ind",
+  "jc",
+  "outlineLvl",
+  "pageBreakBefore",
+  "keepNext",
+  "keepLines",
+  "widowControl",
+  "pBdr",
+  "shd",
+  "tabs",
+  "framePr",
+  "rPr",
+  "adjustRightInd",
+  "snapToGrid",
+  "autoSpaceDE",
+  "autoSpaceDN",
+  "textAlignment",
+  "textboxTightWrap",
+  "bidi",
+  "mirrorIndents",
+  "wordWrap",
+  "kinsoku",
+  "overflowPunct",
+  "topLinePunct",
+  "contextualSpacing",
+  "divId",
+])
+
 function applyFormat(
   target: ResolvedTarget,
   op: Extract<EditOp, { op: "format" }>,
@@ -1427,9 +1462,15 @@ function applyFormat(
       if (shouldClearPPr) {
         const pPr = firstChildNS(p, w, "pPr")
         if (pPr) {
+          // Whitelist-based strip: remove only format-bearing pPr children.
+          // Structural children (pStyle, numPr, sectPr, pPrChange) are
+          // preserved. sectPr carries section-break / page-size / margin /
+          // header-footer refs for the last paragraph in a section — silently
+          // deleting it destroys document structure. pPrChange is a
+          // track-changes history artifact and must not be removed mid-edit.
           for (const c of [...getChildren(pPr)]) {
-            if (c.namespaceURI === w && (c.localName === "pStyle" || c.localName === "numPr")) continue
-            pPr.removeChild(c)
+            if (c.namespaceURI !== w) continue
+            if (CLEAR_DIRECT_PPR_STRIP_SET.has(c.localName)) pPr.removeChild(c)
           }
         }
       }
