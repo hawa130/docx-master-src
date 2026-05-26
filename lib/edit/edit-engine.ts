@@ -109,6 +109,10 @@ export interface EditsPreviewEntry {
   willInsertCount: number
   /** Container kind — body or table cell. */
   container: "body" | "cell"
+  /** For merge ops: the index of the surviving paragraph (kept).
+   * Other target indices in willReplaceOrDeleteIndices are absorbed
+   * INTO the survivor (marked MERGED in drift output). */
+  survivorIndex?: number
 }
 
 export interface PreviewEditsInput {
@@ -158,6 +162,7 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
     const op = edit.op.op
     let willReplaceOrDeleteIndices: number[] = []
     let willInsertCount = 0
+    let survivorIndex: number | undefined
     if (op === "replace") {
       willReplaceOrDeleteIndices = [...targetParaIndices]
       willInsertCount = edit.op.with.length
@@ -171,6 +176,18 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
       // replaced/deleted so dry-run counts don't double-count them.
       willReplaceOrDeleteIndices = [...targetParaIndices]
       for (const idx of targetParaIndices) if (idx >= 0) replacedOrDeletedIndices.add(idx)
+      // Identify survivor so drift map doesn't mark it MERGED.
+      const keepPPr = (edit.op as { keepPPr?: "first" | "last" }).keepPPr ?? "first"
+      const sortedTargets = [...targetParaIndices].sort((a, b) => a - b)
+      const survivorIdx =
+        keepPPr === "last"
+          ? sortedTargets[sortedTargets.length - 1]
+          : sortedTargets[0]
+      if (survivorIdx !== undefined && survivorIdx >= 0) {
+        survivorIndex = survivorIdx
+        // Survivor stays in the doc — don't count it as replaced/deleted.
+        replacedOrDeletedIndices.delete(survivorIdx)
+      }
     } else if (op === "insert-before" || op === "insert-after") {
       willInsertCount = edit.op.content.length
     }
@@ -185,6 +202,7 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
       willReplaceOrDeleteIndices,
       willInsertCount,
       container,
+      survivorIndex,
     })
   }
   return { entries, replacedOrDeletedIndices }

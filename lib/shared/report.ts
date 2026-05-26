@@ -203,6 +203,7 @@ export function computeDriftBands(
     const isMerge = e.op === "merge"
     const kind: "deleted" | "merged" = isMerge ? "merged" : "deleted"
     for (const idx of sortedRemoved) {
+      if (isMerge && idx === e.survivorIndex) continue // survivor stays — don't mark MERGED
       removedKind.set(idx, kind)
     }
     // For merge: N removed, 1 survivor inserted → net = -(N-1)
