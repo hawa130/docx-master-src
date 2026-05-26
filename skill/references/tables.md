@@ -210,7 +210,7 @@ Then in body text:
 | Auto-numbered captions inside cells | A cell paragraph bound to `FigureCaption` / `TableCaption` participates in the doc-wide counter — useful for image-gallery cells. |
 | Theme fonts inside cells | rPr cascade applies; no special wiring needed. |
 | Bookmark anchors inside cells | Cell paragraph blocks can declare `anchor` — same BookmarkAllocator path as body paragraphs. Cross-refs from any position resolve. |
-| `pattern_rules` / `bulk_rules` coverage | **Data tables: NO.** Cell paragraphs aren't indexed by the parser. **Layout tables: YES.** Bind cell paragraphs to explicit styleId via `Block[]` when you need predictable styling, instead of relying on post-emit rules. |
+| `pattern_rules` / `bulk_rules` coverage | Body + layout-table cell paragraphs (indexed). Data-table cells are now reachable via per-cell-paragraph addressing in surgical edits, but **not** by whole-doc bulk rules. For predictable cell paragraph styling, bind via explicit `styleId` in inserts or use the `cell` locator. |
 | MDF (match destination formatting) | TableBlock is non-paragraph; engine doesn't propagate anchor pPr into it. The cells' own pPr is what you declared. |
 | Table-level styles (Word's `<w:tblStyle>`) | **Not supported** — see "What's not supported" below. |
 

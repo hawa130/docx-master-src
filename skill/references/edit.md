@@ -35,10 +35,10 @@ All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`,
 |---|---|
 | `paragraph` | The Nth indexed paragraph (`{ "type": "paragraph", "index": N }`). Matches `#NNN` in `overview`. |
 | `range` | `{ ..., "from": A, "to": B }`, inclusive. Endpoints must share a container (body, or one specific layout-table cell). |
-| `cell` | `{ ..., "table": T, "row": R, "col": C }`. Only way to reach data/form-table cell paragraphs (those are unindexed). Coords match `inspect_table`'s `[r,c]` output. |
+| `cell` | `{ ..., "table": T, "row": R, "col": C }` for the whole cell's paragraphs; add `"paragraph": K` to narrow to one paragraph (1-based within the cell), `"to": M` for a contiguous range. Cell coords match `inspect_table`'s `[r,c]` output; K range comes from the `paras:N` annotation shown per cell. |
 | `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose OOXML outline level is L (**0-based**: level 0 = Heading 1, level 1 = Heading 2, …). Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
 | `whole-body` | Every body paragraph. Pairs naturally with `format`; rarely with `replace`. |
-| `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. With `blank: K`, targets the Kth run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth run. If neither `blank` nor `runIndex` is given, defaults to `blank: 1`. Run indices match `inspect_runs` / `find_text` output. Pair only with `set-run`. |
+| `run` | Two shapes: `{ "type": "run", "paragraph": N, ... }` for body or layout-cell paragraphs (global `#NNN`); `{ "type": "run", "table": T, "row": R, "col": C, "paragraph": K, ... }` for data-cell paragraphs (K is 1-based within the cell, matching `inspect_table` `paras:N`). Both accept `blank: K` (Kth whitespace-only underlined placeholder run) or `runIndex: M` (Mth run); default is `blank: 1`. Run indices match `inspect_runs` / `find_text` output. Pair only with `set-run`. |
 
 ### Ops
 
