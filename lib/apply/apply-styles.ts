@@ -266,6 +266,21 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     hashToLetter.set(s.hash, s.label)
   }
 
+  // Snapshot numIds from the **original** numbering.xml before template
+  // import runs. The downstream collision check at step 5 needs to
+  // distinguish "id pre-existed in user's doc" from "id was just created by
+  // this apply run's template import" — the two produce different remedies
+  // and the latter is not the agent's fault. Snapshotting after the import
+  // mutated numberingDoc would conflate them.
+  const preTemplateSourceNumIds = new Set<number>()
+  for (const numEl of getChildrenNS(numberingDoc.documentElement!, NS.w, "num")) {
+    const idStr = wAttr(numEl, "numId")
+    if (idStr) {
+      const id = parseInt(idStr, 10)
+      if (Number.isFinite(id)) preTemplateSourceNumIds.add(id)
+    }
+  }
+
   // 3b. Import template styles (if configured). This injects styles directly
   // into stylesDoc — they participate in the final styles.xml without
   // going through the user-declared styles[] / fromParagraph path. Source
@@ -464,29 +479,45 @@ export async function applyStyles(source: string, output: string, config: ApplyC
 
     // Pre-scan numbering.xml for existing <w:num> ids. Used in two places below:
     //   1. Explicit numId collision check — throws if config pins an id already
-    //      present in the source (duplicate <w:num w:numId="N"> is invalid OOXML).
+    //      present (duplicate <w:num w:numId="N"> is invalid OOXML).
     //   2. Auto-allocator exclusion — prevents the engine from picking an id that
-    //      already exists in the source even when no config scheme claims it.
-    const sourceNumIds = new Set<number>()
+    //      already exists even when no config scheme claims it.
+    // Split into two sets so the collision error can attribute correctly:
+    // ids the user's source carried in vs. ids this apply run's template
+    // import just allocated. Same OOXML outcome (duplicate <w:num>), but
+    // the agent's fix is different — for source collisions, pick another
+    // numId or drop the pin; for template-import collisions, dropping the
+    // pin is the natural fix because the agent didn't know the template
+    // would grab that id.
+    const allNumIds = new Set<number>()
     for (const numEl of getChildrenNS(numberingDoc.documentElement!, NS.w, "num")) {
       const idStr = wAttr(numEl, "numId")
       if (idStr) {
         const id = parseInt(idStr, 10)
-        if (Number.isFinite(id)) sourceNumIds.add(id)
+        if (Number.isFinite(id)) allNumIds.add(id)
       }
     }
+    const templateImportedNumIds = new Set<number>(
+      [...allNumIds].filter((id) => !preTemplateSourceNumIds.has(id)),
+    )
 
-    // First pass: collect explicit numIds and detect config-internal + source collisions.
-    const claimedNumIds = new Set<number>([...sourceNumIds])
+    // First pass: collect explicit numIds and detect collisions.
+    const claimedNumIds = new Set<number>(allNumIds)
     for (const [schemeIdx, scheme] of numberingSchemes.entries()) {
       if (scheme.numId === undefined) continue
       const path = numberingSchemes.length === 1 ? "numbering" : `numbering[${schemeIdx}]`
-      // Check against source numbering.xml first (most surprising to the agent).
-      if (sourceNumIds.has(scheme.numId)) {
+      if (preTemplateSourceNumIds.has(scheme.numId)) {
         throw new Error(
           `${path}.numId = ${scheme.numId} collides with an existing <w:num w:numId="${scheme.numId}"/> in the source. ` +
             `Either pin to a different numId, or remove the explicit numId to let the engine allocate ` +
             `(the engine will pick an id not in use).`,
+        )
+      }
+      if (templateImportedNumIds.has(scheme.numId)) {
+        throw new Error(
+          `${path}.numId = ${scheme.numId} was just claimed by template import in this apply run. ` +
+            `Either pin to a different numId, or remove the explicit numId to let the engine allocate ` +
+            `(the auto-allocator already skips template-imported ids).`,
         )
       }
       // Check config-internal duplicates.
