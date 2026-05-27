@@ -35,7 +35,7 @@ async function main() {
     }
     // Build a paragraph-element → index map so each cell can report which
     // #NNN range its paragraphs occupy. Only layout-table paragraphs are
-    // indexed; data/form-table cells return empty arrays here (cell
+    // indexed; data-table cells return empty arrays here (cell
     // locator addresses them anyway, no index needed).
     const indexByElement = new Map<Element, number>()
     for (const p of walkIndexedParagraphs(documentDoc)) {
