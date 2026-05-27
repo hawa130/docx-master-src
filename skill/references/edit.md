@@ -132,7 +132,7 @@ Picking the wrong locale's shape (e.g. `「」` in mainland 简中正文, or str
 
 Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` runs, you can place `{ "refTo": ..., "display": ..., "format": ... }` cross-reference nodes. **Any cite to an auto-numbered target (figure / table / heading / equation / reference entry) must use these — never write the counter as literal text.** See [`cross-references.md`](cross-references.md) for the contract.
 
-`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (Length), `lineSpacing` (number multiplier / `"Npt"` exact / `{ atLeast: <length> }`), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (Length, plus `"Nchar"` for font-scaled indent, or `null` for explicit zero), `outlineLevel` (0–9).
+`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (Length), `lineSpacing` (number multiplier / `"Npt"` exact / `{ atLeast: <length> }`), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (Length, plus `"Nchar"` for font-scaled indent; `0` / `"0pt"` explicitly overrides an inherited indent to zero, `null` leaves the field absent so the style cascade decides), `outlineLevel` (0–9).
 
 **Length values** — anywhere a length is expected (`size`, `spaceBefore` / `spaceAfter`, `width` / `height`, border `size`, indent forms, table column widths) accept the same shape: a bare number (pt) or one of `"Npt"` / `"Ncm"` / `"Nmm"` / `"Nin"`. Use whatever matches the user's prompt — `"2.54cm"` is no extra cost over `"72pt"`. Indents additionally accept `"Nchar"` (Word's "首行缩进 N 字符" — auto-scales with font size; preferred for CJK body text where character-units survive size changes).
 

@@ -19,6 +19,7 @@ import {
   toTwips,
   twipsToPtString,
 } from "@lib/shared/units.ts"
+import { clearFirstLineHangingGroup, setIndentAttr } from "@lib/xml/ind-attr.ts"
 
 /**
  * Insert a freshly-created `<w:pPr>` into a `<w:style>` at the schema-correct
@@ -390,37 +391,14 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     }
     if (def.firstLineIndent != null || def.hangingIndent != null) {
       const ind = getOrCreateNS(pPr, stylesDoc, w, "ind")
-      // Clear the entire mutually-exclusive first-line/hanging group before
-      // writing any new value. The four attrs are pairwise exclusive:
-      //   firstLine vs firstLineChars (same offset, different units)
-      //   hanging   vs hangingChars   (same offset, different units)
-      //   firstLine vs hanging        (which direction the first line shifts)
-      // Leaving old attrs from the exclusive set produces undefined Word
-      // behavior (e.g. firstLine="420" + hangingChars="200" coexisting).
-      for (const a of ["firstLine", "firstLineChars", "hanging", "hangingChars"]) {
-        ind.removeAttributeNS(w, a)
-      }
+      clearFirstLineHangingGroup(ind)
       if (def.firstLineIndent != null) {
         const r = parseIndent(def.firstLineIndent)
-        if (r) {
-          // Explicit 0 writes w:firstLine="0" — distinct from absent (which
-          // inherits any firstLine set by a basedOn ancestor).
-          if (r.kind === "char") {
-            ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
-          } else {
-            ind.setAttributeNS(w, "w:firstLine", String(r.value))
-          }
-        }
+        if (r) setIndentAttr(ind, "firstLine", r)
       }
       if (def.hangingIndent != null) {
         const r = parseIndent(def.hangingIndent)
-        if (r) {
-          if (r.kind === "char") {
-            ind.setAttributeNS(w, "w:hangingChars", String(r.value))
-          } else {
-            ind.setAttributeNS(w, "w:hanging", String(r.value))
-          }
-        }
+        if (r) setIndentAttr(ind, "hanging", r)
       }
       if (!ind.parentNode) insertChildInOrder(pPr, ind, PPR_CHILD_ORDER)
     }

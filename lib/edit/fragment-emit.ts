@@ -36,6 +36,7 @@ import {
   toHalfPt,
   toTwips,
 } from "@lib/shared/units.ts"
+import { setIndentAttr } from "@lib/xml/ind-attr.ts"
 import { emitInlineField, emitInlineStyleRef } from "@lib/edit/fields/inline-fields.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
@@ -192,25 +193,13 @@ export function buildPPrChildren(fmt: ParagraphFormat, ownerDoc: Document): Elem
   ) {
     const ind = ownerDoc.createElementNS(w, "w:ind")
     const fli = parseIndent(fmt.firstLineIndent ?? null)
-    if (fli && fli.value !== 0) {
-      const attr = fli.kind === "char" ? "w:firstLineChars" : "w:firstLine"
-      ind.setAttributeNS(w, attr, String(fli.value))
-    }
+    if (fli) setIndentAttr(ind, "firstLine", fli)
     const hi = parseIndent(fmt.hangingIndent ?? null)
-    if (hi && hi.value !== 0) {
-      const attr = hi.kind === "char" ? "w:hangingChars" : "w:hanging"
-      ind.setAttributeNS(w, attr, String(hi.value))
-    }
+    if (hi) setIndentAttr(ind, "hanging", hi)
     const il = parseIndent(fmt.indentLeft ?? null)
-    if (il) {
-      const attr = il.kind === "char" ? "w:leftChars" : "w:left"
-      ind.setAttributeNS(w, attr, String(il.value))
-    }
+    if (il) setIndentAttr(ind, "left", il)
     const ir = parseIndent(fmt.indentRight ?? null)
-    if (ir) {
-      const attr = ir.kind === "char" ? "w:rightChars" : "w:right"
-      ind.setAttributeNS(w, attr, String(ir.value))
-    }
+    if (ir) setIndentAttr(ind, "right", ir)
     out.push(ind)
   }
   if (fmt.alignment) {
