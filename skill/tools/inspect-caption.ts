@@ -6,26 +6,35 @@
  *
  * Without identifier: lists all SEQ identifiers found in body with
  * occurrence counts.
- * With identifier: per-paragraph details — counter value, paragraph
- * index, anchor name (if any), referencing-REF count.
+ * With identifier: per-paragraph details — counter value, location
+ * (indexed `#NNN` or data-cell `T<n>R<n>C<n> K<n>`), anchor name (if any),
+ * referencing-REF count.
  */
 
 import { loadDocx } from "@lib/xml/load.ts"
 import { NS } from "@lib/parse/types.ts"
+import { summarizeTable } from "@lib/parse/table-classifier.ts"
 import {
   firstChildNS,
   getChildren,
+  getChildrenNS,
   paragraphRuns,
   paragraphStyleId,
   wAttr,
-  walkBodyParagraphs,
 } from "@lib/xml/xml-utils.ts"
+import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
 import { parseFieldRuns, seqFields } from "@lib/edit/fields/field-parse.ts"
 
 const w = NS.w
 
+/** Location of a caption paragraph: either a global 1-based index (body /
+ * layout-table cells) or a set of data-cell coords. */
+type ParagraphLocation =
+  | { kind: "indexed"; index: number }
+  | { kind: "cell"; table: number; row: number; col: number; paragraph: number }
+
 interface Occurrence {
-  paragraphIndex: number
+  location: ParagraphLocation
   parentSeqValue: string
   subSeqValue: string | undefined
   styleId: string | undefined
@@ -59,14 +68,18 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
+  // Build index → element map for indexed paragraphs (body + layout cells).
+  const indexedParas = walkIndexedParagraphs(documentDoc)
+  const elementToIndex = new Map<Element, number>()
+  for (const p of indexedParas) elementToIndex.set(p.element, p.index)
+
   const byId = new Map<string, IdentifierSummary>()
   const refTargets = new Map<string, number>()
-  let paragraphIndex = 0
 
-  for (const para of walkBodyParagraphs(body)) {
-    paragraphIndex++
+  /** Process a single paragraph element at a given location. */
+  const processPara = (para: Element, location: ParagraphLocation): void => {
     const runs = paragraphRuns(para)
-    if (runs.length === 0) continue
+    if (runs.length === 0) return
     const parsed = parseFieldRuns(runs)
 
     // Capture REFs (counted later against captions)
@@ -77,20 +90,12 @@ async function main(): Promise<void> {
       }
     }
 
-    // Collect advancing SEQ fields in this paragraph. `seqFields(...,
-    // skipRepeat: true)` drops `\c` (repeat) SEQs — engine-injected
-    // chapter prefixes use those to read the current counter value
-    // without advancing. They shouldn't be counted as occurrences under
-    // their own identifier, and they shouldn't shadow the real caption
-    // identifier (`Figure`, `Table`, ...) that follows them.
+    // Collect advancing SEQ fields. `seqFields(..., skipRepeat: true)` drops
+    // `\c` SEQs (engine-injected chapter prefixes) — they read the counter
+    // without advancing and shouldn't appear as caption occurrences.
     const advancingSeqs = seqFields(para, { skipRepeat: true })
-    if (advancingSeqs.length === 0) continue
-    // Record one occurrence per advancing SEQ identifier in the paragraph.
-    // A sub-numbered caption like Equation 2(b) emits both `SEQ Equation`
-    // and `SEQ EquationSub` in the same `<w:p>`; both advance, so both
-    // count. The first SEQ is the paragraph's primary identifier; any
-    // others past index 0 are sub-counters shown as combined `parent.sub`
-    // counter values on the primary entry.
+    if (advancingSeqs.length === 0) return
+
     const styleId = paragraphStyleId(para)
     const anchorName = firstBookmarkName(para)
     for (const [i, seq] of advancingSeqs.entries()) {
@@ -112,12 +117,42 @@ async function main(): Promise<void> {
           ? (rawResultText(parsed, "SEQ", advancingSeqs[1]!.identifier ?? "") ?? "")
           : undefined
       summary.occurrences.push({
-        paragraphIndex,
+        location,
         parentSeqValue,
         subSeqValue,
         styleId,
         anchorName,
       })
+    }
+  }
+
+  // Phase 1: indexed paragraphs (body + layout-table cells).
+  for (const p of indexedParas) {
+    processPara(p.element, { kind: "indexed", index: p.index })
+  }
+
+  // Phase 2: data-table-cell paragraphs.
+  let tableIdx = 0
+  for (const child of getChildren(body)) {
+    if (child.namespaceURI !== NS.w || child.localName !== "tbl") continue
+    tableIdx++
+    const summary = summarizeTable(child)
+    if (summary.classification !== "data") continue
+    const rows = getChildrenNS(child, NS.w, "tr")
+    for (let ri = 0; ri < rows.length; ri++) {
+      const cells = getChildrenNS(rows[ri]!, NS.w, "tc")
+      for (let ci = 0; ci < cells.length; ci++) {
+        const paras = getChildrenNS(cells[ci]!, NS.w, "p")
+        for (let pi = 0; pi < paras.length; pi++) {
+          processPara(paras[pi]!, {
+            kind: "cell",
+            table: tableIdx,
+            row: ri + 1,
+            col: ci + 1,
+            paragraph: pi + 1,
+          })
+        }
+      }
     }
   }
 
@@ -146,17 +181,29 @@ async function main(): Promise<void> {
   printSummary(byId)
 }
 
+function formatLocation(loc: ParagraphLocation): string {
+  if (loc.kind === "indexed") return `#${String(loc.index).padStart(4)}`
+  return `T${loc.table}R${loc.row}C${loc.col} K${loc.paragraph}`
+}
+
 function printSummary(byId: Map<string, IdentifierSummary>): void {
   if (byId.size === 0) {
     console.log("No SEQ-based captions detected in this document.")
     return
   }
+  // Count how many occurrences are in data cells for each identifier.
+  const cellCounts = new Map<string, number>()
+  for (const s of byId.values()) {
+    const n = s.occurrences.filter((o) => o.location.kind === "cell").length
+    if (n > 0) cellCounts.set(s.identifier, n)
+  }
   console.log(`SEQ-based captions detected (${byId.size}):`)
   for (const s of byId.values()) {
     const fmt = s.format ?? "(unknown)"
     const restart = s.restartAtOutlineLevel ? ` restart=${s.restartAtOutlineLevel}` : " global"
+    const cellNote = cellCounts.has(s.identifier) ? ` (${cellCounts.get(s.identifier)} in cells)` : ""
     console.log(
-      `  ${s.identifier.padEnd(20)} format=${fmt.padEnd(10)}${restart.padEnd(14)} occurrences=${s.occurrences.length}  refs=${s.referencingRefs}`,
+      `  ${s.identifier.padEnd(20)} format=${fmt.padEnd(10)}${restart.padEnd(14)} occurrences=${s.occurrences.length}  refs=${s.referencingRefs}${cellNote}`,
     )
   }
 }
@@ -166,10 +213,11 @@ function printDetail(s: IdentifierSummary): void {
   const restart = s.restartAtOutlineLevel
     ? `outline level ${s.restartAtOutlineLevel}`
     : "global (no restart)"
+  const cellCount = s.occurrences.filter((o) => o.location.kind === "cell").length
   console.log(`Caption: ${s.identifier}`)
   console.log(`  format:           ${fmt}`)
   console.log(`  restart:          ${restart}`)
-  console.log(`  occurrences:      ${s.occurrences.length}`)
+  console.log(`  occurrences:      ${s.occurrences.length}${cellCount > 0 ? ` (of which ${cellCount} inside data-table cells)` : ""}`)
   console.log(`  citations (REFs): ${s.referencingRefs}`)
   console.log("")
   console.log("  Occurrences:")
@@ -177,8 +225,9 @@ function printDetail(s: IdentifierSummary): void {
     const sub = occ.subSeqValue ? `${occ.parentSeqValue}${occ.subSeqValue}` : occ.parentSeqValue
     const anchor = occ.anchorName ?? "(none)"
     const styleId = occ.styleId ?? "(unstyled)"
+    const loc = formatLocation(occ.location).padEnd(16)
     console.log(
-      `    para ${String(occ.paragraphIndex).padStart(4)}  counter ${sub.padEnd(8)}  anchor: ${anchor.padEnd(20)}  style: ${styleId}`,
+      `    para ${loc}  counter ${sub.padEnd(8)}  anchor: ${anchor.padEnd(20)}  style: ${styleId}`,
     )
   }
 }

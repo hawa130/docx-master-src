@@ -14,7 +14,7 @@ Source paragraphs carry typography (font, size, indent, alignment) and structure
 
 ## Workflow
 
-1. **Survey.** `overview` first. Note: existing styles + fingerprints + numbering schemes (with consumption counts), content chrome formatting per fingerprint, typed structural prefixes (heading-shape AND caption-shape), typed in-prose counters, form-fill paragraphs, source content for fills.
+1. **Survey.** `overview` first.
 2. **Design ONE config** spanning the four decisions below. Reactive additions accrete debt.
 3. **Dry-run** (`apply --dry-run`). Read each signal against intent — see §5.
 4. **Apply.** Output is a fresh docx; the original is never modified.
@@ -56,6 +56,26 @@ For roles with **no source paragraph** playing them yet — e.g., `ListNumber` i
 
 Undeclared fields cascade from `basedOn` / `Normal` / theme — leave them blank.
 
+### Canonical ListBullet / ListNumber configuration
+
+For Word-natural list rendering (bullet / number hangs in the margin, text aligns at a consistent indent), use:
+
+```jsonc
+{
+  "id": "ListBullet",
+  "fontCJK": "宋体",
+  "size": "12pt",
+  "paraFormat": {
+    "indentLeft": "0.74cm",
+    "hangingIndent": "0.74cm"
+  }
+}
+```
+
+Equivalent for `ListNumber` (substitute `ListNumber` for the `id`). Avoid `firstLineIndent` on list styles — it produces "first-line indent THEN bullet" layout (bullet appears N chars in from text margin), which is not the standard Word list appearance. The combination `indentLeft + hangingIndent` of the same value is what makes the bullet hang at the left margin while text aligns at `indentLeft`.
+
+This recipe pairs with `numbering: [...]` declarations that bind the styleId via `pStyle` in their level definitions.
+
 ### Override existing > create new
 
 Run `inspect_style_def` first — POI / WPS / school templates often play Normal / Heading 1 / etc. under auto-generated styleIds (`a`, `a1`, `2`, `10`, ...). Override by exact styleId; the engine mutates in place, preserving everything unspecified. Verify the style is actually used for its intended role first — overriding `Heading1` while it's misused as body would corrupt those paragraphs; reassign first.
@@ -68,6 +88,8 @@ Two directions, both common in POI / WPS / school templates:
 - **Many styleIds, one role** (`a` / `a1` / `style29` all rendering as body). Either pick the most-used as canonical and route the others to it via `bulk_rules` keyed on fingerprint, or install a fresh `BodyText` and route all paragraphs to it. The source styleId topology doesn't fix itself.
 
 ### Style identity (`<w:name>` aliasing)
+
+`name` is optional. For an override on an existing styleId, omitted `name` preserves the source `<w:name>`. For a new style, omitted `name` defaults to `id`.
 
 `name` must not alias any existing style's identity. Word treats `<w:name>` as the built-in style identity marker, including locale aliases ("Normal" ≡ "正文" ≡ "標準"; "Heading 1" ≡ "标题 1"; "Body Text" ≡ "正文文本"). When two different styleIds claim the same identity, Word silently drops the second style's `rPr` at render time. Three safe approaches:
 
@@ -265,7 +287,7 @@ The flip side: **a narrow-scope request reduces to declaring less, not switching
 
 - **Letter vs hash labels.** `[A]`, `[B]` sort by frequency this run (volatile across edits); the summary also shows a 6-char content hash next to each letter (`A [c4f9]: ...`). `bulk_rules.fingerprint` and `inspect_style` both accept either — letters for in-session iteration, hashes in configs that survive doc revisions.
 - **Numbered ≠ unnumbered fingerprints.** Hash includes whether a paragraph carries a numbering reference; visually identical paragraphs split when one is auto-numbered and the other isn't.
-- **Layout vs data tables.** Layout tables inline into the skeleton between `--- LAYOUT TABLE ---` markers; data and form tables summarize as one non-paragraph block.
+- **Layout vs data tables.** Layout tables inline into the skeleton between `--- LAYOUT TABLE ---` markers; data tables summarize as one non-paragraph block.
 - **Empty paragraph compression.** Consecutive empties compress (`--- empty ×N ---`); skeleton text truncates to ~40 chars — use `inspect_range` for full text.
 
 ---
@@ -323,3 +345,9 @@ A complete standardize-shape config combines the four blocks. This is a referenc
 
 - **Insertion + surgical edits**: add an `edits[]` block to the same `apply` config for content insertion or paragraph touch-ups the rules missed. See [`edit.md`](edit.md). The engine installs styles/numbering first, so `edits[]` references just-installed styleIds.
 - **Read-only check before reshape**: `audit` (see [`audit.md`](audit.md)). Audit's violation list translates directly into standardize-shape blocks — style violations → `styles[]`, typed structural prefixes → `pattern_rules` + `numbering`, typed captions → `captions` + `edits[]` `CaptionBlock`.
+
+---
+
+## Validation behavior
+
+`apply` validates the output docx after writing. Only errors **introduced by this apply run** are fatal; pre-existing errors in the source are warnings and do not block output. Override via [`allowValidationWarnings`](config-schema.md) when debugging.

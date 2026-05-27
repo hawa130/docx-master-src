@@ -4,7 +4,7 @@ import {
   type ComputedRunStyle,
   type ParsedParagraph,
 } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 import type { StyleConfigEntry } from "@lib/config/config-types.ts"
 import type { StyleResolver } from "@lib/parse/style-resolver.ts"
 import { PPR_CHILD_ORDER, RPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
@@ -19,6 +19,7 @@ import {
   toTwips,
   twipsToPtString,
 } from "@lib/shared/units.ts"
+import { clearFirstLineHangingGroup, setIndentAttr } from "@lib/xml/ind-attr.ts"
 
 /**
  * Insert a freshly-created `<w:pPr>` into a `<w:style>` at the schema-correct
@@ -69,7 +70,7 @@ export function resolveStyleDef(
       `style "${def.id}": fromParagraph #${def.fromParagraph} not found.\n` +
         `  Document has ${paragraphs.length} indexed paragraphs (range: #${minIdx}–#${maxIdx}).\n` +
         `  Closest valid: #${closest.index} ("${closest.text.slice(0, 40)}${closest.text.length > 40 ? "…" : ""}")\n` +
-        `  Note: paragraphs inside data tables and form tables are not indexed and cannot be referenced.`,
+        `  Note: paragraphs inside data tables are not indexed and cannot be referenced.`,
     )
   }
   const extracted = paragraphToStyleEntry(para)
@@ -228,29 +229,44 @@ function resolveStyleRef(stylesDoc: Document, val: string, selfId?: string): str
   return null
 }
 
-/** pPr / rPr children that this function clears before re-writing from `def`.
- * Anything else found in an existing style's pPr/rPr is preserved untouched.
- * The pPr list is critical: numPr (auto-numbering binding), keepNext, pBdr,
- * shd, adjustRightInd, etc. are all preserved when overriding an existing
- * style.
+/** Return (or create) a child element with the given local name under
+ * `parent`. When creating, the new element is NOT inserted — caller must
+ * place it via `insertChildInOrder` or equivalent so schema order is
+ * respected. When the element already exists it is returned as-is for
+ * attribute-level mutation. */
+function getOrCreateNS(parent: Element, doc: Document, ns: string, localName: string): Element {
+  const existing = firstChildNS(parent, ns, localName)
+  if (existing) return existing
+  return doc.createElementNS(ns, `w:${localName}`)
+}
+
+/**
+ * Upsert an OOXML toggle element (bold, italic, etc.) in `parent`.
  *
- * Scope: only the children writeable from `StyleConfigEntry`. Narrower than
- * fragment-emit's RPR_MANAGED_LOCAL_NAMES (run-level rPr from `RunFormat`,
- * which has u / strike). The two sets must NOT be unified — expanding this
- * one without adding the corresponding write paths would silently drop
- * existing style attrs (e.g. <w:u>) that the engine has no way to put back. */
-const PPR_MANAGED_CHILDREN = new Set(["spacing", "ind", "jc", "outlineLvl"])
-const RPR_MANAGED_CHILDREN = new Set([
-  "rFonts",
-  "sz",
-  "szCs",
-  "b",
-  "bCs",
-  "i",
-  "iCs",
-  "color",
-  "vertAlign",
-])
+ * - `on === true`:  ensure element exists with no `w:val` attribute (presence = on).
+ * - `on === false`: ensure element exists with `w:val="0"` (explicit off — overrides
+ *   any `basedOn` ancestor that declares the toggle; removing the element would mean
+ *   "inherit", not "force off").
+ */
+function upsertToggle(
+  parent: Element,
+  doc: Document,
+  ns: string,
+  localName: string,
+  on: boolean,
+  order: readonly string[],
+): void {
+  let el = firstChildNS(parent, ns, localName)
+  if (!el) {
+    el = doc.createElementNS(ns, `w:${localName}`)
+    insertChildInOrder(parent, el, order)
+  }
+  if (on) {
+    el.removeAttributeNS(ns, "val")
+  } else {
+    el.setAttributeNS(ns, "w:val", "0")
+  }
+}
 
 export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "created" | "updated" {
   const w = NS.w
@@ -269,19 +285,28 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     result = "created"
   }
 
-  // name: required and idempotent. When the element already exists, update
-  // its w:val in place — otherwise removing-and-re-appending would push it
-  // to the end of <w:style>, but OOXML's schema (ECMA-376 §17.7.4) requires
-  // <w:name> to be the FIRST child. Word is lenient enough to load
-  // mis-ordered styles, but stricter validators (and other docx libraries)
-  // reject them.
+  // name: optional. Behavior depends on create vs update:
+  //   - Update (style exists): when def.name is set, update <w:name> in place;
+  //     when omitted, leave the existing <w:name> unchanged (preserve source name).
+  //   - Create (new style): when def.name is set, use it; when omitted, default
+  //     to def.id so the new style always has a valid <w:name>.
+  // When the element already exists, update its w:val in place — otherwise
+  // removing-and-re-appending would push it to the end of <w:style>, but
+  // OOXML's schema (ECMA-376 §17.7.4) requires <w:name> to be the FIRST
+  // child. Word is lenient enough to load mis-ordered styles, but stricter
+  // validators (and other docx libraries) reject them.
   let nameEl = firstChildNS(target, w, "name")
-  if (nameEl) {
-    nameEl.setAttributeNS(w, "w:val", def.name)
+  if (result === "updated" && def.name === undefined) {
+    // Preserve existing <w:name> — no action needed; nameEl stays as-is.
   } else {
-    nameEl = stylesDoc.createElementNS(w, "w:name")
-    nameEl.setAttributeNS(w, "w:val", def.name)
-    target.insertBefore(nameEl, target.firstChild)
+    const nameVal = def.name ?? def.id
+    if (nameEl) {
+      nameEl.setAttributeNS(w, "w:val", nameVal)
+    } else {
+      nameEl = stylesDoc.createElementNS(w, "w:name")
+      nameEl.setAttributeNS(w, "w:val", nameVal)
+      target.insertBefore(nameEl, target.firstChild)
+    }
   }
 
   // basedOn: only touched when def explicitly provides it; otherwise the
@@ -306,7 +331,8 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
       } else {
         bo = stylesDoc.createElementNS(w, "w:basedOn")
         bo.setAttributeNS(w, "w:val", resolved)
-        const afterName = nameEl.nextSibling
+        const currentNameEl = firstChildNS(target, w, "name")
+        const afterName = currentNameEl?.nextSibling ?? null
         if (afterName) target.insertBefore(bo, afterName)
         else target.appendChild(bo)
       }
@@ -315,140 +341,132 @@ export function upsertStyle(stylesDoc: Document, def: StyleConfigEntry): "create
     }
   }
 
-  // pPr: mutate in place. Remove only the children listed in
-  // PPR_MANAGED_CHILDREN (the visible paragraph properties this function
-  // writes), then append the new ones built from `def`. Existing children we
-  // don't manage — most importantly `numPr` (numbering binding), but also
-  // keepNext, pBdr, shd, adjustRightInd, etc. — stay intact. Without this,
-  // overriding an existing heading style would silently drop its
-  // auto-numbering reference.
-  let pPr = firstChildNS(target, w, "pPr")
-  if (pPr) {
-    for (const c of Array.from(getChildren(pPr))) {
-      if (c.namespaceURI === w && PPR_MANAGED_CHILDREN.has(c.localName!)) {
-        pPr.removeChild(c)
-      }
-    }
-  }
-  const pPrAdditions: Element[] = []
-  if (def.outlineLevel !== undefined) {
-    const ol = stylesDoc.createElementNS(w, "w:outlineLvl")
-    ol.setAttributeNS(w, "w:val", String(def.outlineLevel))
-    pPrAdditions.push(ol)
-  }
-  if (def.alignment) {
-    const jc = stylesDoc.createElementNS(w, "w:jc")
-    jc.setAttributeNS(w, "w:val", def.alignment)
-    pPrAdditions.push(jc)
-  }
-  if (
+  // pPr: field-merge in place. Only touch the children the def explicitly
+  // declares. Unmanaged children (numPr, keepNext, pBdr, shd, adjustRightInd,
+  // etc.) and managed children the def omits stay intact.
+  //
+  // Compound elements (spacing, ind) are get-or-created and only the
+  // attributes for declared fields are set — partial declarations (e.g. only
+  // spaceBefore) preserve the element's other attributes intact.
+  const hasPPrChange =
+    def.outlineLevel !== undefined ||
+    def.alignment !== undefined ||
     def.spaceBefore !== undefined ||
     def.spaceAfter !== undefined ||
-    def.lineSpacing !== undefined
-  ) {
-    const spacing = stylesDoc.createElementNS(w, "w:spacing")
-    if (def.spaceBefore !== undefined)
-      spacing.setAttributeNS(w, "w:before", String(toTwips(def.spaceBefore, "spaceBefore")))
-    if (def.spaceAfter !== undefined)
-      spacing.setAttributeNS(w, "w:after", String(toTwips(def.spaceAfter, "spaceAfter")))
-    if (def.lineSpacing !== undefined) {
-      const ls = parseLineSpacing(def.lineSpacing as LineSpacingInput, "lineSpacing")
-      spacing.setAttributeNS(w, "w:line", String(ls.value))
-      spacing.setAttributeNS(w, "w:lineRule", ls.mode)
-    }
-    pPrAdditions.push(spacing)
-  }
-  if (def.firstLineIndent != null || def.hangingIndent != null) {
-    const ind = stylesDoc.createElementNS(w, "w:ind")
-    if (def.firstLineIndent != null && def.firstLineIndent !== 0) {
-      const r = parseIndent(def.firstLineIndent)
-      if (r) {
-        if (r.kind === "char") {
-          ind.setAttributeNS(w, "w:firstLineChars", String(r.value))
-        } else {
-          ind.setAttributeNS(w, "w:firstLine", String(r.value))
-        }
-      }
-    }
-    if (def.hangingIndent != null && def.hangingIndent !== 0) {
-      const r = parseIndent(def.hangingIndent)
-      if (r) {
-        if (r.kind === "char") {
-          ind.setAttributeNS(w, "w:hangingChars", String(r.value))
-        } else {
-          ind.setAttributeNS(w, "w:hanging", String(r.value))
-        }
-      }
-    }
-    pPrAdditions.push(ind)
-  }
-  if (pPrAdditions.length > 0) {
+    def.lineSpacing !== undefined ||
+    def.firstLineIndent != null ||
+    def.hangingIndent != null
+  let pPr = firstChildNS(target, w, "pPr")
+  if (hasPPrChange) {
     if (!pPr) {
       pPr = stylesDoc.createElementNS(w, "w:pPr")
       insertPPrIntoStyle(target, pPr)
     }
-    // Build order is local convenience (outlineLevel → jc → spacing → ind);
-    // CT_PPr's actual schema order is spacing → ind → jc → outlineLvl. Insert
-    // each at its schema-correct position rather than appending blind.
-    for (const c of pPrAdditions) insertChildInOrder(pPr, c, PPR_CHILD_ORDER)
+    if (def.outlineLevel !== undefined) {
+      const ol = getOrCreateNS(pPr, stylesDoc, w, "outlineLvl")
+      ol.setAttributeNS(w, "w:val", String(def.outlineLevel))
+      if (!ol.parentNode) insertChildInOrder(pPr, ol, PPR_CHILD_ORDER)
+    }
+    if (def.alignment !== undefined) {
+      const jc = getOrCreateNS(pPr, stylesDoc, w, "jc")
+      jc.setAttributeNS(w, "w:val", def.alignment)
+      if (!jc.parentNode) insertChildInOrder(pPr, jc, PPR_CHILD_ORDER)
+    }
+    if (
+      def.spaceBefore !== undefined ||
+      def.spaceAfter !== undefined ||
+      def.lineSpacing !== undefined
+    ) {
+      const spacing = getOrCreateNS(pPr, stylesDoc, w, "spacing")
+      if (def.spaceBefore !== undefined)
+        spacing.setAttributeNS(w, "w:before", String(toTwips(def.spaceBefore, "spaceBefore")))
+      if (def.spaceAfter !== undefined)
+        spacing.setAttributeNS(w, "w:after", String(toTwips(def.spaceAfter, "spaceAfter")))
+      if (def.lineSpacing !== undefined) {
+        const ls = parseLineSpacing(def.lineSpacing as LineSpacingInput, "lineSpacing")
+        spacing.setAttributeNS(w, "w:line", String(ls.value))
+        spacing.setAttributeNS(w, "w:lineRule", ls.mode)
+      }
+      if (!spacing.parentNode) insertChildInOrder(pPr, spacing, PPR_CHILD_ORDER)
+    }
+    if (def.firstLineIndent != null || def.hangingIndent != null) {
+      const ind = getOrCreateNS(pPr, stylesDoc, w, "ind")
+      clearFirstLineHangingGroup(ind)
+      if (def.firstLineIndent != null) {
+        const r = parseIndent(def.firstLineIndent)
+        if (r) setIndentAttr(ind, "firstLine", r)
+      }
+      if (def.hangingIndent != null) {
+        const r = parseIndent(def.hangingIndent)
+        if (r) setIndentAttr(ind, "hanging", r)
+      }
+      if (!ind.parentNode) insertChildInOrder(pPr, ind, PPR_CHILD_ORDER)
+    }
   }
 
-  // rPr: same mutate-in-place pattern. Removes only the run properties this
-  // function manages (font, size, weight, italic, color); preserves anything
-  // else the existing rPr carried (lang, w, kern, etc.).
+  // rPr: same field-merge pattern. Only touch the attributes / elements the
+  // def explicitly declares; anything else the existing rPr carries stays.
+  //
+  // rFonts: get-or-create the element, then set only the font-slot attributes
+  // for the declared fields. fontLatin → ascii + hAnsi; fontCJK → eastAsia.
+  // When only one is declared the other slot is left alone so an existing
+  // CJK or Latin font in the source style is not clobbered.
+  const hasRPrChange =
+    def.fontLatin !== undefined ||
+    def.fontCJK !== undefined ||
+    def.size !== undefined ||
+    def.bold !== undefined ||
+    def.italic !== undefined ||
+    def.color !== undefined ||
+    def.vertAlign !== undefined
   let rPr = firstChildNS(target, w, "rPr")
-  if (rPr) {
-    for (const c of Array.from(getChildren(rPr))) {
-      if (c.namespaceURI === w && RPR_MANAGED_CHILDREN.has(c.localName!)) {
-        rPr.removeChild(c)
-      }
-    }
-  }
-  const rPrAdditions: Element[] = []
-  if (def.fontLatin || def.fontCJK) {
-    const rFonts = stylesDoc.createElementNS(w, "w:rFonts")
-    const ascii = def.fontLatin ?? def.fontCJK ?? ""
-    const ea = def.fontCJK ?? def.fontLatin ?? ""
-    if (ascii) {
-      rFonts.setAttributeNS(w, "w:ascii", ascii)
-      rFonts.setAttributeNS(w, "w:hAnsi", ascii)
-    }
-    if (ea) rFonts.setAttributeNS(w, "w:eastAsia", ea)
-    rPrAdditions.push(rFonts)
-  }
-  if (def.size !== undefined) {
-    const halfPt = toHalfPt(def.size, "size")
-    const sz = stylesDoc.createElementNS(w, "w:sz")
-    sz.setAttributeNS(w, "w:val", String(halfPt))
-    rPrAdditions.push(sz)
-    const szCs = stylesDoc.createElementNS(w, "w:szCs")
-    szCs.setAttributeNS(w, "w:val", String(halfPt))
-    rPrAdditions.push(szCs)
-  }
-  if (def.bold) {
-    rPrAdditions.push(stylesDoc.createElementNS(w, "w:b"))
-    rPrAdditions.push(stylesDoc.createElementNS(w, "w:bCs"))
-  }
-  if (def.italic) {
-    rPrAdditions.push(stylesDoc.createElementNS(w, "w:i"))
-    rPrAdditions.push(stylesDoc.createElementNS(w, "w:iCs"))
-  }
-  if (def.color) {
-    const color = stylesDoc.createElementNS(w, "w:color")
-    color.setAttributeNS(w, "w:val", def.color)
-    rPrAdditions.push(color)
-  }
-  if (def.vertAlign) {
-    const va = stylesDoc.createElementNS(w, "w:vertAlign")
-    va.setAttributeNS(w, "w:val", def.vertAlign)
-    rPrAdditions.push(va)
-  }
-  if (rPrAdditions.length > 0) {
+  if (hasRPrChange) {
     if (!rPr) {
       rPr = stylesDoc.createElementNS(w, "w:rPr")
       target.appendChild(rPr)
     }
-    for (const c of rPrAdditions) insertChildInOrder(rPr, c, RPR_CHILD_ORDER)
+    if (def.fontLatin !== undefined || def.fontCJK !== undefined) {
+      const rFonts = getOrCreateNS(rPr, stylesDoc, w, "rFonts")
+      if (def.fontLatin !== undefined) {
+        rFonts.setAttributeNS(w, "w:ascii", def.fontLatin)
+        rFonts.setAttributeNS(w, "w:hAnsi", def.fontLatin)
+      }
+      if (def.fontCJK !== undefined) {
+        rFonts.setAttributeNS(w, "w:eastAsia", def.fontCJK)
+      }
+      if (!rFonts.parentNode) insertChildInOrder(rPr, rFonts, RPR_CHILD_ORDER)
+    }
+    if (def.size !== undefined) {
+      const halfPt = toHalfPt(def.size, "size")
+      const sz = getOrCreateNS(rPr, stylesDoc, w, "sz")
+      sz.setAttributeNS(w, "w:val", String(halfPt))
+      if (!sz.parentNode) insertChildInOrder(rPr, sz, RPR_CHILD_ORDER)
+      const szCs = getOrCreateNS(rPr, stylesDoc, w, "szCs")
+      szCs.setAttributeNS(w, "w:val", String(halfPt))
+      if (!szCs.parentNode) insertChildInOrder(rPr, szCs, RPR_CHILD_ORDER)
+    }
+    if (def.bold !== undefined) {
+      // Tri-state toggle: true → presence-only (inherit-safe on); false → w:val="0"
+      // (explicit off, overrides any basedOn ancestor that declares bold);
+      // undefined → leave as-is. Removing the element on false would mean
+      // "inherit from basedOn", not "force off".
+      upsertToggle(rPr, stylesDoc, w, "b", def.bold, RPR_CHILD_ORDER)
+      upsertToggle(rPr, stylesDoc, w, "bCs", def.bold, RPR_CHILD_ORDER)
+    }
+    if (def.italic !== undefined) {
+      upsertToggle(rPr, stylesDoc, w, "i", def.italic, RPR_CHILD_ORDER)
+      upsertToggle(rPr, stylesDoc, w, "iCs", def.italic, RPR_CHILD_ORDER)
+    }
+    if (def.color !== undefined) {
+      const color = getOrCreateNS(rPr, stylesDoc, w, "color")
+      color.setAttributeNS(w, "w:val", def.color)
+      if (!color.parentNode) insertChildInOrder(rPr, color, RPR_CHILD_ORDER)
+    }
+    if (def.vertAlign !== undefined) {
+      const va = getOrCreateNS(rPr, stylesDoc, w, "vertAlign")
+      va.setAttributeNS(w, "w:val", def.vertAlign)
+      if (!va.parentNode) insertChildInOrder(rPr, va, RPR_CHILD_ORDER)
+    }
   }
 
   return result

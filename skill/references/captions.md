@@ -42,6 +42,8 @@ Word-native caption-class numbering — SEQ + STYLEREF fields + bookmark + REF `
 }
 ```
 
+Field semantics for the `captions` config block are also in [`config-schema.md` § Captions](config-schema.md#captions). `chapterPrefix` is the SEQ-based mechanism for per-chapter caption numbering; it is distinct from `restart: "byHeading"` on a `numbering[]` scheme (which restarts list-class auto-numbering, not caption counters) — see [`config-schema.md` § Numbering](config-schema.md#numbering).
+
 ## Schema reference
 
 ```ts
@@ -235,7 +237,7 @@ Standalone marker — the **next** caption of `captionId` renders with its count
 
 ## Standardize re-emit (source-doc captions)
 
-Existing SEQ captions in the source doc get re-rendered with the current `captions[<id>]` config on each apply — useful when iterating on prefix / chapter-prefix shape across runs. Bookmark + identifier + body text preserved. Identifier mismatch (SEQ exists for an unconfigured identifier) → pass through + warn.
+Existing SEQ captions in the source doc get re-rendered with the current `captions[<id>]` config on each apply. Bookmark + identifier + body text preserved. Identifier mismatch (SEQ exists for an unconfigured identifier) → pass through + warn.
 
 ## CJK prefix / separator spacing
 

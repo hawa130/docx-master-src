@@ -29,31 +29,34 @@ Always inspect before composing edits. Two `edits`-specific tools beyond the sta
 
 ### Locators (`at`)
 
-All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`, `blank`, `runIndex` — are **1-based**, uniform across locator types and consistent with `overview` / `inspect_table` / `inspect_runs` / `find_text` display. (Note: `heading.level` is the OOXML `outlineLevel`, which is 0-based — level 0 = Heading 1, level 1 = Heading 2, etc. See the `heading` row.)
+All position indices — `index`, `from`/`to`, `table`/`row`/`col`, `paragraph`, `blank`, `runIndex` — are **1-based**, uniform across locator types and consistent with `overview` / `inspect_table` / `inspect_runs` / `find_text` display. Exception: `heading.level` is OOXML `outlineLevel` (0-based; 0=Heading 1).
 
 | `type` | Selects |
 |---|---|
 | `paragraph` | The Nth indexed paragraph (`{ "type": "paragraph", "index": N }`). Matches `#NNN` in `overview`. |
 | `range` | `{ ..., "from": A, "to": B }`, inclusive. Endpoints must share a container (body, or one specific layout-table cell). |
-| `cell` | `{ ..., "table": T, "row": R, "col": C }`. Only way to reach data/form-table cell paragraphs (those are unindexed). Coords match `inspect_table`'s `[r,c]` output. |
-| `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose OOXML outline level is L (**0-based**: level 0 = Heading 1, level 1 = Heading 2, …). Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
+| `cell` | `{ ..., "table": T, "row": R, "col": C }` for the whole cell's paragraphs; add `"paragraph": K` to narrow to one paragraph (1-based within the cell), `"to": M` for a contiguous range. Cell coords match `inspect_table`'s `[r,c]` output; K range comes from the `paras:N` annotation shown per cell. |
+| `heading` | `{ ..., "text": "...", "level"?: L }`. First paragraph whose rendered text matches and whose OOXML outline level is L (0-based). Disambiguate with `find_paragraphs` if multiple match, then switch to `paragraph` index. |
 | `whole-body` | Every body paragraph. Pairs naturally with `format`; rarely with `replace`. |
-| `run` | A specific `<w:r>` inside a paragraph. `{ "type": "run", "paragraph": N, "blank"?: K, "runIndex"?: M }`. With `blank: K`, targets the Kth run whose text is whitespace-only and rPr carries `<w:u/>` (form-fill placeholder); with `runIndex: M`, targets the Mth run. If neither `blank` nor `runIndex` is given, defaults to `blank: 1`. Run indices match `inspect_runs` / `find_text` output. Pair only with `set-run`. |
+| `run` | Two shapes: `{ "type": "run", "paragraph": N, ... }` for body or layout-cell paragraphs (global `#NNN`); `{ "type": "run", "table": T, "row": R, "col": C, "paragraph": K, ... }` for data-cell paragraphs (K is 1-based within the cell, matching `inspect_table` `paras:N`). Both accept `blank: K` (Kth whitespace-only underlined placeholder run) or `runIndex: M` (Mth run); default is `blank: 1`. Run indices match `inspect_runs` / `find_text` output. Pair only with `set-run`. |
 
 ### Ops
 
-- **`replace`** — `{ ..., "with": [Block, ...] }`. Removes targets, inserts fragment in their place.
+- **`replace`** — `{ ..., "with": [Block, ...] }`. Removes targets, inserts fragment in their place. Pair with `"overwriteFields": true` to allow the replace to absorb paragraphs that contain SEQ/REF/fldChar complex fields (typical caption-iteration scenario). Revisions and SDT remain blocking regardless.
 - **`insert-before` / `insert-after`** — `{ ..., "content": [Block, ...] }`. Inserts fragment immediately before / after the target.
 - **`delete`** — `{ ... }`. Removes the targeted paragraph(s).
-- **`format`** — `{ ..., "styleId"?, "runFormat"?, "paraFormat"? }`. Mutates existing paragraphs without changing their content. At least one of styleId / runFormat / paraFormat required.
-- **`set-run`** — `{ "at": <run-locator>, "with": "value text", "format"?: { ... } }`. Replaces the targeted run's text while preserving its rPr (font / underline / size carry through). Use for filling form-fill placeholder runs without manually reconstructing label + value runs. `format` accepts the same fields as `runFormat` (bold / italic / underline / strike / color / fontLatin / fontCJK / size / vertAlign); absent, the run's existing rPr stays verbatim.
+- **`format`** — `{ ..., "styleId"?, "runFormat"?, "paraFormat"?, "clearDirect"? }`. Mutates existing paragraphs without changing their content. At least one of styleId / runFormat / paraFormat / clearDirect required. `clearDirect: ["pPr"] | ["rPr"] | ["pPr","rPr"] | "all"` — drop direct pPr/rPr before applying the new format. Keeps `<w:pStyle>` and `<w:numPr>` on pPr. Note: `["pPr"]` also strips the paragraph-mark rPr; pair with explicit `runFormat` to preserve it.
+- **`set-run`** — `{ "at": <run-locator>, "with": "value text", "format"?: { ... } }`. Replaces the targeted run's text while preserving its rPr (font / underline / size carry through). `format` accepts the same fields as `runFormat` (bold / italic / underline / strike / color / fontLatin / fontCJK / size / vertAlign); absent, the run's existing rPr stays verbatim.
 - **`edit-caption`** — `{ "target": { "anchor": "<name>" } | { "captionId": "<id>", "index": N }, "text": "<string>" }`. Replaces the body text of an existing caption paragraph; preserves SEQ / STYLEREF fields and bookmark so cross-references keep resolving. Throws on EquationBlock targets (no body). See [`captions.md`](captions.md).
+- **`merge`** — `{ ..., "keepPPr"?: "first" | "last" }`. Combine the targeted paragraphs (≥ 2) into one; all content children (runs, hyperlinks, bookmark marks, comment marks, etc.) moved into the survivor in document order; surviving `<w:pPr>` from the `keepPPr` end (default `"first"`). Non-survivor paragraphs are removed. Note: if a non-survivor paragraph's bookmark range opened in one paragraph and closed in another, the resulting bookmark span may differ — verify cross-references after merging bookmark-bearing paragraphs. Refused under `trackChanges: true` (run in a separate apply without trackChanges). Also refused if any target paragraph contains tracked changes, a complex field, or an SDT control — accept/reject revisions and resolve fields first.
 
-### Match-destination formatting (default)
+### MDF (Match Destination Formatting) inheritance
 
-`replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` — same semantics as Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
+`replace` / `insert-before` / `insert-after` make new `paragraph` blocks inherit the **anchor** paragraph's `<w:pPr>` and the anchor's first non-empty run's `<w:rPr>`. This matches Word's "Match Destination Formatting" paste mode. Anchor: first replaced (replace), first target (insert-before), last target (insert-after). Inheritance is additive at pPr-child granularity — explicit `styleId` / `paraFormat` on the Block always wins. Set `"styleId": "Normal"` to opt out. `image` / `page-break` / `horizontal-rule` blocks don't inherit.
 
-**Bold-pMark trap**: a label paragraph (heading-style) often has bold paragraph-mark rPr; the empty placeholder row beneath it inherits that bold. When you `replace` or `insert-after` against either, MDF would propagate the bold into your new paragraph's pPr-mark — and Word's style cascade can't undo it (it's not run rPr, not paragraph rPr). The engine handles the common case: when the new paragraph carries an explicit `styleId`, the anchor's pPr-mark rPr is skipped on inheritance and the style cascade governs. If you skip styleId (rare; Block uses MDF fallback), explicit `runFormat: { bold: false }` on each run is the override (writes `<w:b w:val="0"/>`).
+**With explicit `styleId` on the Block**, the engine skips these anchor pPr fields so the style cascade reaches them: `outlineLvl`, `numPr`, `pageBreakBefore`, `widowControl`, `spacing`. `spacing` is included because heading / body styles typically declare paragraph spacing; if you need to preserve the anchor's spacing instead of the styleId's, set explicit `paraFormat.spaceBefore` / `spaceAfter` / `lineSpacing` on the Block. The full `<w:rPr>` from the anchor's pMark is also skipped (so the style's run rPr wins). Without this, a direct `<w:outlineLvl w:val="1"/>` on the anchor would override the heading level that `ProposalH1` declares, misclassifying the new paragraph in the TOC and navigation pane.
+
+**With explicit `runFormat` on a run**, the engine does not inherit the anchor's run rPr for that run — the Block's explicit format is canonical.
 
 ### Blocks (in `with` / `content`)
 
@@ -80,7 +83,7 @@ they need a `captions` table declared at the apply config root. See
 
 `anchor` attaches a stable bookmark name (Word's `[A-Za-z_][\w-]{0,39}` rule) so later `InlineRef` nodes can target this new paragraph via `refTo: { "type": "anchor", "name": ... }`. The only way to ref a paragraph created in this same `apply` run — paragraph-index locators reference pre-edit state. See [`cross-references.md`](cross-references.md).
 
-`text` is either a plain string (single run) or an array of inline nodes. Six inline node types, discriminated by which key is present:
+`text` is either a plain string (single run) or an array of inline nodes. Seven inline node types, discriminated by which key is present:
 
 | Shape | Renders |
 |---|---|
@@ -90,6 +93,7 @@ they need a `captions` table declared at the apply config root. See
 | `{ link, text, format? }` | Hyperlink (external URL or `#anchor` jump) |
 | `{ field, format? }` | Dynamic field (`"page"` / `"numPages"` / `"date"`) |
 | `{ styleRef, numberOnly?, format? }` | STYLEREF — render the nearest paragraph of a given style |
+| `{ break }` | `<w:br/>` — `"line"` (soft line break), `"page"` (page break), `"column"` (column break). Use sparingly — prefer paragraph-level breaks over inline. |
 
 **Hyperlinks** (`{ link, text }`) — `link` is any URI Word accepts (`https:` / `http:` / `mailto:` / `tel:` / `ftp:` / …); `#name` targets an internal bookmark — same anchor namespace as `refTo: { type: "anchor" }` (source bookmarks plus `anchor` on Blocks in this apply). The visible `text` is agent-supplied; the `Hyperlink` character style (Word's blue + underline) is applied automatically and injected into styles.xml on first use. Use `refTo` when the visible text should be the target's auto-numbered cite; use `link` when you supply the visible text and just want clickable navigation. Agent-supplied `format` merges on top of the Hyperlink character style — only the keys you set get overridden, the rest of the Hyperlink rPr (e.g. underline) survives.
 
@@ -128,7 +132,7 @@ Picking the wrong locale's shape (e.g. `「」` in mainland 简中正文, or str
 
 Inside a paragraph's `text` array, alongside `{ "text": ..., "format": ... }` runs, you can place `{ "refTo": ..., "display": ..., "format": ... }` cross-reference nodes. **Any cite to an auto-numbered target (figure / table / heading / equation / reference entry) must use these — never write the counter as literal text.** See [`cross-references.md`](cross-references.md) for the contract.
 
-`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (Length), `lineSpacing` (number multiplier / `"Npt"` exact / `{ atLeast: <length> }`), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (Length, plus `"Nchar"` for font-scaled indent, or `null` for explicit zero), `outlineLevel` (0–9).
+`paraFormat`: `alignment` (`"left" | "center" | "right" | "both"`), `spaceBefore` / `spaceAfter` (Length), `lineSpacing` (number multiplier / `"Npt"` exact / `{ atLeast: <length> }`), `firstLineIndent` / `hangingIndent` / `indentLeft` / `indentRight` (Length, plus `"Nchar"` for font-scaled indent; `0` / `"0pt"` explicitly overrides an inherited indent to zero, `null` leaves the field absent so the style cascade decides), `outlineLevel` (0–9).
 
 **Length values** — anywhere a length is expected (`size`, `spaceBefore` / `spaceAfter`, `width` / `height`, border `size`, indent forms, table column widths) accept the same shape: a bare number (pt) or one of `"Npt"` / `"Ncm"` / `"Nmm"` / `"Nin"`. Use whatever matches the user's prompt — `"2.54cm"` is no extra cost over `"72pt"`. Indents additionally accept `"Nchar"` (Word's "首行缩进 N 字符" — auto-scales with font size; preferred for CJK body text where character-units survive size changes).
 
@@ -148,6 +152,8 @@ Form cells often hold a label paragraph + several empty placeholder rows (the fo
 Default to `replace` for content-bearing fills; `insert-after` for non-destructive additions where the original layout is meant to be preserved.
 
 For multi-paragraph content, pass multiple Blocks in one op rather than chaining many `insert-after`s — order is preserved and no stale-index issue.
+
+`apply --dry-run` emits a `=== Paragraph index drift (pre-edit → post-edit) ===` section when the edits change body paragraph count. Use it to spot whether a downstream locator (`paragraph` index, cross-ref) you wrote against the pre-edit numbering still points where you intended.
 
 ## Edge cases
 

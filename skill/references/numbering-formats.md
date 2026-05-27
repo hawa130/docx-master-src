@@ -60,10 +60,7 @@ Level 2: 1.     / 2.     / 3.          numFmt=decimal          lvlText="%3."    
 
 For paragraph roles that need a sequence but not a hierarchy — reference list entries, procedural numbered steps, appendix items — bind a one-level numbering scheme. **Caption-class numbering (figures / tables / equations / theorems) lives in the top-level `captions` table, not here — see [`captions.md`](captions.md).**
 
-Default counter scope: one continuous counter across the document
-(`restart: "continuous"`, implicit). The only opt-out is procedural
-`1./2./3.` list shapes (see "Procedural Numbered Lists" below), which
-need `restart: "perInstance"`.
+Default counter scope: one continuous counter across the document (implicit `restart: "continuous"`). The only opt-out for this section's patterns is procedural `1./2./3.` list shapes (need `restart: "perInstance"`). Full `restart` value semantics → [`config-schema.md` § Numbering](config-schema.md#numbering).
 
 ### Reference List
 ```
@@ -71,11 +68,9 @@ Level 0: [1] / [2] / [3]                numFmt=decimal  lvlText="[%1]"   suff="s
 ```
 Body-text cites to these (or to any auto-numbered caption / heading) go through `InlineRef` in `edits[]`, not literal text. See [`cross-references.md`](cross-references.md).
 
-### Procedural Numbered Lists (`restart: "perInstance"`)
-```
-Level 0: 1. / 2. / 3.                   numFmt=decimal  lvlText="%1."  suff="space"  restart="perInstance"
-```
-When the same scheme is meant to drive multiple separate list blocks (steps in Chapter 1 numbered 1./2./3., independent steps in Chapter 2 also starting from 1.), opt in to per-instance restart. The engine forks a fresh `numId` per contiguous run of paragraphs bound to the scheme and writes `<w:startOverride val="1"/>` on each fork. An "instance" is broken by any paragraph not bound to the scheme's styleId — e.g. a heading or body paragraph between two list blocks. Use sparingly; only this case actually wants it.
+### restart and numId
+
+Full `restart` value semantics (all 4 values) and `numId` pinning: see [`config-schema.md` § Numbering](config-schema.md#numbering).
 
 ## lvlText Syntax
 

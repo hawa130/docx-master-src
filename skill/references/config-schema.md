@@ -1,8 +1,7 @@
 # `apply` Config Schema
 
 Full field-by-field reference for the JSON config consumed by
-`apply [--dry-run] <config.json>`. Read this before composing your first
-config; SKILL.md only carries a top-level summary.
+`apply [--dry-run] <config.json>`.
 
 ## Length values
 
@@ -64,7 +63,8 @@ string form when you mean an exact line height.
                                      // (e.g. multi-level heading + single-level list).
   captions: { "<id>": { ... } },     // optional. Caption-class numbering (figure /
                                      // table / equation / theorem / ...). See
-                                     // references/captions.md.
+                                     // § "Captions" below; rendering pipeline in
+                                     // captions.md.
   edits:    [ { op: "...", ... } ],  // optional. Location-based surgical edits
                                      // (replace / insert / delete / image / caption /
                                      // equation). See references/edit.md.
@@ -78,6 +78,13 @@ string form when you mean an exact line height.
   bulk_rules:     [ ... ],
 }
 ```
+
+## Top-level config fields
+
+- **`source`** (string, optional) — path to the input docx. The original file is never modified. Omit to scaffold from a blank template (one empty Normal paragraph, A4 portrait). Required when a `template` block is declared.
+- **`output`** (string, **required**) — path for the output docx. Must differ from `source`.
+- **`dryRun`** (boolean, default `false`) — when `true`, run the pipeline in memory and produce a change report without writing a file. Equivalent to the `--dry-run` CLI flag.
+- **`allowValidationWarnings`** (boolean, default `false`) — keep the output docx even when apply introduces new OOXML validation errors. Pre-existing source errors are always non-fatal (baseline-diff). CLI: `--allow-validation-warnings`. See [standardize.md](standardize.md) Validation behavior.
 
 ## Style entries
 
@@ -97,6 +104,14 @@ string form when you mean an exact line height.
                                // paragraph's full computed rPr + pPr (using the
                                // dominant text run, skipping numbering-prefix-only
                                // runs) and uses them as the style definition.
+                               //
+                               // CORRECTNESS RULE: Required when the source already
+                               // has any paragraph playing this role (any pre-existing
+                               // styleId you are refining). Top-level typography fields
+                               // (size, bold, alignment, lineSpacing, etc.) on a
+                               // represented-role entry silently override the template's
+                               // actual typography — use `overrides` for explicit
+                               // adjustments instead. See standardize.md §1 for rationale.
   overrides: {                 // optional. Any field listed under Mode B can appear here.
     outlineLevel: 0,           // typical use: add structural fields the source lacks
     alignment:    "left",      // or override a specific value per user request
@@ -165,8 +180,14 @@ numbering: {
       numFmt:  "chineseCounting",        // REQUIRED. decimal / chineseCounting /
                                          //   bullet / lowerRoman / etc.
                                          //   See references/numbering-formats.md for table.
+                                         //   Note: chineseCounting and chineseCountingThousand
+                                         //   produce the same visible glyphs (一、二、三…) —
+                                         //   prefer chineseCounting as the canonical form.
       lvlText: "第%1章",                 // REQUIRED. Display pattern (%N = level N counter).
       styleId: "Heading1",               // REQUIRED. Binds this level to a paragraph style.
+                                         // PREREQUISITE: must either pre-exist in styles.xml
+                                         // or be declared in styles[]. Otherwise apply throws
+                                         // at install time with "style not found".
       start:   1,                        // optional. Starting number. Default 1.
       stripPrefixPatterns: ["%1.%2", "%1."],
                                          // optional. Alternative manual-prefix patterns
@@ -182,24 +203,79 @@ numbering: {
                                          //   is the intended path.
       numRPr: {                          // optional. rPr applied to the auto-generated
         color: "3370FF",                 //   number marker only — independent of the
-        bold:  false,                    //   title text. Use to keep designs like
-                                         //   "blue numbering + black title".
+        bold:  false,                    //   title text.
       },
-      restart: "continuous",             // optional. "continuous" (default) | "perInstance".
-                                         //   Single-level schemes only — multi-level uses
-                                         //   lvlRestart instead. "continuous": one counter
-                                         //   shared across the doc (captions / references /
-                                         //   equations / appendix). "perInstance": fork a
-                                         //   fresh numId per contiguous run of same-styleId
-                                         //   paragraphs so each list block restarts at 1
-                                         //   (procedural 1./2./3. lists only).
+      // Counter scope for single-level schemes. Default "continuous" — one
+      // counter shared by every paragraph bound to this level.
+      // Accepted values:
+      //   "continuous": one numId, items continue regardless of intervening paragraphs.
+      //   "perInstance": fork a fresh numId per contiguous run of same-styleId
+      //       paragraphs so each list block restarts at 1 (procedural 1./2./3. lists).
+      //   "byHeading": restart whenever the nearest preceding paragraph with
+      //       outlineLvl changes.
+      //   { "atStyleChange": "<styleId>" }: restart at every paragraph bound
+      //       to the named styleId.
+      //
+      //   Block-level override: numbering: { numId, level, restart: true } forks a
+      //   fresh numId with <w:startOverride val="1"/> at one paragraph — use when a
+      //   single mid-list position needs a hard reset this field can't express.
+      //
+      //   For SEQ-based per-chapter caption numbering use captions.chapterPrefix
+      //   instead — see § "Captions" below.
+      //
+      //   Ignored on multi-level schemes (which use lvlRestart on each level for resets).
+      restart: "continuous",
     },
     ...
   ]
 }
 ```
 
+`restart` is a **level-entry** field — it lives inside `levels[i]`, not at the scheme root. For single-level schemes (the common case for `byHeading` / `atStyleChange`), this means setting it on the single level entry. The behavior is conceptually scheme-wide because single-level schemes have only one counter, but the JSON placement is inside `levels[i]`.
+
 Omit `numbering` entirely if the document has no numbered headings/lists.
+
+### Explicit `numId` on a scheme
+
+By default the engine allocates fresh numIds for declared schemes. To pin a scheme to a specific id — so block-level `numbering: { numId }` references resolve predictably — set `"numId": N` on the scheme object (sibling of `levels`). The dry-run report includes a scheme → numId allocation table showing which id each scheme was assigned and whether it was pinned or allocated.
+
+The engine always creates a fresh `<w:abstractNum>` + `<w:num>` pair. If the pinned `numId` is already present in the source `numbering.xml`, apply throws with a clear message naming the conflicting entry and instructing the agent to choose a different id or remove the explicit `numId` to let the engine allocate. The engine's auto-allocator also skips all source numIds, so allocated ids are always safe regardless of what the source contains.
+
+Collision: two config-declared schemes requesting the same `numId`, or any config scheme requesting a `numId` already in the source, causes apply to throw, naming the conflicting entry.
+
+Pattern templates and `numFmt` values: see [`numbering-formats.md`](numbering-formats.md).
+
+## Captions
+
+```jsonc
+captions: {
+  "<id>": {
+    prefix?: string,          // literal before the counter (default "")
+    suffix?: string,          // literal after the counter (default "")
+    format?: "arabic" | "alphabetic" | "ALPHABETIC"
+           | "roman" | "ROMAN" | "chinese" | "chinese-formal",
+                              // default "arabic"
+    chapterPrefix?: Array<    // ordered, any depth; default [] (global, no restart)
+      string                  //   bare styleId — use heading's native number rendering
+      | { styleId: string;    //   force format (re-renders as Arabic/alphabetic/roman/...
+          format?: SeqFormat }//   regardless of heading's native numFmt)
+    >,                        //   The 中文 academic case: H1 displays "第一章", captions
+                              //   read "图 1.1" — use { styleId: "Heading1", format: "arabic" }
+    chapterSeparator?: string,// joins chapter levels + counter (default ".")
+    bodySeparator?: string,   // between counter and CaptionBlock.text (default " ")
+    styleId: string,          // REQUIRED — caption paragraph's style
+    subCounter?: {            // enables subequations (1a)(1b)
+      format?: "arabic" | "alphabetic" | ...,  // default "alphabetic"
+      prefix?: string,        // default ""
+      suffix?: string         // default ""
+    }
+  }
+}
+```
+
+`chapterPrefix` is the SEQ-based per-chapter caption mechanism. It is distinct from `restart: "byHeading"` on a numbering scheme: `chapterPrefix` drives caption counters (figures / tables / equations) via SEQ fields + a hidden parallel chapter SEQ injected into heading paragraphs; `byHeading` drives list-class auto-numbering restart inside `numbering[]`. They address different counter classes; do not substitute one for the other.
+
+Block-level types used with captions — `CaptionBlock`, `EquationBlock.captionId`, `caption-counter-reset` — and the full rendering pipeline: see [`captions.md`](captions.md).
 
 ## Requirements (annotation only)
 
@@ -300,7 +376,7 @@ The dry-run report includes per-section before → after — verify the selector
 
 ## Paragraph mapping
 
-Paragraphs are 1-based, matching `#001`, `#002` labels in the overview skeleton. Paragraphs inside layout tables are included in the numbering; paragraphs inside data tables and form tables are not indexed.
+Paragraphs are 1-based, matching `#001`, `#002` labels in the overview skeleton. Paragraphs inside layout tables are included in the numbering; paragraphs inside data tables are not indexed.
 
 ```jsonc
 exclude: [1, 2, 3],                    // never touch — overrides everything else

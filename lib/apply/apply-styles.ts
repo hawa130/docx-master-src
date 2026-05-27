@@ -19,7 +19,7 @@ import {
   injectNumbering,
   resolveSuff,
 } from "@lib/apply/numbering-mutation.ts"
-import { applyListRestartPass } from "@lib/apply/list-restart.ts"
+import { applyListRestartPass, buildHeadingStyleIdSet } from "@lib/apply/list-restart.ts"
 import { detectManualNumbering } from "@lib/parse/manual-numbering-detect.ts"
 import { validateDocxFile } from "@lib/shared/docx-validate.ts"
 import { extractDisplayFields, printReport } from "@lib/shared/report.ts"
@@ -70,6 +70,26 @@ import type {
   StyleConfigEntry,
   StyleResolutionEntry,
 } from "@lib/config/config-types.ts"
+
+/**
+ * Normalize a ValidationError into a stable key for baseline comparison.
+ * Strips file paths, line/column coordinates, and paragraph indices — all
+ * of which differ between source and output but don't indicate a new
+ * structural problem introduced by apply. Two errors that vary only in
+ * position (same schema violation, different location in same part) map to
+ * the same key so a pre-existing positional shift doesn't create a false
+ * "new" error.
+ */
+function normalizeValidationError(e: { part: string; message: string }): string {
+  const msg = e.message
+    .replace(/\/[^\s"']+\.docx/g, "<docx>")
+    .replace(/\bline \d+\b/g, "line N")
+    .replace(/\bcol \d+\b/g, "col M")
+    .replace(/\bparagraph #\d+\b/g, "paragraph #N")
+    .replace(/\binput_\d+\.xml\b/g, "input_N.xml")
+    .trim()
+  return `${e.part}||${msg}`
+}
 
 /** Heuristic checks on a resolved style entry. The engine doesn't reject
  * these — they're informational signals surfaced in dry-run + the change
@@ -246,6 +266,21 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     hashToLetter.set(s.hash, s.label)
   }
 
+  // Snapshot numIds from the **original** numbering.xml before template
+  // import runs. The downstream collision check at step 5 needs to
+  // distinguish "id pre-existed in user's doc" from "id was just created by
+  // this apply run's template import" — the two produce different remedies
+  // and the latter is not the agent's fault. Snapshotting after the import
+  // mutated numberingDoc would conflate them.
+  const preTemplateSourceNumIds = new Set<number>()
+  for (const numEl of getChildrenNS(numberingDoc.documentElement!, NS.w, "num")) {
+    const idStr = wAttr(numEl, "numId")
+    if (idStr) {
+      const id = parseInt(idStr, 10)
+      if (Number.isFinite(id)) preTemplateSourceNumIds.add(id)
+    }
+  }
+
   // 3b. Import template styles (if configured). This injects styles directly
   // into stylesDoc — they participate in the final styles.xml without
   // going through the user-declared styles[] / fromParagraph path. Source
@@ -340,8 +375,20 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     collidingId: string
     existingName: string
   }> = []
+  const sourceStyleIds = new Set(
+    getChildrenNS(stylesDoc.documentElement!, NS.w, "style")
+      .map((s) => wAttr(s, "styleId"))
+      .filter((id): id is string => id !== null),
+  )
   for (const def of resolvedStyles) {
-    const key = canonicalNameKey(def.name)
+    // When name is omitted on an override (style already exists by id),
+    // the existing <w:name> is preserved — no new name enters the doc,
+    // so no collision is possible. Skip the check entirely.
+    if (def.name === undefined && sourceStyleIds.has(def.id)) continue
+    // When name is omitted on a create (new style), the engine defaults
+    // name to id — check that value for collisions.
+    const effectiveName = def.name ?? def.id
+    const key = canonicalNameKey(effectiveName)
     const collidingId = sourceCanonicalToStyleId.get(key)
     if (collidingId && collidingId !== def.id) {
       const existingName = sourceCanonicalToOriginalName.get(key)!
@@ -354,10 +401,12 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       `${styleNameConflicts.length} style name collision(s) — Word treats matching names (and locale aliases) as the same built-in identity and would silently drop the new style's rPr at render:`,
     )
     for (const c of styleNameConflicts) {
+      const effectiveName = c.def.name ?? c.def.id
       const aliasNote =
-        c.existingName !== c.def.name ? ` (locale alias of existing "${c.existingName}")` : ""
+        c.existingName !== effectiveName ? ` (locale alias of existing "${c.existingName}")` : ""
+      const nameDisplay = c.def.name !== undefined ? `name="${c.def.name}"` : `name omitted (defaults to id "${c.def.id}")`
       lines.push(
-        `  styles[].id="${c.def.id}" name="${c.def.name}"${aliasNote} → already used by source styleId="${c.collidingId}"`,
+        `  styles[].id="${c.def.id}" ${nameDisplay}${aliasNote} → already used by source styleId="${c.collidingId}"`,
       )
     }
     lines.push("")
@@ -408,9 +457,15 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // is the canonical multi-scheme case). Each scheme allocates a fresh
   // numId and binds its levels independently.
   const installedSchemes: Array<{
-    levels: ReadonlyArray<{ level: number; styleId: string; restart: "continuous" | "perInstance" }>
+    levels: ReadonlyArray<{
+      level: number
+      styleId: string
+      restart: "continuous" | "perInstance" | "byHeading" | { atStyleChange: string }
+    }>
     numId: string
     abstractNumId: string
+    /** true when scheme.numId was set explicitly in config; false = engine allocated. */
+    numIdExplicit: boolean
   }> = []
   if (config.numbering) {
     const numberingSchemes = Array.isArray(config.numbering) ? config.numbering : [config.numbering]
@@ -421,6 +476,65 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       if (sid) existingStyleIds.add(sid)
     }
     const validNumberingTargets = new Set([...declaredIds, ...existingStyleIds])
+
+    // Pre-scan numbering.xml for existing <w:num> ids. Used in two places below:
+    //   1. Explicit numId collision check — throws if config pins an id already
+    //      present (duplicate <w:num w:numId="N"> is invalid OOXML).
+    //   2. Auto-allocator exclusion — prevents the engine from picking an id that
+    //      already exists even when no config scheme claims it.
+    // Split into two sets so the collision error can attribute correctly:
+    // ids the user's source carried in vs. ids this apply run's template
+    // import just allocated. Same OOXML outcome (duplicate <w:num>), but
+    // the agent's fix is different — for source collisions, pick another
+    // numId or drop the pin; for template-import collisions, dropping the
+    // pin is the natural fix because the agent didn't know the template
+    // would grab that id.
+    const allNumIds = new Set<number>()
+    for (const numEl of getChildrenNS(numberingDoc.documentElement!, NS.w, "num")) {
+      const idStr = wAttr(numEl, "numId")
+      if (idStr) {
+        const id = parseInt(idStr, 10)
+        if (Number.isFinite(id)) allNumIds.add(id)
+      }
+    }
+    const templateImportedNumIds = new Set<number>(
+      [...allNumIds].filter((id) => !preTemplateSourceNumIds.has(id)),
+    )
+
+    // First pass: collect explicit numIds and detect collisions.
+    const claimedNumIds = new Set<number>(allNumIds)
+    for (const [schemeIdx, scheme] of numberingSchemes.entries()) {
+      if (scheme.numId === undefined) continue
+      const path = numberingSchemes.length === 1 ? "numbering" : `numbering[${schemeIdx}]`
+      if (preTemplateSourceNumIds.has(scheme.numId)) {
+        throw new Error(
+          `${path}.numId = ${scheme.numId} collides with an existing <w:num w:numId="${scheme.numId}"/> in the source. ` +
+            `Either pin to a different numId, or remove the explicit numId to let the engine allocate ` +
+            `(the engine will pick an id not in use).`,
+        )
+      }
+      if (templateImportedNumIds.has(scheme.numId)) {
+        throw new Error(
+          `${path}.numId = ${scheme.numId} was just claimed by template import in this apply run. ` +
+            `Either pin to a different numId, or remove the explicit numId to let the engine allocate ` +
+            `(the auto-allocator already skips template-imported ids).`,
+        )
+      }
+      // Check config-internal duplicates.
+      if (claimedNumIds.has(scheme.numId)) {
+        const prev = numberingSchemes.findIndex(
+          (s, i) => i < schemeIdx && s.numId === scheme.numId,
+        )
+        const prevPath = numberingSchemes.length === 1 ? "numbering" : `numbering[${prev}]`
+        throw new Error(
+          `${path}.numId ${scheme.numId} conflicts with ${prevPath}.numId ${scheme.numId} — ` +
+            `two schemes cannot share the same numId. ` +
+            `Set a different numId on one of them, or remove numId to let the engine allocate.`,
+        )
+      }
+      claimedNumIds.add(scheme.numId)
+    }
+
     for (const [schemeIdx, scheme] of numberingSchemes.entries()) {
       if (scheme.levels.length === 0) continue
       const path = numberingSchemes.length === 1 ? "numbering" : `numbering[${schemeIdx}]`
@@ -460,7 +574,10 @@ export async function applyStyles(source: string, output: string, config: ApplyC
           )
         }
       }
-      const { numId, abstractNumId } = injectNumbering(numberingDoc, scheme)
+      const { numId, abstractNumId } = injectNumbering(numberingDoc, scheme, {
+        claimedNumIds,
+        requestedNumId: scheme.numId,
+      })
       for (const lvl of scheme.levels) {
         attachNumberingToStyle(stylesDoc, lvl.styleId, numId, lvl.level)
       }
@@ -472,6 +589,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
         })),
         numId,
         abstractNumId,
+        numIdExplicit: scheme.numId !== undefined,
       })
     }
   }
@@ -567,6 +685,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
       sections: parsed.sections,
       captions: resolvedCaptions.byIdentifier,
       imageRegistry: bodyAssetRegistry,
+      numberingDoc,
     })
     editsApplied = result.report.applied
     editsTrackChanges = result.report.trackChanges
@@ -610,7 +729,7 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     const range =
       max > 0 ? `#${parsed.paragraphs[0]!.index}–#${parsed.paragraphs[max - 1]!.index}` : "(none)"
     throw new Error(
-      `${where}: paragraph #${idx} not found. Document has ${max} indexed paragraphs (${range}). Paragraphs inside data/form tables are not indexed.`,
+      `${where}: paragraph #${idx} not found. Document has ${max} indexed paragraphs (${range}). Paragraphs inside data tables are not indexed.`,
     )
   }
   const excludeSet = new Set(config.exclude ?? [])
@@ -751,7 +870,8 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // unconditionally so standardize-only configs (no edits, no cross-refs
   // beyond captions) still trigger it.
   if (installedSchemes.length > 0 && !listRestartApplied) {
-    applyListRestartPass(documentDoc, numberingDoc, installedSchemes)
+    const headingStyleIds = buildHeadingStyleIdSet(stylesDoc)
+    applyListRestartPass(documentDoc, numberingDoc, installedSchemes, headingStyleIds)
     listRestartApplied = true
   }
 
@@ -770,19 +890,20 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // to disk. captionsPreview captures the summary surfaced in the report.
   //
   // INVARIANT (dry-run ↔ real-apply caption text consistency): the
-  // `Predicted text` lines surfaced in the dry-run report MUST be
-  // byte-identical to the field-portion (prefix + chapter parts + counter
-  // + sub + suffix) rendered by real apply for the same paragraph. The
-  // contract is enforced structurally — both modes call the same
-  // `injectChapterCounters` → `standardizeCaptions` → `simulateCaptions`
-  // sequence on the same documentDoc, and `captionsPreview.samples` is
-  // populated from the very `fullCaptionText` map that real-apply backfill
-  // also reads. Future edits to this pipeline (counter sim, fill ordering,
-  // chapter STYLEREF resolution, format override) MUST preserve this
-  // unconditional shared-pipeline shape. If a step becomes mode-specific,
-  // verify post-change that dry-run `Predicted text` still matches the
-  // `<w:t>` content of the corresponding caption paragraph in the written
-  // docx; a divergence makes the dry-run preview a liar.
+  // `Predicted text` lines surfaced in the dry-run report show the full
+  // visible caption string: field-portion (prefix + chapter parts + counter
+  // + sub + suffix) from `fullCaptionText`, plus bodySeparator + body from
+  // the fill record. The field-portion contract is enforced structurally —
+  // both modes call the same `injectChapterCounters` → `standardizeCaptions`
+  // → `simulateCaptions` sequence on the same documentDoc, and
+  // `captionsPreview.samples` is populated from the very `fullCaptionText`
+  // map that real-apply backfill also reads. Future edits to this pipeline
+  // (counter sim, fill ordering, chapter STYLEREF resolution, format
+  // override) MUST preserve this unconditional shared-pipeline shape. If a
+  // step becomes mode-specific, verify post-change that dry-run `Predicted
+  // text` still matches the full visible content of the corresponding caption
+  // paragraph in the written docx; a divergence makes the dry-run preview a
+  // liar.
   //
   // Steps: (1) inject hidden auto-chapter SEQ fields into outline
   // paragraphs whose style is referenced under any captions.chapterPrefix
@@ -861,17 +982,22 @@ export async function applyStyles(source: string, output: string, config: ApplyC
 
       // Capture dry-run preview stats. First 5 caption samples reported in
       // pipeline order — agent sees predicted text without running real
-      // apply. Texts come from the same `fullCaptionText` map that
-      // real-apply backfill reads, so previewed text matches the
-      // field-portion of the written caption paragraph byte-for-byte (see
-      // INVARIANT note on the enclosing block).
+      // apply. Counter text comes from the same `fullCaptionText` map that
+      // real-apply backfill reads; body text is appended from the fill record
+      // so the preview shows the full visible caption string (counter + body).
       if (config.dryRun) {
         const previewSamples: Array<{ identifier: string; text: string }> = []
         // Iterate allCaptionFills in pipeline order; map .paragraph → fullText.
         for (const fill of allCaptionFills) {
           if (previewSamples.length >= 5) break
-          const text = captionSimOutput.fullCaptionText.get(fill.paragraph)
-          if (text !== undefined) {
+          const counterText = captionSimOutput.fullCaptionText.get(fill.paragraph)
+          if (counterText !== undefined) {
+            const captionConfig = resolvedCaptions.byIdentifier.get(fill.identifier)
+            const body = fill.bodyText
+            const text =
+              body !== undefined && captionConfig !== undefined
+                ? counterText + captionConfig.bodySeparator + body
+                : counterText
             previewSamples.push({ identifier: fill.identifier, text })
           }
         }
@@ -1069,19 +1195,69 @@ export async function applyStyles(source: string, output: string, config: ApplyC
   // the in-memory report alone. Otherwise: write, then run the comprehensive
   // bundle check (XML well-formedness, CT_* schema, whitespace preservation,
   // cross-part references, content types, relationship Ids).
+  //
+  // Baseline-diff validation: errors already present in the source file are
+  // reported as warnings, not fatal. Only errors *introduced* by this apply
+  // run cause the output to be deleted (unless --allow-validation-warnings
+  // is set, in which case new errors are also non-fatal).
   if (!config.dryRun) {
+    // Capture source baseline before writing output.
+    const baselineErrors = await validateDocxFile(source)
+    // Multiset (count per key) instead of a plain Set so that N identical
+    // errors in the source only absorb N matching errors in the output.
+    // A Set would let 1 baseline entry mask any number of output errors
+    // with the same normalized key, silently swallowing introduced errors.
+    const baselineCounts = new Map<string, number>()
+    for (const e of baselineErrors) {
+      const k = normalizeValidationError(e)
+      baselineCounts.set(k, (baselineCounts.get(k) ?? 0) + 1)
+    }
+
     await reader.copyAndModify(output, replacements)
-    const errors = await validateDocxFile(output)
-    if (errors.length > 0) {
-      if (existsSync(output)) {
-        try {
-          unlinkSync(output)
-        } catch {}
+    const outputErrors = await validateDocxFile(output)
+
+    // Consume baseline slots greedily: each output error checks if a slot
+    // remains for its key and decrements if so (pre-existing), otherwise
+    // counts as new (introduced by this run).
+    const available = new Map(baselineCounts)
+    const newErrors: (typeof outputErrors)[number][] = []
+    const preExistingErrors: (typeof outputErrors)[number][] = []
+    for (const e of outputErrors) {
+      const k = normalizeValidationError(e)
+      const n = available.get(k) ?? 0
+      if (n > 0) {
+        available.set(k, n - 1)
+        preExistingErrors.push(e)
+      } else {
+        newErrors.push(e)
       }
-      const lines = errors.slice(0, 20).map((e) => `  ${e.part}: ${e.message}`)
-      const more = errors.length > 20 ? `\n  …${errors.length - 20} more` : ""
-      console.error(`Validation FAILED:\n${lines.join("\n")}${more}`)
-      process.exit(1)
+    }
+
+    if (preExistingErrors.length > 0) {
+      console.error(
+        `Validation: ${preExistingErrors.length} pre-existing error(s) carried through from source (non-fatal).`,
+      )
+    }
+
+    if (newErrors.length > 0) {
+      const lines = newErrors.slice(0, 20).map((e) => `  ${e.part}: ${e.message}`)
+      const more = newErrors.length > 20 ? `\n  …${newErrors.length - 20} more` : ""
+      if (config.allowValidationWarnings) {
+        console.error(
+          `Validation: ${newErrors.length} new error(s) introduced by this run (--allow-validation-warnings set; output kept):\n${lines.join("\n")}${more}`,
+        )
+      } else {
+        if (existsSync(output)) {
+          try {
+            unlinkSync(output)
+          } catch {}
+        }
+        console.error(
+          `Validation FAILED — ${newErrors.length} new error(s) introduced by this run:\n${lines.join("\n")}${more}\n` +
+            `  (Use --allow-validation-warnings to keep the output despite new errors.)`,
+        )
+        process.exit(1)
+      }
     }
   }
 
@@ -1151,6 +1327,11 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     manualNumberingDetected,
     excludeSamples,
     numberingBindings,
+    numberingAllocation: installedSchemes.map((s, i) => ({
+      schemeIndex: i,
+      numId: s.numId,
+      explicit: s.numIdExplicit,
+    })),
     templateImport,
     editsPreview,
     captionsPreview,
@@ -1158,6 +1339,9 @@ export async function applyStyles(source: string, output: string, config: ApplyC
     pageSetup: pageSetupReport,
     headerFooter: headerFooterReport,
     headerFooterBinding: headerFooterBindingReport,
+    totalParagraphs: config.dryRun
+      ? (parsed.paragraphs[parsed.paragraphs.length - 1]?.index ?? parsed.paragraphs.length)
+      : undefined,
   })
 
   // Dry-run also invokes runEditOps now (so the cross-ref pipeline can see

@@ -1,5 +1,6 @@
 /**
  * inspect_runs <docx> <paraIndex>
+ * inspect_runs <docx> --table T --row R --col C --paragraph K
  *
  * Dumps every run inside a paragraph: text, rPr, and a "run-level diversity"
  * summary that pinpoints which character properties differ across runs
@@ -10,6 +11,9 @@
  *   <w:r><w:b/>幻觉与安全性</w:r><w:r>与传统软件不同…</w:r>
  * where the leading bold phrase is a separate run from the non-bold body.
  * For that, you need this tool.
+ *
+ * Cell form: --table / --row / --col / --paragraph address a paragraph inside
+ * a data-table cell (coordinates match find_text cell-coord hit format).
  */
 import { loadDocx } from "@lib/xml/load.ts"
 import { NS } from "@lib/parse/types.ts"
@@ -27,45 +31,118 @@ interface RunInfo {
   hasField: boolean
 }
 
+interface CellTarget {
+  table: number
+  row: number
+  col: number
+  paragraph: number
+}
+
 async function main() {
-  const file = process.argv[2]
-  const idxArg = process.argv[3]
-  if (!file || !idxArg) {
-    console.error("Usage: node scripts/inspect_runs.js <docx-path> <paragraph-index>")
+  const argv = process.argv.slice(2)
+  if (!argv[0]) {
+    console.error(
+      "Usage: node scripts/inspect_runs.js <docx-path> <paragraph-index>\n" +
+        "       node scripts/inspect_runs.js <docx-path> --table T --row R --col C --paragraph K",
+    )
     process.exit(1)
   }
-  const targetIdx = parseInt(idxArg, 10)
-  if (isNaN(targetIdx) || targetIdx < 1) {
-    console.error("Invalid paragraph index (must be 1-based positive integer)")
-    process.exit(1)
+  const file = argv[0]
+
+  // Parse flags
+  let cellTarget: CellTarget | undefined
+  let paragraphIdx: number | undefined
+  let i = 1
+  while (i < argv.length) {
+    const a = argv[i]!
+    if (a === "--table" || a === "--row" || a === "--col" || a === "--paragraph") {
+      const v = argv[++i]
+      const n = v !== undefined ? parseInt(v, 10) : NaN
+      if (isNaN(n) || n < 1) {
+        console.error(`${a} requires a positive integer`)
+        process.exit(1)
+      }
+      if (!cellTarget) cellTarget = { table: 0, row: 0, col: 0, paragraph: 0 }
+      if (a === "--table") cellTarget.table = n
+      else if (a === "--row") cellTarget.row = n
+      else if (a === "--col") cellTarget.col = n
+      else if (a === "--paragraph") cellTarget.paragraph = n
+    } else if (!a.startsWith("--")) {
+      const n = parseInt(a, 10)
+      if (isNaN(n) || n < 1) {
+        console.error("Invalid paragraph index (must be 1-based positive integer)")
+        process.exit(1)
+      }
+      paragraphIdx = n
+    } else {
+      console.error(`unknown flag: ${a}`)
+      process.exit(1)
+    }
+    i++
   }
 
   try {
     const doc = await loadDocx(file)
-    const para = doc.paragraphs.find((p) => p.index === targetIdx)
-    if (!para) {
-      const max = doc.paragraphs.length
-      const closest = doc.paragraphs.reduce(
-        (best, p) => (Math.abs(p.index - targetIdx) < Math.abs(best - targetIdx) ? p.index : best),
-        doc.paragraphs[0]?.index ?? 0,
-      )
-      console.error(
-        `Paragraph #${targetIdx} not found. Document has ${max} indexed paragraphs (1..${doc.paragraphs[max - 1]?.index ?? 0}). Closest: #${closest}.`,
-      )
-      console.error(
-        "Note: paragraphs inside data/form tables are not indexed and cannot be referenced.",
-      )
-      process.exit(1)
-    }
 
-    const pEl = findParagraphElement(doc.documentDoc, targetIdx)
-    if (!pEl) {
-      console.error(`Internal error: paragraph #${targetIdx} index lookup failed`)
-      process.exit(1)
-    }
+    if (cellTarget !== undefined) {
+      // Cell form: resolve via table/row/col/paragraph coordinates
+      const missing: string[] = []
+      if (!cellTarget.table) missing.push("--table")
+      if (!cellTarget.row) missing.push("--row")
+      if (!cellTarget.col) missing.push("--col")
+      if (!cellTarget.paragraph) missing.push("--paragraph")
+      if (missing.length > 0) {
+        console.error(`Cell form requires all four flags. Missing: ${missing.join(", ")}`)
+        process.exit(1)
+      }
 
-    const runs = extractRuns(pEl)
-    console.log(renderReport(targetIdx, para.fingerprint, para.text, para.styleId, runs))
+      const pEl = findCellParagraphElement(doc.documentDoc, cellTarget)
+      if (!pEl) {
+        console.error(
+          `Cell T${cellTarget.table}R${cellTarget.row}C${cellTarget.col} K${cellTarget.paragraph} not found. ` +
+            `Verify coordinates via find_text output.`,
+        )
+        process.exit(1)
+      }
+      const runs = extractRuns(pEl)
+      const locLabel = `T${cellTarget.table}R${cellTarget.row}C${cellTarget.col} K${cellTarget.paragraph}`
+      console.log(renderCellReport(locLabel, runs))
+    } else {
+      // Paragraph-index form
+      if (paragraphIdx === undefined) {
+        console.error(
+          "Usage: node scripts/inspect_runs.js <docx-path> <paragraph-index>\n" +
+            "       node scripts/inspect_runs.js <docx-path> --table T --row R --col C --paragraph K",
+        )
+        process.exit(1)
+      }
+      const targetIdx = paragraphIdx
+      const para = doc.paragraphs.find((p) => p.index === targetIdx)
+      if (!para) {
+        const max = doc.paragraphs.length
+        const closest = doc.paragraphs.reduce(
+          (best, p) =>
+            Math.abs(p.index - targetIdx) < Math.abs(best - targetIdx) ? p.index : best,
+          doc.paragraphs[0]?.index ?? 0,
+        )
+        console.error(
+          `Paragraph #${targetIdx} not found. Document has ${max} indexed paragraphs (1..${doc.paragraphs[max - 1]?.index ?? 0}). Closest: #${closest}.`,
+        )
+        console.error(
+          "Note: paragraphs inside data tables are not indexed; use --table/--row/--col/--paragraph.",
+        )
+        process.exit(1)
+      }
+
+      const pEl = findParagraphElement(doc.documentDoc, targetIdx)
+      if (!pEl) {
+        console.error(`Internal error: paragraph #${targetIdx} index lookup failed`)
+        process.exit(1)
+      }
+
+      const runs = extractRuns(pEl)
+      console.log(renderReport(targetIdx, para.fingerprint, para.text, para.styleId, runs))
+    }
   } catch (err) {
     console.error(`Error: ${(err as Error).message}`)
     process.exit(1)
@@ -73,9 +150,35 @@ async function main() {
 }
 
 /**
+ * Resolve a data-table cell paragraph by (1-based) table/row/col/paragraph
+ * coordinates (matching find_text cell-coord hit format). Counts only
+ * top-level tables in document body.
+ */
+function findCellParagraphElement(doc: Document, coords: CellTarget): Element | null {
+  const body = firstChildNS(doc.documentElement!, NS.w, "body")
+  if (!body) return null
+
+  let tableCount = 0
+  for (const child of getChildren(body)) {
+    if (child.namespaceURI !== NS.w || child.localName !== "tbl") continue
+    tableCount++
+    if (tableCount !== coords.table) continue
+
+    const rows = getChildrenNS(child, NS.w, "tr")
+    if (coords.row < 1 || coords.row > rows.length) return null
+    const cells = getChildrenNS(rows[coords.row - 1]!, NS.w, "tc")
+    if (coords.col < 1 || coords.col > cells.length) return null
+    const paras = getChildrenNS(cells[coords.col - 1]!, NS.w, "p")
+    if (coords.paragraph < 1 || coords.paragraph > paras.length) return null
+    return paras[coords.paragraph - 1]!
+  }
+  return null
+}
+
+/**
  * Walks the body in the same order as DocumentParser to assign indices,
  * returning the <w:p> element that matches the target paragraph index.
- * Includes paragraphs inside layout tables; skips data/form tables.
+ * Includes paragraphs inside layout tables; skips data tables.
  */
 function findParagraphElement(doc: Document, targetIdx: number): Element | null {
   const body = firstChildNS(doc.documentElement!, NS.w, "body")
@@ -218,10 +321,24 @@ function renderReport(
   const truncated = fullText.length > 80 ? fullText.slice(0, 77) + "…" : fullText
   lines.push(`  text: ${JSON.stringify(truncated)}`)
   lines.push("")
+  appendRunsAndDiversity(lines, runs)
+  return lines.join("\n")
+}
 
+/** Render a cell-paragraph hit using the same run + diversity format as
+ * renderReport, but with a cell-coord header instead of a paragraph index. */
+function renderCellReport(locLabel: string, runs: RunInfo[]): string {
+  const lines: string[] = []
+  lines.push(`${locLabel}  ${runs.length} run${runs.length === 1 ? "" : "s"}`)
+  lines.push("")
+  appendRunsAndDiversity(lines, runs)
+  return lines.join("\n")
+}
+
+function appendRunsAndDiversity(lines: string[], runs: RunInfo[]): void {
   if (runs.length === 0) {
     lines.push("  (paragraph has no runs — likely image-only or empty)")
-    return lines.join("\n")
+    return
   }
 
   // Per-run dump
@@ -275,7 +392,6 @@ function renderReport(
   lines.push(
     `    uniform (strippable):         ${uniform.length === 0 ? "(none)" : uniform.join(", ")}`,
   )
-  return lines.join("\n")
 }
 
 function formatRPrMap(rPr: Record<string, string>): string {

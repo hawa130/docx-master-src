@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { ParsedParagraph } from "@lib/parse/types.ts"
+import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "@lib/parse/types.ts"
 import type { StyleResolver } from "@lib/parse/style-resolver.ts"
 
 export interface FingerprintSummary {
@@ -113,22 +113,31 @@ function pickDominantStyle(styleCounts: Map<string, number>, total: number): str
   return bestId
 }
 
-function makeHash(p: ParsedParagraph): string {
-  const r = p.rPr
-  const pp = p.pPr
-  const font = r.fontAscii || r.fontHAnsi || r.fontEastAsia || "?"
-  const size = r.size !== undefined ? String(r.size) : "?"
+/** Compute the raw fingerprint string for a paragraph's resolved rPr + pPr.
+ * Exported so tools that walk paragraphs outside the DocumentParser scope
+ * (e.g. data-table cells) can match against existing fingerprints without
+ * re-parsing the full document. */
+export function computeRawFingerprint(rPr: ComputedRunStyle, pPr: ComputedParaStyle): string {
+  const font = rPr.fontAscii || rPr.fontHAnsi || rPr.fontEastAsia || "?"
+  const size = rPr.size !== undefined ? String(rPr.size) : "?"
   const flags =
-    (r.bold ? "B" : "") + (r.italic ? "I" : "") + (r.underline ? "U" : "") + (r.caps ? "C" : "")
-  const color = r.color && r.color !== "auto" ? r.color : ""
-  const alignment = pp.alignment || ""
-  const indent = pp.firstLineIndent || pp.firstLineIndentChars ? "1stInd" : ""
+    (rPr.bold ? "B" : "") +
+    (rPr.italic ? "I" : "") +
+    (rPr.underline ? "U" : "") +
+    (rPr.caps ? "C" : "")
+  const color = rPr.color && rPr.color !== "auto" ? rPr.color : ""
+  const alignment = pPr.alignment || ""
+  const indent = pPr.firstLineIndent || pPr.firstLineIndentChars ? "1stInd" : ""
+  const list = pPr.numId ? "L" : ""
+  return `${font}|${size}|${flags}|${color}|${alignment}|${indent}|${list}`
+}
+
+function makeHash(p: ParsedParagraph): string {
   // Include numbering presence so list items split out from visually-identical
   // body paragraphs. Without this, two paragraphs that share the same rPr
   // (e.g. 11pt non-bold body text vs. 11pt non-bold list item) would collapse
   // into one fingerprint and bulk_rules couldn't target lists separately.
-  const list = pp.numId ? "L" : ""
-  return `${font}|${size}|${flags}|${color}|${alignment}|${indent}|${list}`
+  return computeRawFingerprint(p.rPr, p.pPr)
 }
 
 function describe(p: ParsedParagraph): string {

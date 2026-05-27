@@ -20,7 +20,7 @@ import { DocxReader } from "@lib/xml/reader.ts"
 import { NS, type ParsedParagraph, type SectionInfo } from "@lib/parse/types.ts"
 import { buildStyleResolver } from "@lib/parse/style-names.ts"
 import { sectionForParagraph, sectionUsableWidthTwips } from "@lib/parse/section-metrics.ts"
-import { firstChildNS, getChildren, getChildrenNS } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent } from "@lib/xml/xml-utils.ts"
 import { PPR_CHILD_ORDER, insertChildInOrder } from "@lib/xml/xml-order.ts"
 import {
   assertNever,
@@ -42,6 +42,7 @@ import {
   detectBlockers,
   explainBlockerReason,
   summarizeBlockers,
+  type BlockerReason,
   type BlockerScan,
 } from "@lib/edit/blockers.ts"
 import {
@@ -63,6 +64,7 @@ import {
 } from "@lib/edit/track-changes.ts"
 import { DocxAssetRegistry } from "@lib/edit/asset-registry.ts"
 import { emitHyperlinkNode, ensureHyperlinkCharStyle } from "@lib/edit/hyperlink.ts"
+import { applyParagraphLevelRestart } from "@lib/apply/list-restart.ts"
 import { BookmarkAllocator } from "@lib/edit/bookmark.ts"
 import { WIdAllocator } from "@lib/edit/wid-allocator.ts"
 import {
@@ -107,6 +109,10 @@ export interface EditsPreviewEntry {
   willInsertCount: number
   /** Container kind — body or table cell. */
   container: "body" | "cell"
+  /** For merge ops: the index of the surviving paragraph (kept).
+   * Other target indices in willReplaceOrDeleteIndices are absorbed
+   * INTO the survivor (marked MERGED in drift output). */
+  survivorIndex?: number
 }
 
 export interface PreviewEditsInput {
@@ -156,6 +162,7 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
     const op = edit.op.op
     let willReplaceOrDeleteIndices: number[] = []
     let willInsertCount = 0
+    let survivorIndex: number | undefined
     if (op === "replace") {
       willReplaceOrDeleteIndices = [...targetParaIndices]
       willInsertCount = edit.op.with.length
@@ -163,6 +170,24 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
     } else if (op === "delete") {
       willReplaceOrDeleteIndices = [...targetParaIndices]
       for (const idx of targetParaIndices) if (idx >= 0) replacedOrDeletedIndices.add(idx)
+    } else if (op === "merge") {
+      // All target paragraphs are reported as touched; the non-survivor ones
+      // are removed (all except the keepPPr end). Report them all as
+      // replaced/deleted so dry-run counts don't double-count them.
+      willReplaceOrDeleteIndices = [...targetParaIndices]
+      for (const idx of targetParaIndices) if (idx >= 0) replacedOrDeletedIndices.add(idx)
+      // Identify survivor so drift map doesn't mark it MERGED.
+      const keepPPr = (edit.op as { keepPPr?: "first" | "last" }).keepPPr ?? "first"
+      const sortedTargets = [...targetParaIndices].sort((a, b) => a - b)
+      const survivorIdx =
+        keepPPr === "last"
+          ? sortedTargets[sortedTargets.length - 1]
+          : sortedTargets[0]
+      if (survivorIdx !== undefined && survivorIdx >= 0) {
+        survivorIndex = survivorIdx
+        // Survivor stays in the doc — don't count it as replaced/deleted.
+        replacedOrDeletedIndices.delete(survivorIdx)
+      }
     } else if (op === "insert-before" || op === "insert-after") {
       willInsertCount = edit.op.content.length
     }
@@ -177,6 +202,7 @@ export function previewEditOps(input: PreviewEditsInput): PreviewEditsOutput {
       willReplaceOrDeleteIndices,
       willInsertCount,
       container,
+      survivorIndex,
     })
   }
   return { entries, replacedOrDeletedIndices }
@@ -218,6 +244,10 @@ export interface RunEditOpsInput {
    *  to the same body rels file — sharing a single registry instance
    *  avoids racing rId allocation. */
   imageRegistry?: DocxAssetRegistry
+  /** Live numbering.xml Document — wired in by apply-styles so that
+   * ParagraphBlock.numbering.restart forks can mint fresh numIds at emit
+   * time. When absent, `numbering.restart: true` throws at emit. */
+  numberingDoc?: Document | null
 }
 
 export interface RunEditOpsOutput {
@@ -247,7 +277,7 @@ export interface RunEditOpsOutput {
  * own replacement map) plus the applied-ops report.
  */
 export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutput> {
-  const { documentDoc, parsedParagraphs, reader, edits, trackChanges, author, stylesDoc } = input
+  const { documentDoc, parsedParagraphs, reader, edits, trackChanges, author, stylesDoc, numberingDoc } = input
 
   const resolverCtx = buildResolverContext(documentDoc, parsedParagraphs)
   const blockers = detectBlockers(documentDoc, resolverCtx.indexByElement)
@@ -271,6 +301,12 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
   // boundary so it's a clear contract, not a half-rendered output.
   if (trackChanges) {
     for (const [i, op] of edits.entries()) {
+      if (op.op === "merge") {
+        throw new Error(
+          `edits[${i}] (merge): merge under trackChanges=true is not supported. ` +
+            `Run merge in a separate apply without trackChanges.`,
+        )
+      }
       const frag =
         op.op === "replace"
           ? op.with
@@ -488,6 +524,9 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
     adoptAnchor: (name, pEl) => {
       bookmarkAllocator.adoptName(name, pEl)
     },
+    forkNumRestart: numberingDoc
+      ? (pEl, numId, level) => applyParagraphLevelRestart(pEl, numberingDoc, numId, level)
+      : undefined,
   }
   const perOp: ApplyEditsReport["perOp"] = []
   for (const [i, edit] of resolved.entries()) {
@@ -513,6 +552,7 @@ export async function runEditOps(input: RunEditOpsInput): Promise<RunEditOpsOutp
       touched = applyOne(edit, documentDoc, trackContext, perOpCtx, stale, resolverCtx, {
         bookmarkAllocator,
         captionsMap: input.captions,
+        blockersByElement: blockers.byElement,
       })
     } catch (err) {
       const msg = (err as Error).message
@@ -659,9 +699,14 @@ function validateAgainstBlockers(
 ): void {
   const failures: string[] = []
   for (const [i, edit] of resolved.entries()) {
+    const overwriteFields = edit.op.op === "replace" && edit.op.overwriteFields === true
     for (const p of edit.target.paragraphs) {
       const reason = blockers.byElement.get(p)
       if (reason) {
+        // replace with overwriteFields:true skips the "field" blocker — the
+        // engine drops the existing fields together with the replaced paragraphs.
+        // Revisions (tracked-change) and SDT controls remain blocking regardless.
+        if (overwriteFields && reason === "field") continue
         const idx = indexByElement.get(p)
         const where = idx !== undefined ? `paragraph #${idx}` : `cell paragraph`
         failures.push(
@@ -812,6 +857,11 @@ function walkBlockForAnchors(block: Fragment[number], visit: (hint: AnchorHint) 
 interface ApplyDeps {
   bookmarkAllocator: BookmarkAllocator
   captionsMap: Map<string, ResolvedCaptionConfig> | undefined
+  /** Pre-computed blocker map — merge uses this to refuse targets with
+   * revision markup, SDT, or complex fields. Same map `validateAgainstBlockers`
+   * consumed; threaded here as defense-in-depth so `applyMerge` enforces the
+   * contract even if called outside the standard runEditOps pipeline. */
+  blockersByElement: Map<Element, BlockerReason>
 }
 
 function applyEditCaptionOp(
@@ -902,6 +952,8 @@ function applyOne(
       return applySetRun(edit.runRef, edit.op, documentDoc, trackContext)
     case "edit-caption":
       return applyEditCaptionOp(edit.op, documentDoc, deps)
+    case "merge":
+      return applyMerge(edit.target, edit.op, stale, deps.blockersByElement)
     default:
       return assertNever(edit.op)
   }
@@ -941,7 +993,26 @@ function isParagraphElement(el: Element): boolean {
 // MDF skip is now decided from the source Block.type at the inheritance
 // call site, where the agent's declared intent is unambiguous.)
 
-function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document): void {
+/** pPr fields where an explicit styleId on the new Block is meant to
+ * govern. When the engine inherits anchor pPr via MDF, these fields
+ * are stripped so the styleId cascade reaches them. Without this strip,
+ * a direct <w:outlineLvl w:val="1"/> on the anchor would override the
+ * Heading 1 outline level cascaded from ProposalH1, mis-tagging the
+ * new paragraph as Heading 2. */
+const STYLE_GOVERNED_PPR_FIELDS = new Set([
+  "outlineLvl",
+  "numPr",
+  "pageBreakBefore",
+  "widowControl",
+  "spacing",
+])
+
+function inheritPPrFromAnchor(
+  newP: Element,
+  anchor: Element,
+  ownerDoc: Document,
+  blockHasExplicitStyleId: boolean,
+): void {
   const anchorPPr = firstChildNS(anchor, w, "pPr")
   if (!anchorPPr) return
   let newPPr = firstChildNS(newP, w, "pPr")
@@ -970,6 +1041,12 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
     // Skip the tracked-changes pPr snapshot — that's history, not content.
     if (c.localName === "pPrChange") continue
     if (c.localName === "rPr" && newHasPStyle) continue
+    // When the Block carries an explicit styleId, strip style-governed fields
+    // so the styleId cascade reaches them. Without this, a direct
+    // <w:outlineLvl> on the anchor would override the heading level that
+    // ProposalH1 (or any heading style) declares, rendering a Heading 1 as
+    // Heading 2 in the navigation pane and TOC.
+    if (blockHasExplicitStyleId && STYLE_GOVERNED_PPR_FIELDS.has(c.localName!)) continue
     const existing = existingByName.get(c.localName!)
     if (existing) {
       // MDF: agent's paraFormat overrides only the attrs it explicitly sets;
@@ -990,6 +1067,37 @@ function inheritPPrFromAnchor(newP: Element, anchor: Element, ownerDoc: Document
   // buildPPrChildren already pushed (e.g. anchor `ind` after our `spacing`
   // and before our `jc`). Plain appendChild would mis-order them.
   for (const c of toClone) insertChildInOrder(newPPr, c, PPR_CHILD_ORDER)
+}
+
+/** Inherit the anchor's first non-empty run rPr into the new paragraph's
+ * runs when the Block has no explicit runFormat. This implements the
+ * run-side of MDF: new paragraphs adopt the anchor's typeface so they
+ * blend visually into the destination context rather than falling back to
+ * the docDefault font (Calibri / 宋体). Only fields not already declared
+ * on the run's rPr are inherited — explicit runFormat choices always win. */
+function inheritAnchorRunRPr(
+  newRunRPr: Element,
+  anchorEl: Element,
+  newRunHasExplicitFormat: boolean,
+): void {
+  if (newRunHasExplicitFormat) return
+  const anchorRuns = getChildrenNS(anchorEl, w, "r")
+  const firstNonEmpty = anchorRuns.find((r) => textContent(r).trim().length > 0)
+  if (!firstNonEmpty) return
+  const anchorRPr = firstChildNS(firstNonEmpty, w, "rPr")
+  if (!anchorRPr) return
+  const existingNames = new Set(
+    getChildren(newRunRPr)
+      .filter((c) => c.namespaceURI === w)
+      .map((c) => c.localName!),
+  )
+  for (const child of getChildren(anchorRPr)) {
+    if (child.namespaceURI !== w) continue
+    // Skip tracked-changes rPr snapshots — history, not content.
+    if (child.localName === "rPrChange") continue
+    if (existingNames.has(child.localName!)) continue
+    newRunRPr.appendChild(child.cloneNode(true))
+  }
 }
 
 /** Copy `source`'s attributes onto `target`, leaving any attribute already
@@ -1024,7 +1132,34 @@ function inheritFormatForNewParagraphs(
     const block = newBlocks[i]!
     if (block.type !== "paragraph") continue
     if (!isParagraphElement(el)) continue
-    inheritPPrFromAnchor(el, anchor, ownerDoc)
+    const blockHasExplicitStyleId = block.styleId !== undefined
+    inheritPPrFromAnchor(el, anchor, ownerDoc, blockHasExplicitStyleId)
+    // Run-side MDF: inherit anchor's first-run rPr into new runs when
+    // the Block has no explicit runFormat. Each run that fragment-emit
+    // produced gets the same treatment — a paragraph with mixed inline
+    // formats should still pick up the anchor's base font for unstyled
+    // runs (the explicit-format check inside inheritAnchorRunRPr handles
+    // per-run overrides).
+    const blockHasExplicitRunFormat = block.runFormat !== undefined
+    for (const r of getChildrenNS(el, w, "r")) {
+      // Only inherit into runs that don't already carry an rPr that was
+      // set by an inline piece's own `format` field. A run with an rPr
+      // element was explicitly formatted by the agent; a run without one
+      // is the default-font fallback that MDF should upgrade.
+      const existingRPr = firstChildNS(r, w, "rPr")
+      if (existingRPr !== null) {
+        // Run already has some explicit formatting — only fill missing fields.
+        inheritAnchorRunRPr(existingRPr, anchor, blockHasExplicitRunFormat)
+      } else if (!blockHasExplicitRunFormat) {
+        // Run has no rPr at all and block has no default runFormat — create
+        // an rPr and populate from the anchor.
+        const newRPr = ownerDoc.createElementNS(w, "w:rPr")
+        inheritAnchorRunRPr(newRPr, anchor, false)
+        if (newRPr.childNodes.length > 0) {
+          r.insertBefore(newRPr, r.firstChild)
+        }
+      }
+    }
   }
 }
 
@@ -1152,6 +1287,80 @@ function insertAtContainerEnd(
   for (const el of newEls) container.appendChild(el)
 }
 
+/* ------------- merge ------------- */
+
+function applyMerge(
+  target: ResolvedTarget,
+  op: Extract<EditOp, { op: "merge" }>,
+  stale: Set<Element>,
+  blockersByElement: Map<Element, BlockerReason>,
+): number {
+  if (target.paragraphs.length < 2) {
+    throw new Error(
+      `merge: needs >= 2 paragraphs, got ${target.paragraphs.length}. Use a range or cell-paragraph-range locator covering at least two paragraphs.`,
+    )
+  }
+  // Blockers: refuse to merge through revision markup, SDT, or fields.
+  // Same class as replace/delete blocker scan — validates conservatively
+  // across ALL target paragraphs (not just non-survivors) because absorbing
+  // any paragraph with tracked changes or field content silently destroys it.
+  for (const p of target.paragraphs) {
+    const reason = blockersByElement.get(p)
+    if (reason) {
+      throw new Error(
+        `merge: paragraph contains ${explainBlockerReason(reason)} — refusing to merge. ` +
+          `Accept/reject existing tracked changes or resolve fields/controls before merging.`,
+      )
+    }
+  }
+  const keepPPr = op.keepPPr ?? "first"
+  const survivor =
+    keepPPr === "last"
+      ? target.paragraphs[target.paragraphs.length - 1]!
+      : target.paragraphs[0]!
+
+  // Collect all non-pPr content children from every paragraph in document
+  // order. This includes <w:r>, <w:hyperlink>, <w:bookmarkStart>,
+  // <w:bookmarkEnd>, <w:commentRangeStart>, <w:commentRangeEnd>,
+  // <w:proofErr>, <w:sdt>, and any other content nodes — preserving their
+  // relative order across paragraphs. We detach each node from its current
+  // parent as we collect so that nodes already in the survivor don't get
+  // double-appended when we move them.
+  const allContent: Element[] = []
+  for (const p of target.paragraphs) {
+    for (const child of Array.from(getChildren(p))) {
+      if (child.namespaceURI === w && child.localName === "pPr") continue
+      p.removeChild(child)
+      allContent.push(child)
+    }
+  }
+
+  // Determine the insertion point in the survivor: after the last <w:r> in
+  // the survivor's current children, so that newly merged content lands
+  // after the survivor's own runs but before any trailing non-content nodes
+  // (e.g. <w:bookmarkEnd> that closes a bookmark anchored to this paragraph).
+  // If the survivor has no runs, insert after <w:pPr> (i.e. at the start of
+  // the content region). Since allContent was collected AFTER detaching from
+  // survivors, the survivor is now empty of its own content nodes too; the
+  // only child remaining is <w:pPr> (if present). Re-append all collected
+  // nodes — the relative document order is preserved across paragraph
+  // boundaries because we iterated target.paragraphs in array order and
+  // collected children in child order within each paragraph.
+  for (const node of allContent) {
+    survivor.appendChild(node)
+  }
+
+  // Remove the non-survivor paragraphs (now empty of content).
+  for (const p of target.paragraphs) {
+    if (p !== survivor && p.parentNode) {
+      p.parentNode.removeChild(p)
+      stale.add(p)
+    }
+  }
+
+  return target.paragraphs.length
+}
+
 /* ------------- replace ------------- */
 
 function applyReplace(
@@ -1201,6 +1410,41 @@ function applyReplace(
 
 /* ------------- format ------------- */
 
+/**
+ * pPr child local-names that clearDirect should strip.
+ * Whitelist of format-bearing children only — structural children
+ * (pStyle, numPr, sectPr, pPrChange) are intentionally absent.
+ */
+const CLEAR_DIRECT_PPR_STRIP_SET = new Set([
+  "spacing",
+  "ind",
+  "jc",
+  "outlineLvl",
+  "pageBreakBefore",
+  "keepNext",
+  "keepLines",
+  "widowControl",
+  "pBdr",
+  "shd",
+  "tabs",
+  "framePr",
+  "rPr",
+  "adjustRightInd",
+  "snapToGrid",
+  "autoSpaceDE",
+  "autoSpaceDN",
+  "textAlignment",
+  "textboxTightWrap",
+  "bidi",
+  "mirrorIndents",
+  "wordWrap",
+  "kinsoku",
+  "overflowPunct",
+  "topLinePunct",
+  "contextualSpacing",
+  "divId",
+])
+
 function applyFormat(
   target: ResolvedTarget,
   op: Extract<EditOp, { op: "format" }>,
@@ -1209,6 +1453,34 @@ function applyFormat(
 ): number {
   if (target.paragraphs.length === 0) {
     throw new Error("format op resolved to zero paragraphs — locator must select at least one")
+  }
+  const clear = op.clearDirect
+  const shouldClearPPr = clear === "all" || (Array.isArray(clear) && clear.includes("pPr"))
+  const shouldClearRPr = clear === "all" || (Array.isArray(clear) && clear.includes("rPr"))
+  if (shouldClearPPr || shouldClearRPr) {
+    for (const p of target.paragraphs) {
+      if (shouldClearPPr) {
+        const pPr = firstChildNS(p, w, "pPr")
+        if (pPr) {
+          // Whitelist-based strip: remove only format-bearing pPr children.
+          // Structural children (pStyle, numPr, sectPr, pPrChange) are
+          // preserved. sectPr carries section-break / page-size / margin /
+          // header-footer refs for the last paragraph in a section — silently
+          // deleting it destroys document structure. pPrChange is a
+          // track-changes history artifact and must not be removed mid-edit.
+          for (const c of [...getChildren(pPr)]) {
+            if (c.namespaceURI !== w) continue
+            if (CLEAR_DIRECT_PPR_STRIP_SET.has(c.localName)) pPr.removeChild(c)
+          }
+        }
+      }
+      if (shouldClearRPr) {
+        for (const r of getChildrenNS(p, w, "r")) {
+          const rPr = firstChildNS(r, w, "rPr")
+          if (rPr) r.removeChild(rPr)
+        }
+      }
+    }
   }
   let touched = 0
   for (const p of target.paragraphs) {

@@ -29,7 +29,7 @@ export type BlockerReason = "tracked-change" | "field" | "sdt"
 export interface BlockerScan {
   byElement: Map<Element, BlockerReason>
   /** Same data keyed by 1-based paragraph index (only for indexed paragraphs;
-   * data/form-table cell paragraphs are absent). The engine prefers element-
+   * data-table cell paragraphs are absent). The engine prefers element-
    * keyed lookup; the index map is for inspect_blockers' agent-facing report. */
   byIndex: Map<number, BlockerReason>
 }

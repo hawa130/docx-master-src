@@ -68,7 +68,7 @@ export const StyleOverridesSchema = z.strictObject(styleFormatFields)
 
 export const StyleEntrySchema = z.strictObject({
   id: NonEmptyString,
-  name: NonEmptyString,
+  name: z.optional(NonEmptyString),
   fromParagraph: z.optional(z.number()),
   ...styleFormatFields,
   overrides: z.optional(StyleOverridesSchema),
@@ -102,12 +102,21 @@ export const NumLevelSchema = z
     isLgl: z.optional(z.boolean()),
     // Counter scope for single-level schemes. Default "continuous" — one
     // counter shared by every paragraph bound to this level, matching native
-    // OOXML <w:num> semantics. Use "perInstance" only for procedural list
-    // shapes (ListNumber / ListBullet style 1./2./3. lists) where each
-    // contiguous run of same-styleId paragraphs should restart at 1; the
-    // engine forks a fresh numId per run and writes <w:startOverride>.
+    // OOXML <w:num> semantics.
+    //   "perInstance"        — restart at each contiguous run of same-styleId
+    //                          paragraphs (procedural list shapes).
+    //   "byHeading"          — restart whenever the nearest preceding heading-
+    //                          styled paragraph (any style with outlineLvl)
+    //                          changes. Use for "each chapter gets 1,2,3…".
+    //   { atStyleChange: S } — restart whenever a paragraph bound to styleId S
+    //                          precedes the list item.
     // Ignored on multi-level schemes (which use lvlRestart for resets).
-    restart: z.optional(z.enum(["continuous", "perInstance"])),
+    restart: z.optional(
+      z.union([
+        z.enum(["continuous", "perInstance", "byHeading"]),
+        z.strictObject({ atStyleChange: NonEmptyString }),
+      ]),
+    ),
   })
   // Strip patterns are tried in array order, first match wins. If a shorter
   // pattern (fewer %N placeholders) appears before a longer one, the shorter
@@ -146,6 +155,11 @@ export const NumLevelSchema = z
   )
 
 export const NumberingSchema = z.strictObject({
+  /** Optional explicit numId. When set, the engine pins this scheme to that
+   * id (clones / creates as needed). Use to make block-level
+   * `numbering: { numId: K }` references resolve deterministically.
+   * Two schemes requesting the same numId cause apply to throw. */
+  numId: z.optional(z.number().check(z.gte(1))),
   levels: z.array(NumLevelSchema).check(z.minLength(1)),
 })
 
@@ -577,6 +591,7 @@ export const ApplyConfigSchema = z
     source: z.optional(NonEmptyString),
     output: NonEmptyString,
     dryRun: z.optional(z.boolean()),
+    allowValidationWarnings: z.optional(z.boolean()),
     template: z.optional(TemplateSchema),
     theme: z.optional(ThemeSchema),
     pageSetup: z.optional(PageSetupSchema),

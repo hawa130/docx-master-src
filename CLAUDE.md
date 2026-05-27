@@ -36,7 +36,7 @@ All `lib/` and `skill/tools/` imports go through `@lib/*` (declared in `tsconfig
 | Format (oxfmt; markdown excluded) | `bun run fmt` |
 | Format check (no write) | `bun run fmt:check` |
 
-No automated tests — run scripts against `test/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/plugin/skills/docx-master/` reflects the change before claiming done.
+No automated tests — run scripts against `_local/fixtures/*.docx` manually after changes. After edits to `skill/` or `lib/`, always rebuild and verify `dist/plugin/skills/docx-master/` reflects the change before claiming done.
 
 ## Dependency policy
 

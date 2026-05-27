@@ -31,9 +31,10 @@ export interface CliSpec {
 export async function runCli(spec: CliSpec): Promise<void> {
   const args = process.argv.slice(2)
   const dryRun = args.includes("--dry-run")
+  const allowValidationWarnings = args.includes("--allow-validation-warnings")
   const configPath = args.filter((a) => !a.startsWith("--"))[0]
   if (!configPath) {
-    console.error(`Usage: node scripts/${spec.script} [--dry-run] <config.json>`)
+    console.error(`Usage: node scripts/${spec.script} [--dry-run] [--allow-validation-warnings] <config.json>`)
     process.exit(1)
   }
   let raw: unknown
@@ -43,10 +44,13 @@ export async function runCli(spec: CliSpec): Promise<void> {
     console.error(`Cannot read config: ${(err as Error).message}`)
     process.exit(1)
   }
-  // Apply --dry-run before schema parse so it's captured by the schema's
-  // boolean check (and survives strictObject's unknown-key rejection).
-  if (dryRun && raw && typeof raw === "object") {
-    ;(raw as { dryRun?: boolean }).dryRun = true
+  // Apply --dry-run / --allow-validation-warnings before schema parse so
+  // they're captured by the schema's boolean check (and survive
+  // strictObject's unknown-key rejection).
+  if (raw && typeof raw === "object") {
+    const rawObj = raw as { dryRun?: boolean; allowValidationWarnings?: boolean }
+    if (dryRun) rawObj.dryRun = true
+    if (allowValidationWarnings) rawObj.allowValidationWarnings = true
   }
 
   let config: ApplyConfig

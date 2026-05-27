@@ -36,6 +36,7 @@ import {
   toHalfPt,
   toTwips,
 } from "@lib/shared/units.ts"
+import { setIndentAttr } from "@lib/xml/ind-attr.ts"
 import { emitInlineField, emitInlineStyleRef } from "@lib/edit/fields/inline-fields.ts"
 import { RPR_CHILD_ORDER } from "@lib/xml/xml-order.ts"
 import { emitTableBlock } from "@lib/edit/table-emit.ts"
@@ -192,25 +193,13 @@ export function buildPPrChildren(fmt: ParagraphFormat, ownerDoc: Document): Elem
   ) {
     const ind = ownerDoc.createElementNS(w, "w:ind")
     const fli = parseIndent(fmt.firstLineIndent ?? null)
-    if (fli && fli.value !== 0) {
-      const attr = fli.kind === "char" ? "w:firstLineChars" : "w:firstLine"
-      ind.setAttributeNS(w, attr, String(fli.value))
-    }
+    if (fli) setIndentAttr(ind, "firstLine", fli)
     const hi = parseIndent(fmt.hangingIndent ?? null)
-    if (hi && hi.value !== 0) {
-      const attr = hi.kind === "char" ? "w:hangingChars" : "w:hanging"
-      ind.setAttributeNS(w, attr, String(hi.value))
-    }
+    if (hi) setIndentAttr(ind, "hanging", hi)
     const il = parseIndent(fmt.indentLeft ?? null)
-    if (il) {
-      const attr = il.kind === "char" ? "w:leftChars" : "w:left"
-      ind.setAttributeNS(w, attr, String(il.value))
-    }
+    if (il) setIndentAttr(ind, "left", il)
     const ir = parseIndent(fmt.indentRight ?? null)
-    if (ir) {
-      const attr = ir.kind === "char" ? "w:rightChars" : "w:right"
-      ind.setAttributeNS(w, attr, String(ir.value))
-    }
+    if (ir) setIndentAttr(ind, "right", ir)
     out.push(ind)
   }
   if (fmt.alignment) {
@@ -314,6 +303,18 @@ export function emitRichText(
       }
       continue
     }
+    if ("break" in piece) {
+      const r = ownerDoc.createElementNS(w, "w:r")
+      const br = ownerDoc.createElementNS(w, "w:br")
+      // "line" is the default w:br type (soft line break); only page/column
+      // need an explicit w:type attribute.
+      if (piece.break !== "line") {
+        br.setAttributeNS(w, "w:type", piece.break)
+      }
+      r.appendChild(br)
+      out.push(r)
+      continue
+    }
     out.push(emitRun(piece.text, piece.format ?? defaultFormat, ownerDoc))
   }
   return out
@@ -356,6 +357,14 @@ export interface EmitContext {
    * bookmark on the just-emitted paragraph Element. Absent ctx.adoptAnchor
    * + an anchor in input = engine error at emit. */
   adoptAnchor?: (name: string, pEl: Element) => void
+  /** Called when a paragraph block has `numbering.restart: true`. Mints
+   * a fresh numId cloned from the source scheme with startOverride=1,
+   * and writes <w:numPr> on the paragraph element directly. The restart
+   * applies only to this paragraph — subsequent paragraphs in the same
+   * fragment continue with their declared numbering as-is. For
+   * "restart-and-continue" semantics across multiple paragraphs, use
+   * scheme-level `restart: "byHeading"` or `{ atStyleChange }`. */
+  forkNumRestart?: (p: Element, numId: string, level: number) => void
   /** Resolves a `styleId` to a rich `StyleInfo` (display name +
    * outlineLevel + isBuiltInLocalizable). Required for InlineStyleRef
    * nodes — `emitInlineStyleRef` picks one of three locale-safe field
@@ -423,14 +432,28 @@ function emitParagraphBlock(
       pPr.appendChild(ps)
     }
     if (block.numbering) {
-      const numPr = ownerDoc.createElementNS(w, "w:numPr")
-      const ilvl = ownerDoc.createElementNS(w, "w:ilvl")
-      ilvl.setAttributeNS(w, "w:val", String(block.numbering.level))
-      numPr.appendChild(ilvl)
-      const numId = ownerDoc.createElementNS(w, "w:numId")
-      numId.setAttributeNS(w, "w:val", block.numbering.numId)
-      numPr.appendChild(numId)
-      pPr.appendChild(numPr)
+      if (block.numbering.restart) {
+        // Paragraph-level explicit restart: fork a fresh numId via the callback.
+        // The callback writes <w:numPr> on p directly, so we skip the normal
+        // numPr emit here. Throw early if the callback wasn't wired — this is
+        // a config error (caller must pass numberingDoc via RunEditOpsInput).
+        if (!ctx.forkNumRestart) {
+          throw new Error(
+            `ParagraphBlock.numbering.restart: true requires numberingDoc to be available. ` +
+              `Pass numberingDoc in RunEditOpsInput (apply-styles always does; standalone edit runs need it when using numbering.restart).`,
+          )
+        }
+        ctx.forkNumRestart(p, block.numbering.numId, block.numbering.level)
+      } else {
+        const numPr = ownerDoc.createElementNS(w, "w:numPr")
+        const ilvl = ownerDoc.createElementNS(w, "w:ilvl")
+        ilvl.setAttributeNS(w, "w:val", String(block.numbering.level))
+        numPr.appendChild(ilvl)
+        const numId = ownerDoc.createElementNS(w, "w:numId")
+        numId.setAttributeNS(w, "w:val", block.numbering.numId)
+        numPr.appendChild(numId)
+        pPr.appendChild(numPr)
+      }
     }
     if (block.paraFormat) {
       for (const c of buildPPrChildren(block.paraFormat, ownerDoc)) pPr.appendChild(c)

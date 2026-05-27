@@ -175,6 +175,15 @@ export const InlineStyleRefSchema = z.strictObject({
   format: z.optional(RunFormatSchema),
 })
 
+/** Inline break — emits `<w:r><w:br/></w:r>` (line) or `<w:r><w:br
+ *  w:type="page|column"/></w:r>`. "line" is a soft line break within the
+ *  paragraph; "page" / "column" force the next run onto the next page or
+ *  column. Use sparingly — prefer paragraph-level structure over inline
+ *  breaks where semantics allow. */
+export const InlineBreakSchema = z.strictObject({
+  break: z.union([z.literal("line"), z.literal("page"), z.literal("column")]),
+})
+
 export const InlineNodeSchema = z.union([
   InlineRunSchema,
   InlineRefSchema,
@@ -182,6 +191,7 @@ export const InlineNodeSchema = z.union([
   InlineHyperlinkSchema,
   InlineFieldSchema,
   InlineStyleRefSchema,
+  InlineBreakSchema,
 ])
 
 /** Plain string is shorthand for a single run with no inline formatting.
@@ -193,6 +203,14 @@ export const RichTextSchema = z.union([z.string(), z.array(InlineNodeSchema)])
 const NumberingRefSchema = z.strictObject({
   numId: NonEmptyString,
   level: z.number().check(z.gte(0), z.lte(8)),
+  /** Force a counter restart at this paragraph. The engine forks a fresh
+   * `<w:num>` pointing to the same abstractNumId with
+   * `<w:startOverride val="1"/>` so this item and subsequent items on the
+   * same scheme display 1, 2, 3 … from here. Use for mid-list resets that
+   * scheme-level `restart` can't express (e.g. the second list inside a
+   * section that already has `restart: "byHeading"` but needs a manual reset
+   * at a non-heading boundary). */
+  restart: z.optional(z.boolean()),
 })
 
 /* ------------- blocks ------------- */
@@ -510,12 +528,33 @@ const RangeLocatorSchema = z
     }),
   )
 
-const CellLocatorSchema = z.strictObject({
-  type: z.literal("cell"),
-  table: z.number().check(z.gte(1)),
-  row: z.number().check(z.gte(1)),
-  col: z.number().check(z.gte(1)),
-})
+const CellLocatorSchema = z
+  .strictObject({
+    type: z.literal("cell"),
+    table: z.number().check(z.gte(1)),
+    row: z.number().check(z.gte(1)),
+    col: z.number().check(z.gte(1)),
+    /** 1-based paragraph index WITHIN this cell. When set, the locator
+     * resolves to just that one paragraph instead of all paragraphs in
+     * the cell. Pair with `to` for a contiguous range within the cell. */
+    paragraph: z.optional(z.number().check(z.gte(1))),
+    /** 1-based "to" paragraph index within the cell, inclusive. Only
+     * meaningful with `paragraph`; defines a range [paragraph, to]. */
+    to: z.optional(z.number().check(z.gte(1))),
+  })
+  .check(
+    z.refine((loc) => !(loc.to !== undefined && loc.paragraph === undefined), {
+      error: "cell locator: `to` requires `paragraph` to be set",
+    }),
+  )
+  .check(
+    z.refine(
+      (loc) => loc.to === undefined || loc.paragraph === undefined || loc.to >= loc.paragraph,
+      {
+        error: "cell locator: `to` must be >= `paragraph`",
+      },
+    ),
+  )
 
 const HeadingLocatorSchema = z.strictObject({
   type: z.literal("heading"),
@@ -532,18 +571,40 @@ const WholeBodyLocatorSchema = z.strictObject({
  * surrounding label runs. Pick the run by 1-based `runIndex`, or by `blank`
  * (Kth run whose text is whitespace-only and rPr carries `<w:u/>` — typical
  * form-fill placeholder). When both omitted, defaults to the first blank
- * run (`blank: 1`). */
+ * run (`blank: 1`).
+ *
+ * Two forms:
+ *   Global: `{ type: "run", paragraph: N, blank?, runIndex? }` — targets
+ *     paragraph N in the indexed (body + layout-table-cell) scope.
+ *   Cell:   `{ type: "run", table: T, row: R, col: C, paragraph: K, blank?,
+ *              runIndex? }` — targets paragraph K inside data-table cell
+ *     (T, R, C). Mirrors the `cell` locator coordinate scheme. */
+const RunLocatorGlobalSchema = z.strictObject({
+  type: z.literal("run"),
+  paragraph: z.number().check(z.gte(1)),
+  blank: z.optional(z.number().check(z.gte(1))),
+  runIndex: z.optional(z.number().check(z.gte(1))),
+})
+
+const RunLocatorCellSchema = z.strictObject({
+  type: z.literal("run"),
+  table: z.number().check(z.gte(1)),
+  row: z.number().check(z.gte(1)),
+  col: z.number().check(z.gte(1)),
+  paragraph: z.number().check(z.gte(1)),
+  blank: z.optional(z.number().check(z.gte(1))),
+  runIndex: z.optional(z.number().check(z.gte(1))),
+})
+
 export const RunLocatorSchema = z
-  .strictObject({
-    type: z.literal("run"),
-    paragraph: z.number().check(z.gte(1)),
-    blank: z.optional(z.number().check(z.gte(1))),
-    runIndex: z.optional(z.number().check(z.gte(1))),
-  })
+  .union([RunLocatorGlobalSchema, RunLocatorCellSchema])
   .check(
-    z.refine((loc) => !(loc.blank !== undefined && loc.runIndex !== undefined), {
-      error: "run locator: pass either `blank` or `runIndex`, not both",
-    }),
+    z.refine(
+      (loc) => !(loc.blank !== undefined && loc.runIndex !== undefined),
+      {
+        error: "run locator: pass either `blank` or `runIndex`, not both",
+      },
+    ),
   )
 
 export const LocatorSchema = z.union([
@@ -560,6 +621,12 @@ const ReplaceOpSchema = z.strictObject({
   op: z.literal("replace"),
   at: LocatorSchema,
   with: FragmentSchema,
+  /** When true, allow replacing paragraphs that contain SEQ / REF /
+   * other complex fields. Default false (blocker rejects them). Use
+   * for caption / cross-ref iteration: a previous apply emitted SEQ
+   * fields, you want to rebuild the cell content. Revisions
+   * (<w:ins> / <w:del>) and SDT controls are still blocking. */
+  overwriteFields: z.optional(z.boolean()),
 })
 
 const InsertBeforeOpSchema = z.strictObject({
@@ -586,10 +653,16 @@ const FormatOpSchema = z
     styleId: z.optional(NonEmptyString),
     runFormat: z.optional(RunFormatSchema),
     paraFormat: z.optional(ParagraphFormatSchema),
+    clearDirect: z.optional(
+      z.union([
+        z.array(z.union([z.literal("pPr"), z.literal("rPr")])),
+        z.literal("all"),
+      ]),
+    ),
   })
   .check(
-    z.refine((op) => !!(op.styleId || op.runFormat || op.paraFormat), {
-      error: "format op needs at least one of: styleId, runFormat, paraFormat",
+    z.refine((op) => !!(op.styleId || op.runFormat || op.paraFormat || op.clearDirect), {
+      error: "format op needs at least one of: styleId, runFormat, paraFormat, clearDirect",
     }),
   )
 
@@ -627,6 +700,13 @@ const EditCaptionOpSchema = z.strictObject({
   text: z.string(),
 })
 
+const MergeOpSchema = z.strictObject({
+  op: z.literal("merge"),
+  at: LocatorSchema,
+  /** Keep the pPr of which paragraph: "first" (default) or "last". */
+  keepPPr: z.optional(z.union([z.literal("first"), z.literal("last")])),
+})
+
 // Discriminate on `op` so a wrong-shape variant points at the right field.
 // Without this, zod's plain union tries each option and reports the lowest-
 // cost mismatch — which for `{ op: "set-run", at: { type: "paragraph", ... } }`
@@ -642,6 +722,7 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   FormatOpSchema,
   SetRunOpSchema,
   EditCaptionOpSchema,
+  MergeOpSchema,
 ])
 
 /* ------------- top-level edit config ------------- */
@@ -697,7 +778,7 @@ const customHint: HintFn = (issue, pathStr, raw) => {
         ? (cursor as { op?: unknown }).op
         : undefined
     if (opLiteral === "set-run") {
-      return `set-run requires at.type === "run" (use a RunLocator: { type: "run", paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
+      return `set-run requires at.type === "run" (use a RunLocator: global form { type: "run", paragraph, blank|runIndex } or cell form { type: "run", table, row, col, paragraph, blank|runIndex }). For paragraph-range edits use op: "replace" / "format" / "insert-before" / "insert-after" instead.`
     }
   }
   return null

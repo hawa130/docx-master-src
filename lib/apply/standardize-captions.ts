@@ -151,6 +151,7 @@ function rebuildCaptionParagraphInPlace(
     chapterPrefixResults: seq.chapterPrefixResults,
     parentSeqResult: seq.parentSeqResult,
     subSeqResult: seq.subSeqResult,
+    bodyText: bodyText === "" ? undefined : bodyText,
   }
 }
 

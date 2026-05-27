@@ -24,8 +24,9 @@
  */
 
 import { walkIndexedParagraphs } from "@lib/edit/locator.ts"
+import { summarizeTable } from "@lib/parse/table-classifier.ts"
 import { NS } from "@lib/parse/types.ts"
-import { firstChildNS, getChildren, wAttr } from "@lib/xml/xml-utils.ts"
+import { firstChildNS, getChildren, getChildrenNS, wAttr } from "@lib/xml/xml-utils.ts"
 
 const w = NS.w
 
@@ -49,8 +50,18 @@ interface ParagraphProjection {
   segments: ProjectionSegment[]
 }
 
+export interface CellCoords {
+  table: number
+  row: number
+  col: number
+  paragraph: number
+}
+
 export interface MatchHit {
-  paragraphIndex: number
+  /** Populated for body + layout-table-cell paragraphs (global 1-based index). */
+  paragraphIndex?: number
+  /** Populated for data-table-cell paragraphs. Exactly one of paragraphIndex / cell is set. */
+  cell?: CellCoords
   ch: number
   len: number
   matched: string
@@ -83,6 +94,8 @@ export function searchDocument(documentDoc: Document, opts: SearchOptions): Matc
   const hits: MatchHit[] = []
   const fieldState = { depth: 0 }
 
+  // Phase 1: indexed paragraphs (body + layout-table cells). These support
+  // paraIndex / paraRange filtering.
   for (const p of walkIndexedParagraphs(documentDoc)) {
     if (opts.paraIndex !== undefined && p.index !== opts.paraIndex) continue
     if (opts.paraRange) {
@@ -93,50 +106,104 @@ export function searchDocument(documentDoc: Document, opts: SearchOptions): Matc
 
     const matches = findInProjection(proj.text, opts.pattern, re)
     for (const m of matches) {
-      const slice = proj.text.slice(m.start, m.start + m.length)
-      if (slice.includes(TAB_SENTINEL) || slice.includes(BREAK_SENTINEL)) continue
-
-      const overlapping = proj.segments.filter(
-        (seg) => seg.start < m.start + m.length && seg.end > m.start,
-      )
-      if (overlapping.length === 0) continue
-
-      let firstRunIdx: number | null = null
-      let lastRunIdx: number | null = null
-      let region: RegionKind | null = null
-      for (const seg of overlapping) {
-        if (seg.runIndex !== null) {
-          if (firstRunIdx === null) firstRunIdx = seg.runIndex
-          lastRunIdx = seg.runIndex
-        }
-        if (region === null && seg.region !== null) region = seg.region
-      }
-      const crossRun = firstRunIdx !== null && lastRunIdx !== null && firstRunIdx !== lastRunIdx
-
-      const matched = slice
-      const beforeRaw = proj.text.slice(Math.max(0, m.start - ctxN), m.start)
-      const afterRaw = proj.text.slice(m.start + m.length, m.start + m.length + ctxN)
-      const before = beforeRaw.replace(/[\t\n￼]/g, " ")
-      const after = afterRaw.replace(/[\t\n￼]/g, " ")
-      const elidedL = m.start > ctxN ? "..." : ""
-      const elidedR = m.start + m.length + ctxN < proj.text.length ? "..." : ""
-      const context = `${elidedL}${before}${bL}${matched}${bR}${after}${elidedR}`
-
-      hits.push({
-        paragraphIndex: p.index,
-        ch: m.start,
-        len: m.length,
-        matched,
-        runIndex: firstRunIdx,
-        runIndexEnd: lastRunIdx,
-        crossRun,
-        region,
-        context,
-      })
+      const hit = buildHit(proj, m, fieldState, ctxN, bL, bR)
+      if (!hit) continue
+      hits.push({ paragraphIndex: p.index, ...hit })
       if (hits.length >= limit) return hits
     }
   }
+
+  // Phase 2: data-table-cell paragraphs. These are not covered by
+  // walkIndexedParagraphs; they only get cell-coord hits (no paraIndex
+  // filtering applies — agents targeting specific cells use inspect_runs
+  // with --table/--row/--col flags after locating via find_text).
+  if (opts.paraIndex === undefined && !opts.paraRange) {
+    const root = documentDoc.documentElement
+    const body = root ? firstChildNS(root, NS.w, "body") : null
+    if (body) {
+      let tableIdx = 0
+      for (const child of getChildren(body)) {
+        if (child.namespaceURI !== NS.w || child.localName !== "tbl") continue
+        tableIdx++
+        const summary = summarizeTable(child)
+        if (summary.classification !== "data") continue
+        const rows = getChildrenNS(child, NS.w, "tr")
+        for (let ri = 0; ri < rows.length; ri++) {
+          const cells = getChildrenNS(rows[ri]!, NS.w, "tc")
+          for (let ci = 0; ci < cells.length; ci++) {
+            const cellParas = getChildrenNS(cells[ci]!, NS.w, "p")
+            for (let pi = 0; pi < cellParas.length; pi++) {
+              const proj = buildParagraphProjection(cellParas[pi]!, fieldState)
+              if (proj.text.length === 0) continue
+              const matches = findInProjection(proj.text, opts.pattern, re)
+              for (const m of matches) {
+                const hit = buildHit(proj, m, fieldState, ctxN, bL, bR)
+                if (!hit) continue
+                hits.push({
+                  cell: { table: tableIdx, row: ri + 1, col: ci + 1, paragraph: pi + 1 },
+                  ...hit,
+                })
+                if (hits.length >= limit) return hits
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   return hits
+}
+
+/** Build the common match-hit fields from a projection + raw match position.
+ * Returns null if the match crosses a sentinel boundary. */
+function buildHit(
+  proj: ParagraphProjection,
+  m: RawMatch,
+  _fieldState: { depth: number },
+  ctxN: number,
+  bL: string,
+  bR: string,
+): Omit<MatchHit, "paragraphIndex" | "cell"> | null {
+  const slice = proj.text.slice(m.start, m.start + m.length)
+  if (slice.includes(TAB_SENTINEL) || slice.includes(BREAK_SENTINEL)) return null
+
+  const overlapping = proj.segments.filter(
+    (seg) => seg.start < m.start + m.length && seg.end > m.start,
+  )
+  if (overlapping.length === 0) return null
+
+  let firstRunIdx: number | null = null
+  let lastRunIdx: number | null = null
+  let region: RegionKind | null = null
+  for (const seg of overlapping) {
+    if (seg.runIndex !== null) {
+      if (firstRunIdx === null) firstRunIdx = seg.runIndex
+      lastRunIdx = seg.runIndex
+    }
+    if (region === null && seg.region !== null) region = seg.region
+  }
+  const crossRun = firstRunIdx !== null && lastRunIdx !== null && firstRunIdx !== lastRunIdx
+
+  const matched = slice
+  const beforeRaw = proj.text.slice(Math.max(0, m.start - ctxN), m.start)
+  const afterRaw = proj.text.slice(m.start + m.length, m.start + m.length + ctxN)
+  const before = beforeRaw.replace(/[\t\n￼]/g, " ")
+  const after = afterRaw.replace(/[\t\n￼]/g, " ")
+  const elidedL = m.start > ctxN ? "..." : ""
+  const elidedR = m.start + m.length + ctxN < proj.text.length ? "..." : ""
+  const context = `${elidedL}${before}${bL}${matched}${bR}${after}${elidedR}`
+
+  return {
+    ch: m.start,
+    len: m.length,
+    matched,
+    runIndex: firstRunIdx,
+    runIndexEnd: lastRunIdx,
+    crossRun,
+    region,
+    context,
+  }
 }
 
 /* ------------- projection ------------- */

@@ -11,8 +11,8 @@ import { summarizeTable } from "@lib/parse/table-classifier.ts"
  *   table T row R col C  → text snippet (first 40 chars)
  *
  * Used before composing a `cell` locator. Lists every top-level table —
- * data, form, layout — because cell locators can address any of them
- * (paragraph indices skip data/form, but cell locators don't).
+ * data, layout — because cell locators can address any of them
+ * (paragraph indices skip data tables, but cell locators don't).
  */
 
 async function main() {
@@ -35,7 +35,7 @@ async function main() {
     }
     // Build a paragraph-element → index map so each cell can report which
     // #NNN range its paragraphs occupy. Only layout-table paragraphs are
-    // indexed; data/form-table cells return empty arrays here (cell
+    // indexed; data-table cells return empty arrays here (cell
     // locator addresses them anyway, no index needed).
     const indexByElement = new Map<Element, number>()
     for (const p of walkIndexedParagraphs(documentDoc)) {
@@ -51,11 +51,21 @@ async function main() {
       for (let r = 0; r < rows.length; r++) {
         const cells = getChildrenNS(rows[r]!, NS.w, "tc")
         for (let c = 0; c < cells.length; c++) {
-          const text = cellText(cells[c]!)
-          const snippet = text.length > 40 ? text.slice(0, 40) + "…" : text
+          const paras = getChildrenNS(cells[c]!, NS.w, "p")
           const paraSpan = formatParaSpan(cells[c]!, indexByElement)
           // Display 1-based to match the cell locator's 1-based row/col fields.
-          out.push(`  [${r + 1},${c + 1}] ${JSON.stringify(snippet)}${paraSpan}`)
+          if (paras.length <= 1) {
+            const text = paras[0] ? paragraphText(paras[0]).trim() : ""
+            const snippet = text.length > 40 ? text.slice(0, 40) + "…" : text
+            out.push(`  [${r + 1},${c + 1}] ${JSON.stringify(snippet)}${paraSpan}`)
+          } else {
+            out.push(`  [${r + 1},${c + 1}] paras:${paras.length}${paraSpan}`)
+            for (let k = 0; k < paras.length; k++) {
+              const pText = paragraphText(paras[k]!).trim()
+              const snippet = pText.length > 40 ? pText.slice(0, 40) + "…" : pText
+              out.push(`         K${k + 1}: ${JSON.stringify(snippet)}`)
+            }
+          }
         }
       }
       out.push("")
@@ -67,18 +77,8 @@ async function main() {
   }
 }
 
-function cellText(tc: Element): string {
-  let out = ""
-  for (const p of getChildrenNS(tc, NS.w, "p")) {
-    if (out) out += " ⏎ "
-    const pText = paragraphText(p)
-    out += pText
-  }
-  return out
-}
-
 /** "  paras: 58–89" / "  paras: 60" / "" (empty when cell paragraphs are
- * unindexed, i.e. inside a data/form table — cell locator addresses them
+ * unindexed, i.e. inside a data table — cell locator addresses them
  * by [r,c] anyway). Layout-table paragraphs each have a #NNN; surfacing
  * the span lets agents pick a non-cross-cell range locator. */
 function formatParaSpan(tc: Element, indexByElement: Map<Element, number>): string {

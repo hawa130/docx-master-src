@@ -93,6 +93,11 @@ export interface PendingCaptionFill {
   /** Sub-counter SEQ's result text element. Set only when `subGroup`
    * is `"start"` or `"continue"`. */
   subSeqResult?: Element
+  /** Caption body text (everything after the bodySeparator). Present for
+   * CaptionBlock and standardize re-emitted paragraphs; absent for
+   * EquationBlock captions which carry no body text. Used by the dry-run
+   * preview to show the full visible caption string (counter + body). */
+  bodyText?: string
 }
 
 /** CaptionCounterReset emit record. Distinct from caption fills since

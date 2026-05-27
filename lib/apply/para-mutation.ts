@@ -32,7 +32,7 @@ export function applyToBody(documentDoc: Document, ctx: ApplyContext) {
             }
           }
         }
-        // data/form tables: leave content untouched
+        // data tables: leave content untouched
       }
     }
   }

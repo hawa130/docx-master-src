@@ -1,6 +1,19 @@
 import { loadDocx } from "@lib/xml/load.ts"
-import type { ParsedParagraph } from "@lib/parse/types.ts"
+import type { ComputedParaStyle, ComputedRunStyle, ParsedParagraph } from "@lib/parse/types.ts"
+import { NS } from "@lib/parse/types.ts"
+import { summarizeTable } from "@lib/parse/table-classifier.ts"
+import { computeRawFingerprint } from "@lib/parse/fingerprint.ts"
 import { formatComputedPPrParts, formatComputedRPrParts, pad, truncate } from "@lib/parse/format.ts"
+import { firstChildNS, getChildren, getChildrenNS, textContent, wVal } from "@lib/xml/xml-utils.ts"
+import type { CellCoords } from "@lib/edit/text-search.ts"
+
+interface CellParaEntry {
+  coords: CellCoords
+  rPr: ComputedRunStyle
+  pPr: ComputedParaStyle
+  styleId: string
+  text: string
+}
 
 async function main() {
   const file = process.argv[2]
@@ -24,7 +37,19 @@ async function main() {
     }
     const label = sum.label
     const matches = doc.paragraphs.filter((p) => p.fingerprint === label)
-    const styleIds = Array.from(new Set(matches.map((p) => p.styleId)))
+
+    // Scan data-table cells for paragraphs that share the same fingerprint.
+    // Must come before styleIds so cell styleIds are included in the union.
+    const cellMatches = findDataCellMatches(doc, sum.rawFingerprint)
+
+    // Referenced pStyles: union of indexed-paragraph styleIds and cell-paragraph
+    // styleIds. A fingerprint that appears only in data-table cells would yield
+    // an empty list if we sourced styleIds from `matches` alone.
+    const styleIds = Array.from(
+      new Set([...matches.map((p) => p.styleId), ...cellMatches.map((c) => c.styleId)]),
+    )
+
+    const totalCount = matches.length + cellMatches.length
 
     const out: string[] = []
     out.push(`Fingerprint ${label}: ${sum.description}`)
@@ -32,16 +57,42 @@ async function main() {
       const first = matches[0]!
       out.push(`Computed rPr: ${formatRPr(first)}`)
       out.push(`Computed pPr: ${formatPPr(first, matches)}`)
+    } else if (cellMatches.length > 0) {
+      const first = cellMatches[0]!
+      out.push(`Computed rPr: ${formatRPrRaw(first.rPr)}`)
+      out.push(`Computed pPr: ${formatPPrRaw(first.pPr, cellMatches)}`)
     }
     out.push(`Referenced pStyles: [${styleIds.map((s) => `"${s}"`).join(", ")}]`)
-    out.push(`Occurrences: ${matches.length}`)
+    if (cellMatches.length > 0) {
+      out.push(
+        `Occurrences: ${totalCount} (of which ${cellMatches.length} inside data-table cells)`,
+      )
+    } else {
+      out.push(`Occurrences: ${totalCount}`)
+    }
     out.push("")
-    const limit = Math.min(20, matches.length)
-    for (let i = 0; i < limit; i++) {
+
+    // Show indexed paragraphs first, then cell paragraphs.
+    const indexedLimit = Math.min(20, matches.length)
+    for (let i = 0; i < indexedLimit; i++) {
       const p = matches[i]!
       out.push(`  #${pad(p.index)} [${p.fingerprint}]  "${truncate(p.text, 40)}"`)
     }
-    if (matches.length > limit) out.push(`  ... (showing first ${limit}, total ${matches.length})`)
+    if (matches.length > indexedLimit) {
+      out.push(`  ... (showing first ${indexedLimit} indexed, total ${matches.length})`)
+    }
+
+    const cellLimit = Math.min(20, cellMatches.length)
+    for (let i = 0; i < cellLimit; i++) {
+      const c = cellMatches[i]!
+      const { table, row, col, paragraph } = c.coords
+      const loc = `T${table}R${row}C${col} K${paragraph}`
+      out.push(`  ${loc.padEnd(14)} [${label}]  "${truncate(c.text, 40)}"`)
+    }
+    if (cellMatches.length > cellLimit) {
+      out.push(`  ... (showing first ${cellLimit} cell entries, total ${cellMatches.length})`)
+    }
+
     console.log(out.join("\n"))
   } catch (err) {
     console.error(`Error: ${(err as Error).message}`)
@@ -49,25 +100,119 @@ async function main() {
   }
 }
 
+/** Walk all data-table cells and return paragraphs whose fingerprint matches
+ * `rawFingerprint`. Uses `StyleResolver` directly to compute rPr/pPr for
+ * each cell paragraph (same cascade logic as DocumentParser). */
+function findDataCellMatches(
+  doc: Awaited<ReturnType<typeof loadDocx>>,
+  rawFingerprint: string,
+): CellParaEntry[] {
+  const out: CellParaEntry[] = []
+  const body = firstChildNS(doc.documentDoc.documentElement, NS.w, "body")
+  if (!body) return out
+
+  const defaultStyleId = doc.resolver.getDefaultParagraphStyleId() || "Normal"
+  let tableIdx = 0
+
+  for (const child of getChildren(body)) {
+    if (child.namespaceURI !== NS.w || child.localName !== "tbl") continue
+    tableIdx++
+    const summary = summarizeTable(child)
+    if (summary.classification !== "data") continue
+    const rows = getChildrenNS(child, NS.w, "tr")
+    for (let ri = 0; ri < rows.length; ri++) {
+      const cells = getChildrenNS(rows[ri]!, NS.w, "tc")
+      for (let ci = 0; ci < cells.length; ci++) {
+        const paras = getChildrenNS(cells[ci]!, NS.w, "p")
+        for (let pi = 0; pi < paras.length; pi++) {
+          const pEl = paras[pi]!
+          const pPrEl = firstChildNS(pEl, NS.w, "pPr")
+          const pStyleEl = pPrEl ? firstChildNS(pPrEl, NS.w, "pStyle") : null
+          const literalStyleId = pStyleEl ? wVal(pStyleEl) : null
+          if (literalStyleId?.startsWith("_")) continue
+          const styleId = literalStyleId || defaultStyleId
+
+          // Dominant-run rPr: pick the run with the most non-prefix text.
+          const runs = getChildrenNS(pEl, NS.w, "r")
+          let chosenRPrEl: Element | null = null
+          let bestLen = -1
+          for (const r of runs) {
+            const rPrEl = firstChildNS(r, NS.w, "rPr")
+            let txt = ""
+            for (const c of getChildren(r)) {
+              if (c.namespaceURI === NS.w && c.localName === "t") txt += textContent(c)
+            }
+            const isPrefix =
+              txt.length > 0 &&
+              /^[\d一二三四五六七八九十百千零０-９.()（）【】［］〔〕[\]•·○●◆◇■□★☆※\-、，,\s]+$/.test(txt)
+            const len = isPrefix ? 0 : txt.length
+            if (len >= bestLen) {
+              bestLen = len
+              chosenRPrEl = rPrEl
+            }
+          }
+          // Fallback: paragraph-mark rPr
+          const paraMarkRPrEl = pPrEl ? firstChildNS(pPrEl, NS.w, "rPr") : null
+
+          const computed = doc.resolver.computeRunStyle(styleId, chosenRPrEl || paraMarkRPrEl)
+          const directPPr = doc.resolver.parsePPr(pPrEl)
+          const finalPPr: ComputedParaStyle = { ...computed.pPr }
+          for (const k of Object.keys(directPPr) as (keyof ComputedParaStyle)[]) {
+            const v = directPPr[k]
+            if (v !== undefined) Object.assign(finalPPr, { [k]: v })
+          }
+
+          const fp = computeRawFingerprint(computed.rPr, finalPPr)
+          if (fp !== rawFingerprint) continue
+
+          // Extract paragraph text
+          let text = ""
+          for (const r of runs) {
+            for (const c of getChildren(r)) {
+              if (c.namespaceURI === NS.w && c.localName === "t") text += textContent(c)
+            }
+          }
+
+          out.push({
+            coords: { table: tableIdx, row: ri + 1, col: ci + 1, paragraph: pi + 1 },
+            rPr: computed.rPr,
+            pPr: finalPPr,
+            styleId,
+            text,
+          })
+        }
+      }
+    }
+  }
+  return out
+}
+
 function formatRPr(p: ParsedParagraph): string {
-  const r = p.rPr
+  return formatRPrRaw(p.rPr)
+}
+
+function formatRPrRaw(r: ComputedRunStyle): string {
   const parts = formatComputedRPrParts(r, { truthyToggles: true, filterAutoColor: true })
   if (r.underline) parts.push(`underline: ${r.underline}`)
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 
 function formatPPr(p: ParsedParagraph, all: ParsedParagraph[]): string {
-  const parts = formatComputedPPrParts(p.pPr, { numIdDisplay: resolveNumId(all) })
+  const numIds = all.flatMap((q) => (q.pPr.numId !== undefined ? [q.pPr.numId] : []))
+  const numIdDisplay = resolveNumIdFromList(numIds, all.some((q) => q.pPr.numId === undefined))
+  const parts = formatComputedPPrParts(p.pPr, { numIdDisplay })
   return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
 }
 
-function resolveNumId(all: ParsedParagraph[]): string | null {
-  const seen = new Set<string>()
-  let hasUnset = false
-  for (const p of all) {
-    if (p.pPr.numId !== undefined) seen.add(p.pPr.numId)
-    else hasUnset = true
-  }
+function formatPPrRaw(pPr: ComputedParaStyle, all: CellParaEntry[]): string {
+  const numIds = all.flatMap((c) => (c.pPr.numId !== undefined ? [c.pPr.numId] : []))
+  const numIdDisplay = resolveNumIdFromList(numIds, all.some((c) => c.pPr.numId === undefined))
+  const parts = formatComputedPPrParts(pPr, { numIdDisplay })
+  return parts.length === 0 ? "{}" : `{ ${parts.join(", ")} }`
+}
+
+function resolveNumIdFromList(numIds: string[], hasUnset: boolean): string | null {
+  const seen = new Set(numIds)
   if (seen.size === 0) return null
   if (seen.size === 1 && !hasUnset) return Array.from(seen)[0]!
   return "mixed"

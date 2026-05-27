@@ -9,7 +9,7 @@
  * indexed paragraphs (body + layout-table cells, per DocumentParser). A
  * `range` whose endpoints sit in different containers (one in body, one in a
  * cell) is rejected — replace/insert/delete across structural boundaries
- * has no clean OOXML semantics. Data/form table cells are unindexed and
+ * has no clean OOXML semantics. Data table cells are unindexed and
  * thus only reachable via a `cell` locator.
  */
 
@@ -36,7 +36,7 @@ interface IndexedPara {
 }
 
 /** Walk the document in DocumentParser order and return every indexed
- * paragraph with its element + container. Skips paragraphs inside data/form
+ * paragraph with its element + container. Skips paragraphs inside data
  * tables (they're unindexed; reachable only via cell locator). Also skips
  * engine-managed scaffolding paragraphs — those carry a styleId starting
  * with `_` (currently `_HiddenChapterCounter`, holds the hidden chapter
@@ -66,7 +66,7 @@ export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
             }
           }
         }
-        // data/form: leave untouched — unindexed.
+        // data: leave untouched — unindexed.
       }
     }
   }
@@ -77,9 +77,9 @@ export function walkIndexedParagraphs(documentDoc: Document): IndexedPara[] {
 /* ------------- table walk (for cell locator) ------------- */
 
 interface TableRef {
-  /** 1-based top-level table position (document order). Includes layout, data,
-   * form alike — cell locator addresses any table by position so the
-   * agent can target data/form tables that paragraph indices skip. */
+  /** 1-based top-level table position (document order). Includes layout and
+   * data alike — cell locator addresses any table by position so the
+   * agent can target data tables that paragraph indices skip. */
   tableIndex: number
   element: Element
 }
@@ -142,7 +142,7 @@ export function resolveLocator(loc: Locator, ctx: ResolverContext): ResolvedTarg
     case "range":
       return resolveRange(loc.from, loc.to, ctx)
     case "cell":
-      return resolveCell(loc.table, loc.row, loc.col, ctx)
+      return resolveCell(loc.table, loc.row, loc.col, loc.paragraph, loc.to, ctx)
     case "heading":
       return resolveHeading(loc.text, loc.level, ctx)
     case "whole-body":
@@ -158,7 +158,7 @@ function resolveParagraph(index: number, ctx: ResolverContext): ResolvedTarget {
     const max = ctx.indexed.length
     throw new Error(
       `paragraph #${index} not found. Document has ${max} indexed paragraph(s) (range: #1${max ? `–#${max}` : ""}).` +
-        ` Paragraphs inside data/form tables are unindexed and only reachable via a cell locator.`,
+        ` Paragraphs inside data tables are unindexed and only reachable via a cell locator.`,
     )
   }
   return { paragraphs: [hit.element], container: hit.container }
@@ -196,6 +196,8 @@ function resolveCell(
   table: number,
   row: number,
   col: number,
+  paragraph: number | undefined,
+  to: number | undefined,
   ctx: ResolverContext,
 ): ResolvedTarget {
   // All three coords are 1-based agent-facing; convert to 0-based for array
@@ -220,8 +222,27 @@ function resolveCell(
     )
   }
   const tc = cells[col - 1]!
-  const paragraphs = getChildrenNS(tc, NS.w, "p")
-  return { paragraphs, container: tc }
+  const allParagraphs = getChildrenNS(tc, NS.w, "p")
+
+  if (paragraph === undefined) {
+    // whole-cell scope (legacy behavior)
+    return { paragraphs: allParagraphs, container: tc }
+  }
+
+  const cellCount = allParagraphs.length
+  if (paragraph < 1 || paragraph > cellCount) {
+    throw new Error(
+      `cell.paragraph: index ${paragraph} out of range. Table ${table} row ${row} col ${col} has ${cellCount} paragraph(s); valid 1..${cellCount}.`,
+    )
+  }
+  const end = to ?? paragraph
+  if (end > cellCount) {
+    throw new Error(
+      `cell.to: index ${end} out of range. Table ${table} row ${row} col ${col} has ${cellCount} paragraph(s); valid ${paragraph}..${cellCount}.`,
+    )
+  }
+  const narrowed = allParagraphs.slice(paragraph - 1, end)
+  return { paragraphs: narrowed, container: tc }
 }
 
 function resolveHeading(
@@ -267,48 +288,74 @@ function resolveWholeBody(ctx: ResolverContext): ResolvedTarget {
  *                         (whitespace-only text + rPr containing `<w:u/>`)
  *   - neither given     → first blank run (= `blank: 1`)
  *
+ * Accepts both locator forms:
+ *   - Global: `{ paragraph: N, ... }` — indexed scope (body + layout-table cells)
+ *   - Cell:   `{ table: T, row: R, col: C, paragraph: K, ... }` — data-table cell
+ *
  * Throws with a clear message when the paragraph isn't found, the index is
  * out of range, or the requested blank doesn't exist (lists what blanks ARE
  * present so the agent can adjust). */
 export function resolveRunLocator(
-  loc: { paragraph: number; blank?: number; runIndex?: number },
+  loc:
+    | { paragraph: number; blank?: number; runIndex?: number }
+    | { table: number; row: number; col: number; paragraph: number; blank?: number; runIndex?: number },
   ctx: ResolverContext,
 ): { paragraph: Element; run: Element } {
-  const hit = ctx.indexed[loc.paragraph - 1]
-  if (!hit || hit.index !== loc.paragraph) {
-    const max = ctx.indexed.length
-    throw new Error(
-      `paragraph #${loc.paragraph} not found. Document has ${max} indexed paragraph(s).`,
-    )
+  let pEl: Element
+  let locusDesc: string
+
+  if ("table" in loc) {
+    // Cell form: resolve to the K-th paragraph inside cell (T, R, C).
+    const cellResolved = resolveCell(loc.table, loc.row, loc.col, loc.paragraph, undefined, ctx)
+    if (cellResolved.paragraphs.length !== 1) {
+      throw new Error(
+        `run locator cell-form: expected exactly 1 paragraph, got ${cellResolved.paragraphs.length}. This is an internal error.`,
+      )
+    }
+    pEl = cellResolved.paragraphs[0]!
+    locusDesc = `table ${loc.table} row ${loc.row} col ${loc.col} paragraph ${loc.paragraph}`
+  } else {
+    const hit = ctx.indexed[loc.paragraph - 1]
+    if (!hit || hit.index !== loc.paragraph) {
+      const max = ctx.indexed.length
+      throw new Error(
+        `paragraph #${loc.paragraph} not found. Document has ${max} indexed paragraph(s).`,
+      )
+    }
+    pEl = hit.element
+    locusDesc = `paragraph #${loc.paragraph}`
   }
-  const runs = getChildrenNS(hit.element, NS.w, "r")
+
+  const runs = getChildrenNS(pEl, NS.w, "r")
   if (runs.length === 0) {
-    throw new Error(`paragraph #${loc.paragraph} has no runs to target.`)
+    throw new Error(`${locusDesc} has no runs to target.`)
   }
+
   if (loc.runIndex !== undefined) {
     if (loc.runIndex < 1 || loc.runIndex > runs.length) {
       throw new Error(
-        `paragraph #${loc.paragraph}: runIndex ${loc.runIndex} out of range (paragraph has ${runs.length} run(s); valid 1..${runs.length}).`,
+        `${locusDesc}: runIndex ${loc.runIndex} out of range (paragraph has ${runs.length} run(s); valid 1..${runs.length}).`,
       )
     }
-    return { paragraph: hit.element, run: runs[loc.runIndex - 1]! }
+    return { paragraph: pEl, run: runs[loc.runIndex - 1]! }
   }
+
   // blank-run mode (default when neither field given)
   const blankK = loc.blank ?? 1
   const blanks = runs.filter(isBlankRun)
   if (blanks.length === 0) {
     throw new Error(
-      `paragraph #${loc.paragraph}: no blank runs found. ` +
+      `${locusDesc}: no blank runs found. ` +
         `A blank run is one whose text is whitespace-only and rPr carries <w:u/> ` +
         `(typical form-fill placeholder). Use \`runIndex\` to target a specific run by 1-based index instead.`,
     )
   }
   if (blankK < 1 || blankK > blanks.length) {
     throw new Error(
-      `paragraph #${loc.paragraph}: blank ${blankK} out of range (paragraph has ${blanks.length} blank run(s); valid 1..${blanks.length}).`,
+      `${locusDesc}: blank ${blankK} out of range (paragraph has ${blanks.length} blank run(s); valid 1..${blanks.length}).`,
     )
   }
-  return { paragraph: hit.element, run: blanks[blankK - 1]! }
+  return { paragraph: pEl, run: blanks[blankK - 1]! }
 }
 
 /** Heuristic: a "blank" run is one whose text content is whitespace-only and

@@ -11,14 +11,37 @@ export interface TableSummary {
   classification: TableClassification
   rows: number
   cols: number
-  headers: string[]
+  /** First-row cell text snippets per cell, trimmed and untruncated.
+   * Each entry corresponds to one <w:tc> in the first row in document order;
+   * cells with no text yield empty strings. Empty array if the first row
+   * has no cells. The overview renderer truncates per-cell at display time. */
+  row1Texts: string[]
+  /** Short label naming which classifier signal fired. One of:
+   *   - "singleTcStack" — every row has 1 <w:tc> AND totalParas > 3 (S1)
+   *   - "outlineLvl"     — table contains direct <w:outlineLvl> (S2)
+   *   - "bulkCell"       — some cell has > threshold paragraphs (S2)
+   *   - "1x1"            — 1 row × 1 col, layout by elimination (S0)
+   *   - "multiColData"   — rowCount > 1 && maxCols > 1, default data
+   *   - "fallback"       — degenerate (single-cell tables that aren't
+   *                        1x1 layouts, etc.) → data */
+  classificationReason: string
 }
+
+/** Single cell holding more paragraphs than this is treated as a body
+ * container and forces the table into the `layout` bucket. Calibrated
+ * against survey of real fixtures: true data cells never exceed 3
+ * paragraphs; multi-line form cells (申报书 checkbox lists, proposal
+ * evaluation rubrics) sit at 5; layout content containers start at 4
+ * but typically reach 10+. Threshold 5 keeps form / data cells stable
+ * while catching content-heavy multi-tc layout cases that S1 misses. */
+const BULK_CELL_PARA_THRESHOLD = 5
 
 export function summarizeTable(tbl: Element): TableSummary {
   const rows = getChildrenNS(tbl, NS.w, "tr")
   const rowCount = rows.length
   let maxCols = 0
-  const rowEffectiveCols: number[] = []
+  let maxCellParas = 0
+  const rowTcCounts: number[] = []
 
   for (const tr of rows) {
     const tcs = getChildrenNS(tr, NS.w, "tc")
@@ -28,90 +51,78 @@ export function summarizeTable(tbl: Element): TableSummary {
       const gridSpan = tcPr ? firstChildNS(tcPr, NS.w, "gridSpan") : null
       const span = gridSpan ? parseInt(wVal(gridSpan) || "1", 10) : 1
       cells += span
+      const cellParas = descendantsNS(tc, NS.w, "p").length
+      if (cellParas > maxCellParas) maxCellParas = cellParas
     }
-    rowEffectiveCols.push(cells)
+    rowTcCounts.push(tcs.length)
     if (cells > maxCols) maxCols = cells
   }
 
-  // collect headers from first row
-  const headers: string[] = []
+  // collect row1 text snippets from first row
+  const row1Texts: string[] = []
   if (rows.length > 0) {
-    const first = rows[0]!
-    for (const tc of getChildrenNS(first, NS.w, "tc")) {
-      const text = collectCellText(tc).trim()
-      headers.push(text)
+    for (const tc of getChildrenNS(rows[0]!, NS.w, "tc")) {
+      row1Texts.push(collectCellText(tc).trim())
     }
   }
 
   // count total paragraphs across all cells
   const totalParas = descendantsNS(tbl, NS.w, "p").length
 
-  let classification: TableClassification = "data"
-  const allSingleCol = rowEffectiveCols.every((c) => c === 1)
-  if (allSingleCol && totalParas > 3) {
-    classification = "layout"
-  } else if (rowCount > 1 && maxCols > 1) {
-    if (looksLikeHeaderRow(rows[0]!)) {
-      classification = "data"
-    } else if (looksLikeForm(rows)) {
-      classification = "form"
-    } else {
-      classification = "data"
-    }
-  } else {
-    classification = "data"
+  // Layout signals — overrule structural form/data shape:
+  //   S1 single-cell-per-row stack: every row has exactly one <w:tc>
+  //      (regardless of gridSpan) and the table holds >3 paragraphs.
+  //      Catches both true 1-grid-column tables AND the common Word
+  //      pattern "table grid is N-column but body rows all merge
+  //      across all columns" — visually identical, both are stacks
+  //      of full-width single cells used as content containers.
+  //      Counting <w:tc> instead of gridSpan-effective cols is what
+  //      makes the second form get recognized.
+  //   S2 outlineLvl: any descendant <w:outlineLvl/> means the table
+  //      contains heading-bound paragraphs. Data cells never carry
+  //      outline level.
+  //   S3 bulk cell: a single cell holding many paragraphs is a body
+  //      container, not a tabular data cell.
+  const allSingleTcPerRow = rowTcCounts.every((c) => c === 1)
+  const hasOutlineHeading = descendantsNS(tbl, NS.w, "outlineLvl").length > 0
+
+  // S0: 1×1 tables are always layout boxes. Structurally a data table
+  // requires at least a header + one data row; 1×1 is by elimination a
+  // single-cell content container (cover page title boxes, callout
+  // frames, etc.). Falls through the normal classification path to
+  // "data" otherwise, which hides the box's content.
+  if (rowCount === 1 && maxCols === 1) {
+    return { classification: "layout", rows: rowCount, cols: maxCols, row1Texts, classificationReason: "1x1" }
   }
+
+  let classification: TableClassification = "data"
+  let classificationReason = "fallback"
+
+  if (allSingleTcPerRow && totalParas > 3) {
+    classification = "layout"
+    classificationReason = "singleTcStack"
+  } else if (hasOutlineHeading) {
+    classification = "layout"
+    classificationReason = "outlineLvl"
+  } else if (maxCellParas > BULK_CELL_PARA_THRESHOLD) {
+    classification = "layout"
+    classificationReason = "bulkCell"
+  } else if (rowCount > 1 && maxCols > 1) {
+    classification = "data"
+    classificationReason = "multiColData"
+  }
+  // else: default "data" / "fallback"
 
   return {
     classification,
     rows: rowCount,
     cols: maxCols,
-    headers,
+    row1Texts,
+    classificationReason,
   }
 }
 
 function collectCellText(tc: Element): string {
   const ts = descendantsNS(tc, NS.w, "t")
   return ts.map((t) => textContent(t)).join("")
-}
-
-function looksLikeHeaderRow(tr: Element): boolean {
-  const tcs = getChildrenNS(tr, NS.w, "tc")
-  if (tcs.length === 0) return false
-  let boldCells = 0
-  let shortCells = 0
-  let total = 0
-  for (const tc of tcs) {
-    total++
-    const text = collectCellText(tc).trim()
-    if (text.length > 0 && text.length <= 20) shortCells++
-    // check any run rPr has <w:b/>
-    const rPrs = descendantsNS(tc, NS.w, "rPr")
-    let hasBold = false
-    for (const rPr of rPrs) {
-      const b = firstChildNS(rPr, NS.w, "b")
-      if (b && wVal(b) !== "0") {
-        hasBold = true
-        break
-      }
-    }
-    if (hasBold) boldCells++
-  }
-  const ratio = (boldCells + shortCells) / (total * 2)
-  return boldCells >= Math.ceil(total / 2) || ratio > 0.6
-}
-
-function looksLikeForm(rows: Element[]): boolean {
-  // label-value pattern: short text in left column(s), longer/empty in right
-  let formish = 0
-  for (const tr of rows) {
-    const tcs = getChildrenNS(tr, NS.w, "tc")
-    if (tcs.length < 2) continue
-    const leftText = collectCellText(tcs[0]!).trim()
-    const rightText = collectCellText(tcs[tcs.length - 1]!).trim()
-    if (leftText.length > 0 && leftText.length <= 12) {
-      if (rightText.length === 0 || rightText.length >= leftText.length) formish++
-    }
-  }
-  return formish >= Math.ceil(rows.length / 2)
 }

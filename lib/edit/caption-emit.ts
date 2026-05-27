@@ -139,6 +139,7 @@ export function emitCaptionBlock(
     chapterPrefixResults: built.chapterPrefixResults,
     parentSeqResult: built.parentSeqResult,
     subSeqResult: built.subSeqResult,
+    bodyText: opts.text === "" ? undefined : opts.text,
   }
 
   return { paragraph: built.paragraph, fill }
