@@ -111,7 +111,7 @@ All tools invoked via `node <script> <args>`, output to stdout.
 
 ## Cross-command invariants
 
-- Original file is never modified; every applying CLI writes a fresh copy + validates before keeping. Only errors *introduced* by the run are fatal — pre-existing source errors are non-fatal warnings. `--allow-validation-warnings` keeps output even on new errors (debugging only). Details: [`standardize.md §Validation behavior`](references/standardize.md#validation-behavior).
+- Original file is never modified; every applying CLI writes a fresh copy + validates before keeping. Validation uses baseline-diff — only errors *introduced* by the run are fatal. See [`standardize.md §Validation behavior`](references/standardize.md#validation-behavior); `--allow-validation-warnings` override is documented in [`config-schema.md`](references/config-schema.md).
 - Section properties sparse-by-design: untouched unless declared via `pageSetup`. Details: [`config-schema.md`](references/config-schema.md#page-setup).
 - Paragraph indexing is 1-based, matching `#NNN` in skeleton. Layout-table paragraphs are indexed; data-table cell paragraphs aren't. Both are reachable by surgical edits — layout cells via global `#NNN` index, data cells via `cell` locator with optional `paragraph: K` / `to: M`. `RunLocator` accepts cell coords too for `set-run`. See [`references/edit.md` locator table](references/edit.md#locators-at).
 - All `edits[]` locators resolve against the **pre-edits** document state — `#NNN` from `overview` is what locators reference, regardless of intervening ops. Resolved Element refs survive subsequent mutations.

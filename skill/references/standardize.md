@@ -350,4 +350,4 @@ A complete standardize-shape config combines the four blocks. This is a referenc
 
 ## Validation behavior
 
-`apply` validates the output docx after writing. Only errors **introduced by this apply run** are fatal; pre-existing errors in the source are warnings and do not block output. Pass `--allow-validation-warnings` to keep output even when new errors are introduced (debugging only).
+`apply` validates the output docx after writing. Only errors **introduced by this apply run** are fatal; pre-existing errors in the source are warnings and do not block output. Override via [`allowValidationWarnings`](config-schema.md) when debugging.

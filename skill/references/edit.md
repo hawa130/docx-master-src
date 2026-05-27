@@ -153,6 +153,8 @@ Default to `replace` for content-bearing fills; `insert-after` for non-destructi
 
 For multi-paragraph content, pass multiple Blocks in one op rather than chaining many `insert-after`s — order is preserved and no stale-index issue.
 
+`apply --dry-run` emits a `=== Paragraph index drift (pre-edit → post-edit) ===` section when the edits change body paragraph count. Use it to spot whether a downstream locator (`paragraph` index, cross-ref) you wrote against the pre-edit numbering still points where you intended.
+
 ## Edge cases
 
 - **Cross-container range**: `range` cannot span body ↔ table-cell. Split into two edits.
